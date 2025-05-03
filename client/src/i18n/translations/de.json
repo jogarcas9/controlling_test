@@ -1,0 +1,15 @@
+{
+  "dashboard": "Dashboard",
+  "personal": "Persönliche Ausgaben",
+  "shared": "Geteilte Ausgaben",
+  "reports": "Berichte",
+  "settings": "Einstellungen",
+  "logout": "Abmelden",
+  "reports": {
+    "title": "Berichte und Analysen",
+    "monthlyExpenses": "Monatliche Ausgaben",
+    "categoryDistribution": "Kategorieverteilung",
+    "annualTrend": "Jahrestrend",
+    "chartPlaceholder": "Das Diagramm wird hier angezeigt"
+  }
+} 

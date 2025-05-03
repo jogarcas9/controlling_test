@@ -1,0 +1,15 @@
+{
+  "dashboard": "Tableau de bord",
+  "personal": "Dépenses personnelles",
+  "shared": "Dépenses partagées",
+  "reports": "Rapports",
+  "settings": "Paramètres",
+  "logout": "Déconnexion",
+  "reports": {
+    "title": "Rapports et analyses",
+    "monthlyExpenses": "Dépenses mensuelles",
+    "categoryDistribution": "Distribution par catégorie",
+    "annualTrend": "Tendance annuelle",
+    "chartPlaceholder": "Le graphique sera affiché ici"
+  }
+} 

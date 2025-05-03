@@ -1,0 +1,22 @@
+{
+  "welcome": "Welcome",
+  "refresh": "Refresh",
+  "financialSummary": "Financial Summary",
+  "availableBalance": "Available Balance",
+  "activeSharedSessions": "Active Shared Sessions",
+  "viewAll": "View All",
+  "quickActions": "Quick Actions",
+  "manageYourFinances": "Manage Your Finances",
+  "yearToDate": "Year to Date",
+  "summaryYearToDate": "Summary Year to Date",
+  "savingsGoalProgress": "Savings Goal Progress",
+  "targetSavings": "Target Savings",
+  "monthsToContinue": "Months to Continue",
+  "financialTip": "Financial Tip",
+  "tipGoodFinances": "Keep track of your expenses to maintain good finances",
+  "reports": {
+    "dashboard": {
+      "title": "Reports Dashboard"
+    }
+  }
+} 

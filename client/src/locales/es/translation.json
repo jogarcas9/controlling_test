@@ -1,0 +1,22 @@
+{
+  "welcome": "Bienvenido",
+  "refresh": "Actualizar",
+  "financialSummary": "Resumen Financiero",
+  "availableBalance": "Saldo Disponible",
+  "activeSharedSessions": "Sesiones Compartidas Activas",
+  "viewAll": "Ver Todo",
+  "quickActions": "Acciones Rápidas",
+  "manageYourFinances": "Gestiona tus Finanzas",
+  "yearToDate": "Año hasta la Fecha",
+  "summaryYearToDate": "Resumen del Año hasta la Fecha",
+  "savingsGoalProgress": "Progreso del Objetivo de Ahorro",
+  "targetSavings": "Objetivo de Ahorro",
+  "monthsToContinue": "Meses Restantes",
+  "financialTip": "Consejo Financiero",
+  "tipGoodFinances": "Mantén un registro de tus gastos para mantener buenas finanzas",
+  "reports": {
+    "dashboard": {
+      "title": "Panel de Informes"
+    }
+  }
+} 
