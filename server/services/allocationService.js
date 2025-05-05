@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { SharedSession, ParticipantAllocation } = require('../models');
+const syncService = require('./syncService');
 
 /**
  * Valida que la suma de los porcentajes sea exactamente 100%
@@ -48,6 +49,8 @@ const distributeAmount = async (session) => {
   
   validatePercentages(allocations);
   
+  console.log(`Iniciando distribución de montos para sesión ${sessionId}, total: ${totalAmount} ${currency}`);
+  
   // Iniciar transacción de MongoDB
   const session_db = await mongoose.startSession();
   session_db.startTransaction();
@@ -82,19 +85,50 @@ const distributeAmount = async (session) => {
       console.log(`Ajuste por redondeo: ${diff.toFixed(2)} ${currency} asignado al primer participante`);
     }
     
+    console.log(`Insertando ${allocationsToInsert.length} asignaciones`);
+    
     // Insertar las asignaciones en la base de datos
     const createdAllocations = await ParticipantAllocation.insertMany(allocationsToInsert, { session: session_db });
     
     // Confirmar transacción
     await session_db.commitTransaction();
+    session_db.endSession();
+    
+    console.log(`Asignaciones creadas correctamente. Iniciando sincronización con gastos personales...`);
+    
+    // Sincronizar las asignaciones con gastos personales
+    // Esto se hace fuera de la transacción para no bloquear la respuesta principal
+    const syncResults = [];
+    for (const allocation of createdAllocations) {
+      try {
+        const result = await syncService.processNewAllocation(allocation);
+        syncResults.push({
+          allocationId: allocation._id,
+          userId: allocation.userId,
+          success: true,
+          personalExpenseId: result.personalExpense?._id
+        });
+      } catch (error) {
+        console.error(`Error al sincronizar asignación ${allocation._id}:`, error);
+        syncResults.push({
+          allocationId: allocation._id,
+          userId: allocation.userId,
+          success: false,
+          error: error.message
+        });
+        // No interrumpimos el flujo principal si falla la sincronización
+      }
+    }
+    
+    console.log(`Resultados de sincronización:`, JSON.stringify(syncResults));
     
     return createdAllocations;
   } catch (error) {
     // Revertir transacción en caso de error
     await session_db.abortTransaction();
-    throw error;
-  } finally {
     session_db.endSession();
+    console.error(`Error en distributeAmount:`, error);
+    throw error;
   }
 };
 
@@ -169,11 +203,57 @@ const updateAllocationStatus = async (allocationId, newStatus) => {
     throw new Error('Estado no válido');
   }
   
-  return ParticipantAllocation.findByIdAndUpdate(
+  const updatedAllocation = await ParticipantAllocation.findByIdAndUpdate(
     allocationId,
     { status: newStatus, updatedAt: new Date() },
     { new: true }
   );
+  
+  // Sincronizar con gasto personal si se marca como aceptado o pagado
+  if (updatedAllocation && ['accepted', 'paid'].includes(newStatus)) {
+    try {
+      await syncService.processUpdatedAllocation(updatedAllocation);
+    } catch (error) {
+      console.error(`Error al sincronizar actualización de asignación ${allocationId}:`, error);
+      // No interrumpimos el flujo principal si falla la sincronización
+    }
+  }
+  
+  return updatedAllocation;
+};
+
+/**
+ * Actualiza una asignación específica
+ * @param {string} allocationId - ID de la asignación
+ * @param {Object} updateData - Datos para actualizar
+ * @returns {Object} Asignación actualizada
+ */
+const updateAllocation = async (allocationId, updateData) => {
+  // No permitir actualizar campos críticos como sessionId o userId
+  const safeUpdateData = { ...updateData };
+  delete safeUpdateData.sessionId;
+  delete safeUpdateData.userId;
+  delete safeUpdateData.personalExpenseId;
+  
+  const updatedAllocation = await ParticipantAllocation.findByIdAndUpdate(
+    allocationId,
+    { ...safeUpdateData, updatedAt: new Date() },
+    { new: true }
+  );
+  
+  if (!updatedAllocation) {
+    throw new Error('Asignación no encontrada');
+  }
+  
+  // Sincronizar con gasto personal
+  try {
+    await syncService.processUpdatedAllocation(updatedAllocation);
+  } catch (error) {
+    console.error(`Error al sincronizar actualización de asignación ${allocationId}:`, error);
+    // No interrumpimos el flujo principal si falla la sincronización
+  }
+  
+  return updatedAllocation;
 };
 
 module.exports = {
@@ -182,5 +262,6 @@ module.exports = {
   getUserAllocations,
   getSessionAllocations,
   updateAllocationStatus,
+  updateAllocation,
   validatePercentages
 }; 

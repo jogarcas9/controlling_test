@@ -7,7 +7,8 @@ import {
   Typography,
   Container,
   Alert,
-  Paper
+  Paper,
+  Grid
 } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
 
@@ -17,6 +18,8 @@ const Register = () => {
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     username: '',
+    name: '',
+    last_name: '',
     email: '',
     password: '',
     confirmPassword: ''
@@ -48,6 +51,8 @@ const Register = () => {
     try {
       await register({
         username: formData.username,
+        name: formData.name,
+        last_name: formData.last_name,
         email: formData.email,
         password: formData.password
       });
@@ -98,6 +103,32 @@ const Register = () => {
               value={formData.username}
               onChange={handleChange}
             />
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  margin="normal"
+                  fullWidth
+                  id="name"
+                  label="Nombre"
+                  name="name"
+                  autoComplete="given-name"
+                  value={formData.name}
+                  onChange={handleChange}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  margin="normal"
+                  fullWidth
+                  id="last_name"
+                  label="Apellido"
+                  name="last_name"
+                  autoComplete="family-name"
+                  value={formData.last_name}
+                  onChange={handleChange}
+                />
+              </Grid>
+            </Grid>
             <TextField
               margin="normal"
               required

@@ -291,7 +291,14 @@ export const getUserByEmail = async (email) => {
       // Intentar construir un nombre de visualización más amigable
       if (!user.name || user.name === email || email.includes(user.name)) {
         // Si el nombre es igual al email o parte del email, usar nombre/apellido si existen
-        if (user.nombre && user.apellidos) {
+        if (user.name && user.last_name) {
+          result.user.name = `${user.name} ${user.last_name}`.trim();
+        } else if (user.name) {
+          result.user.name = user.name;
+        } else if (user.last_name) {
+          result.user.name = user.last_name;
+        } else if (user.nombre && user.apellidos) {
+          // Para compatibilidad con datos antiguos
           result.user.name = `${user.nombre} ${user.apellidos}`.trim();
         } else if (user.nombre) {
           result.user.name = user.nombre;

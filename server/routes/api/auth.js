@@ -60,6 +60,8 @@ router.post('/login', async (req, res) => {
             id: user.id,
             email: user.email,
             username: user.username,
+            name: user.name,
+            last_name: user.last_name,
             settings: user.settings
           }
         });
@@ -169,6 +171,8 @@ router.get('/verify', async (req, res) => {
           id: user.id,
           email: user.email,
           username: user.username,
+          name: user.name,
+          last_name: user.last_name,
           settings: user.settings
         }
       });
@@ -200,6 +204,80 @@ router.get('/', auth, async (req, res) => {
     res.json(user);
   } catch (err) {
     console.error('Error al redireccionar:', err);
+    res.status(500).send('Error del servidor');
+  }
+});
+
+// @route   POST api/auth/register
+// @desc    Registrar un nuevo usuario
+// @access  Public
+router.post('/register', async (req, res) => {
+  try {
+    console.log('Intento de registro recibido:', req.body.email);
+    const { username, email, password, name, last_name } = req.body;
+
+    // Validar campos requeridos
+    if (!username || !email || !password) {
+      return res.status(400).json({ msg: 'Por favor, complete todos los campos obligatorios' });
+    }
+
+    // Verificar si el usuario ya existe
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (user) {
+      console.log('Usuario ya existe:', email);
+      return res.status(400).json({ msg: 'El usuario ya existe' });
+    }
+
+    // Crear nuevo usuario
+    user = new User({
+      username,
+      email: email.toLowerCase(),
+      password,
+      name,
+      last_name
+    });
+
+    // La encriptación de la contraseña se hace en el middleware pre-save del modelo
+
+    // Guardar usuario
+    await user.save();
+    console.log('Usuario registrado correctamente:', email);
+
+    // Crear y devolver token JWT
+    const payload = {
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username
+      }
+    };
+
+    jwt.sign(
+      payload,
+      config.jwtSecret,
+      { expiresIn: '24h' },
+      (err, token) => {
+        if (err) {
+          console.error('Error al generar token:', err);
+          throw err;
+        }
+        console.log('Token generado para nuevo usuario:', email);
+        console.log('Token ejemplo:', token.substring(0, 20) + '...');
+        
+        res.status(201).json({
+          token,
+          user: {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            name: user.name,
+            last_name: user.last_name
+          }
+        });
+      }
+    );
+  } catch (err) {
+    console.error('Error en registro:', err.message);
     res.status(500).send('Error del servidor');
   }
 });

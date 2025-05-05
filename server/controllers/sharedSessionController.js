@@ -2,6 +2,9 @@ const SharedSession = require('../models/SharedSession');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const allocationService = require('../services/allocationService');
+const syncService = require('../services/syncService');
+const ParticipantAllocation = require('../models/ParticipantAllocation');
+const PersonalExpense = require('../models/PersonalExpense');
 
 // Obtener todas las sesiones compartidas del usuario
 exports.getAllSessions = async (req, res) => {
@@ -474,6 +477,10 @@ exports.updateSession = async (req, res) => {
 
 // Eliminar una sesión
 exports.deleteSession = async (req, res) => {
+  // Iniciar una sesión de transacción
+  const dbSession = await mongoose.startSession();
+  dbSession.startTransaction();
+  
   try {
     const sessionId = req.params.id;
     console.log(`Intentando eliminar sesión: ${sessionId} por usuario: ${req.user.id}`);
@@ -492,28 +499,53 @@ exports.deleteSession = async (req, res) => {
       return res.status(404).json({ msg: 'Sesión no encontrada o no tienes permisos para eliminarla' });
     }
 
-    // Usar findByIdAndDelete en lugar de remove()
-    const deleteResult = await SharedSession.findByIdAndDelete(sessionId);
+    // 1. Buscar todas las asignaciones vinculadas a esta sesión
+    const allocations = await ParticipantAllocation.find({ sessionId });
+    const allocationIds = allocations.map(allocation => allocation._id);
+    
+    console.log(`Encontradas ${allocations.length} asignaciones relacionadas con la sesión ${sessionId}`);
+
+    // 2. Eliminar todos los gastos personales vinculados a las asignaciones
+    const deletePersonalExpensesByAllocation = await PersonalExpense.deleteMany({ 
+      allocationId: { $in: allocationIds } 
+    }, { session: dbSession });
+    console.log(`Eliminados ${deletePersonalExpensesByAllocation.deletedCount} gastos personales por allocationId`);
+
+    // 3. Eliminar todas las asignaciones vinculadas a esta sesión
+    const deleteAllocationResult = await ParticipantAllocation.deleteMany({ sessionId }, { session: dbSession });
+    console.log(`Eliminadas ${deleteAllocationResult.deletedCount} asignaciones relacionadas con la sesión ${sessionId}`);
+
+    // 4. Eliminar la sesión compartida
+    const deleteResult = await SharedSession.findByIdAndDelete(sessionId, { session: dbSession });
     
     console.log(`Sesión ${sessionId} eliminada con éxito:`, deleteResult ? 'Sí' : 'No');
     
-    return res.json({ 
-      msg: 'Sesión eliminada exitosamente', 
-      success: true 
+    // Confirmar la transacción
+    await dbSession.commitTransaction();
+    
+    res.json({ 
+      msg: 'Sesión eliminada exitosamente',
+      success: true,
+      deletedAllocations: deleteAllocationResult.deletedCount,
+      deletedPersonalExpenses: deletePersonalExpensesByAllocation.deletedCount
     });
-
-  } catch (error) {
-    console.error(`Error al eliminar sesión ${req.params.id}:`, error.message);
-    if (error.name === 'CastError') {
+  } catch (err) {
+    // Revertir la transacción en caso de error
+    await dbSession.abortTransaction();
+    
+    console.error(`Error al eliminar sesión ${req.params.id}:`, err.message);
+    if (err.name === 'CastError') {
       return res.status(400).json({ 
         msg: 'ID de sesión inválido',
-        error: error.message
+        error: err.message
       });
     }
     return res.status(500).json({ 
       msg: 'Error del servidor al eliminar sesión',
-      error: error.message
+      error: err.message
     });
+  } finally {
+    dbSession.endSession();
   }
 };
 
@@ -729,6 +761,10 @@ exports.addExpense = async (req, res) => {
 
 // Eliminar un gasto de una sesión
 exports.deleteExpense = async (req, res) => {
+    // Iniciar una sesión de transacción
+    const dbSession = await mongoose.startSession();
+    dbSession.startTransaction();
+    
     try {
         const sessionId = req.params.id;
         const expenseId = req.params.expenseId;
@@ -743,7 +779,7 @@ exports.deleteExpense = async (req, res) => {
                 { userId: userId },
                 { 'participants.userId': userId }
             ]
-        });
+        }).session(dbSession);
 
         if (!session) {
             console.log(`Sesión ${sessionId} no encontrada o usuario ${userId} no autorizado`);
@@ -771,25 +807,41 @@ exports.deleteExpense = async (req, res) => {
         // Guardar el monto antes de eliminarlo para ajustar el total
         const amountToSubtract = expense.amount;
         
-        // Eliminar el gasto (usando pull)
+        // 4. Eliminar el gasto de la sesión
         await SharedSession.findByIdAndUpdate(
             sessionId,
             { 
                 $pull: { expenses: { _id: expenseId } },
                 $inc: { totalAmount: -amountToSubtract },
                 $set: { lastActivity: Date.now() }
-            }
+            },
+            { session: dbSession }
         );
         
         console.log(`Gasto ${expenseId} eliminado con éxito de la sesión ${sessionId}`);
 
-        // Obtener la sesión actualizada
+        // 5. Obtener la sesión actualizada
         const updatedSession = await SharedSession.findById(sessionId)
             .populate('userId', 'nombre email')
-            .populate('participants.userId', 'nombre email');
+            .populate('participants.userId', 'nombre email')
+            .session(dbSession);
 
-        // Calcular y distribuir montos entre participantes
+        // 6. Calcular y distribuir montos entre participantes con la sesión actualizada
         try {
+            // Antes de recalcular, eliminar las asignaciones y gastos personales actuales
+            // para evitar duplicidades
+            const deleteAllocationsResult = await ParticipantAllocation.deleteMany({ 
+                sessionId 
+            }).session(dbSession);
+            console.log(`Eliminadas ${deleteAllocationsResult.deletedCount} asignaciones previas`);
+
+            // Eliminar los gastos personales vinculados a la sesión
+            const deletePersonalExpensesResult = await PersonalExpense.deleteMany({ 
+                'sessionReference.sessionId': sessionId 
+            }).session(dbSession);
+            console.log(`Eliminados ${deletePersonalExpensesResult.deletedCount} gastos personales previos`);
+
+            // Ahora recalcular con los valores actualizados
             await allocationService.distributeAmount(updatedSession);
             console.log(`Distribución de montos actualizada para sesión ${sessionId}`);
         } catch (allocError) {
@@ -797,61 +849,30 @@ exports.deleteExpense = async (req, res) => {
             // No interrumpir el proceso si falla la distribución
         }
 
+        // Confirmar la transacción
+        await dbSession.commitTransaction();
+        
         res.json(updatedSession);
     } catch (error) {
+        // Revertir transacción en caso de error
+        await dbSession.abortTransaction();
+        
         console.error('Error al eliminar el gasto:', error);
         res.status(500).json({ 
             msg: 'Error al eliminar el gasto',
             error: error.message
         });
+    } finally {
+        dbSession.endSession();
     }
 };
 
 // Eliminar una sesión compartida
 exports.deleteSharedSession = async (req, res) => {
-  try {
-    const sessionId = req.params.id;
-    const userId = req.user.id;
-    
-    console.log(`Intentando eliminar sesión compartida: ${sessionId} por usuario: ${userId}`);
-
-    const session = await SharedSession.findOne({
-      _id: sessionId,
-      $or: [
-        { userId: userId },
-        { 'participants.userId': userId, 'participants.role': 'admin' }
-      ]
-    });
-
-    if (!session) {
-      console.log(`Sesión compartida ${sessionId} no encontrada o no autorizada para usuario ${userId}`);
-      return res.status(404).json({ 
-        msg: 'Sesión no encontrada o no tienes permisos para eliminarla'
-      });
-    }
-
-    // Eliminar usando findByIdAndDelete
-    const deleteResult = await SharedSession.findByIdAndDelete(sessionId);
-    
-    console.log(`Sesión compartida ${sessionId} eliminada con éxito:`, deleteResult ? 'Sí' : 'No');
-
-    res.json({ 
-      msg: 'Sesión eliminada exitosamente',
-      success: true
-    });
-  } catch (err) {
-    console.error(`Error al eliminar sesión compartida ${req.params.id}:`, err.message);
-    if (err.name === 'CastError') {
-      return res.status(400).json({ 
-        msg: 'ID de sesión inválido',
-        error: err.message
-      });
-    }
-    return res.status(500).json({ 
-      msg: 'Error del servidor al eliminar sesión',
-      error: err.message
-    });
-  }
+  // Esta función es redundante y está siendo reemplazada por exports.deleteSession
+  // Redirigir a deleteSession para garantizar consistencia
+  console.log(`Redirigiendo deleteSharedSession a deleteSession para ${req.params.id}`);
+  return exports.deleteSession(req, res);
 };
 
 // Sincronizar gastos de sesión compartida a gastos personales
@@ -1123,110 +1144,127 @@ exports.inviteParticipants = async (req, res) => {
   });
 };
 
-// Actualizar un gasto de una sesión
+// Actualizar un gasto en una sesión
 exports.updateExpense = async (req, res) => {
-  try {
-    const { description, amount, date, paidBy } = req.body;
-    const sessionId = req.params.id;
-    const expenseId = req.params.expenseId;
-    const userId = req.user.id;
+    // Iniciar una sesión de transacción
+    const dbSession = await mongoose.startSession();
+    dbSession.startTransaction();
     
-    console.log(`Actualizando gasto ${expenseId} en sesión ${sessionId} por usuario ${userId}`);
-    
-    const session = await SharedSession.findOne({
-      _id: sessionId,
-      isActive: true,
-      $or: [
-        { userId: userId },
-        { 'participants.userId': userId }
-      ]
-    });
+    try {
+        const sessionId = req.params.id;
+        const expenseId = req.params.expenseId;
+        const { name, description, amount, date, category, paidBy } = req.body;
+        const userId = req.user.id;
+        
+        console.log(`Intentando actualizar gasto ${expenseId} en sesión ${sessionId}`);
+        console.log(`Datos recibidos:`, { name, description, amount, date, category, paidBy });
 
-    if (!session) {
-      console.log(`Sesión ${sessionId} no encontrada o no autorizada para usuario ${userId}`);
-      return res.status(404).json({ msg: 'Sesión no encontrada o no autorizada' });
+        // Buscar la sesión
+        const session = await SharedSession.findOne({
+            _id: sessionId,
+            $or: [
+                { userId: userId },
+                { 'participants.userId': userId }
+            ]
+        }).session(dbSession);
+
+        if (!session) {
+            console.log(`Sesión ${sessionId} no encontrada o usuario ${userId} no autorizado`);
+            return res.status(404).json({ msg: 'Sesión no encontrada o no autorizada' });
+        }
+
+        // Buscar el gasto específico
+        const expense = session.expenses.id(expenseId);
+        if (!expense) {
+            console.log(`Gasto ${expenseId} no encontrado en la sesión ${sessionId}`);
+            return res.status(404).json({ msg: 'Gasto no encontrado' });
+        }
+
+        // Verificar que el usuario sea participante (ya verificado en la consulta inicial)
+        
+        // Guardar el monto anterior para ajustar el total
+        const oldAmount = expense.amount;
+        
+        // Actualizar campos del gasto
+        if (name) expense.name = name;
+        if (description !== undefined) expense.description = description;
+        if (amount) expense.amount = parseFloat(amount);
+        if (date) expense.date = new Date(date);
+        if (category) expense.category = category;
+        if (paidBy) expense.paidBy = paidBy;
+        
+        // Ajustar el monto total de la sesión
+        if (amount && parseFloat(amount) !== oldAmount) {
+            const difference = parseFloat(amount) - oldAmount;
+            session.totalAmount = (session.totalAmount || 0) + difference;
+        }
+        
+        // Actualizar fecha de última actividad
+        session.lastActivity = Date.now();
+        
+        // Guardar la sesión
+        await session.save({ session: dbSession });
+        
+        console.log(`Gasto ${expenseId} actualizado. Monto anterior: ${oldAmount}, nuevo: ${expense.amount}`);
+        
+        // Buscar asignaciones relacionadas con este gasto para actualizarlas
+        const allocationsToUpdate = await ParticipantAllocation.find({ 
+            sessionId,
+            expenseId
+        }).session(dbSession);
+        
+        console.log(`Encontradas ${allocationsToUpdate.length} asignaciones relacionadas con el gasto ${expenseId}`);
+        
+        // Obtener la sesión con datos actualizados para recalcular asignaciones
+        const updatedSession = await SharedSession.findById(sessionId)
+            .populate('userId', 'nombre email')
+            .populate('participants.userId', 'nombre email')
+            .session(dbSession);
+
+        // Recalcular y aplicar nuevas asignaciones basadas en los cambios
+        try {
+            const newAllocations = await allocationService.distributeAmount(updatedSession);
+            console.log(`Se actualizaron ${newAllocations.length} asignaciones con nuevos montos`);
+            
+            // La función distributeAmount ya debería sincronizar con gastos personales,
+            // pero verificamos y forzamos la actualización si es necesario
+            if (allocationsToUpdate.length > 0) {
+                for (const allocation of newAllocations) {
+                    try {
+                        await syncService.processUpdatedAllocation(allocation);
+                    } catch (syncError) {
+                        console.error(`Error al sincronizar asignación ${allocation._id}:`, syncError.message);
+                        // No interrumpimos el flujo principal
+                    }
+                }
+            }
+        } catch (allocError) {
+            console.error('Error al redistribuir montos:', allocError.message);
+            // No interrumpimos el flujo principal si falla la distribución
+        }
+        
+        // Confirmar transacción
+        await dbSession.commitTransaction();
+        
+        res.json(updatedSession);
+    } catch (error) {
+        // Revertir transacción en caso de error
+        await dbSession.abortTransaction();
+        
+        console.error('Error al actualizar gasto:', error);
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ 
+                msg: 'Error de validación', 
+                details: Object.values(error.errors).map(err => err.message).join(', ') 
+            });
+        }
+        res.status(500).json({ 
+            msg: 'Error al actualizar el gasto',
+            error: error.message
+        });
+    } finally {
+        dbSession.endSession();
     }
-
-    // Encontrar el gasto a actualizar
-    const expense = session.expenses.id(expenseId);
-    if (!expense) {
-      console.log(`Gasto ${expenseId} no encontrado en sesión ${sessionId}`);
-      return res.status(404).json({ msg: 'Gasto no encontrado' });
-    }
-
-    // CAMBIO: Permitir que cualquier participante pueda actualizar gastos
-    // Verificar que el usuario sea participante (esto ya se comprobó en la búsqueda de la sesión)
-    const isParticipant = session.participants.some(p => 
-      p.userId && p.userId.toString() === userId
-    );
-    
-    if (!isParticipant) {
-      console.log(`Usuario ${userId} no es participante de la sesión ${sessionId}`);
-      return res.status(401).json({ msg: 'No autorizado para actualizar este gasto' });
-    }
-
-    // Verificar que el paidBy sea un participante válido
-    if (paidBy) {
-      const isParticipant = session.participants.some(p => 
-        p.userId && p.userId.toString() === paidBy
-      );
-      
-      if (!isParticipant) {
-        console.log(`Usuario ${paidBy} no es un participante válido de la sesión ${sessionId}`);
-        return res.status(400).json({ msg: 'Usuario no válido para el pago' });
-      }
-    }
-
-    // Guardar el monto anterior para cálculo del total
-    const oldAmount = expense.amount;
-    const amountDifference = (Number(amount) || 0) - oldAmount;
-
-    // Actualizar los campos del gasto
-    if (description !== undefined) expense.description = description;
-    if (amount !== undefined) expense.amount = Number(amount);
-    if (date !== undefined) expense.date = new Date(date);
-    if (paidBy !== undefined) expense.paidBy = paidBy;
-
-    // Actualizar el monto total de la sesión
-    if (amountDifference !== 0) {
-      session.totalAmount = (session.totalAmount || 0) + amountDifference;
-    }
-
-    // Registrar la fecha de última actividad
-    session.lastActivity = Date.now();
-    await session.save();
-
-    // Calcular y distribuir montos entre participantes si cambió el importe
-    if (amountDifference !== 0) {
-      try {
-        await allocationService.distributeAmount(session);
-        console.log(`Distribución de montos actualizada para sesión ${sessionId}`);
-      } catch (allocError) {
-        console.error('Error al distribuir montos:', allocError);
-        // No interrumpir el proceso si falla la distribución
-      }
-    }
-
-    // Devolver la sesión actualizada con población de datos
-    const updatedSession = await SharedSession.findById(sessionId)
-      .populate('userId', 'nombre email')
-      .populate('participants.userId', 'nombre email')
-      .populate('expenses.paidBy', 'nombre email');
-
-    console.log(`Gasto ${expenseId} actualizado correctamente`);
-    res.json(updatedSession);
-  } catch (error) {
-    console.error('Error al actualizar el gasto:', error);
-    
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ 
-        msg: 'Error de validación', 
-        details: Object.values(error.errors).map(err => err.message).join(', ') 
-      });
-    }
-    
-    res.status(500).json({ msg: 'Error al actualizar el gasto' });
-  }
 };
 
 // Obtener asignaciones de montos por participante

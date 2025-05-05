@@ -11,7 +11,7 @@ const User = require('../../models/User');
 // @access  Public
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, name, last_name } = req.body;
 
     // Validar campos requeridos
     if (!username || !email || !password) {
@@ -28,7 +28,9 @@ router.post('/register', async (req, res) => {
     user = new User({
       username,
       email,
-      password
+      password,
+      name,
+      last_name
     });
 
     // Encriptar contraseña
@@ -51,7 +53,16 @@ router.post('/register', async (req, res) => {
       { expiresIn: '24h' },
       (err, token) => {
         if (err) throw err;
-        res.json({ token });
+        res.json({ 
+          token,
+          user: {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            last_name: user.last_name,
+            email: user.email
+          }
+        });
       }
     );
   } catch (err) {
@@ -97,7 +108,17 @@ router.post('/login', async (req, res) => {
       { expiresIn: '24h' },
       (err, token) => {
         if (err) throw err;
-        res.json({ token });
+        res.json({ 
+          token,
+          user: {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            last_name: user.last_name,
+            email: user.email,
+            settings: user.settings
+          }
+        });
       }
     );
   } catch (err) {

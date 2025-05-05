@@ -274,6 +274,7 @@ const PersonalExpenses = () => {
     } else {
       setSelectedMonth(selectedMonth - 1);
     }
+    console.log("Cambiando al mes anterior");
   };
 
   const handleNextMonth = () => {
@@ -283,11 +284,14 @@ const PersonalExpenses = () => {
     } else {
       setSelectedMonth(selectedMonth + 1);
     }
+    console.log("Cambiando al mes siguiente");
   };
 
   const goToCurrentMonth = () => {
-    setSelectedMonth(currentDate.getMonth());
-    setSelectedYear(currentDate.getFullYear());
+    const now = new Date();
+    setSelectedMonth(now.getMonth());
+    setSelectedYear(now.getFullYear());
+    console.log("Volviendo al mes actual");
   };
 
   // Manejadores de eventos
@@ -324,10 +328,16 @@ const PersonalExpenses = () => {
         throw new Error('No hay token de autenticación');
       }
 
+      // Convertir el mes de 0-11 a 1-12 para la API
+      const apiMonth = selectedMonth + 1;
+      console.log(`Consultando gastos para mes: ${apiMonth}, año: ${selectedYear}`);
+
       const { data } = await axios.get('/api/personal-expenses', {
         headers: { 'x-auth-token': token },
-        params: { month: selectedMonth, year: selectedYear }
+        params: { month: apiMonth, year: selectedYear }
       });
+
+      console.log('Datos recibidos de la API:', data);
 
       // Filtrar duplicados basados en una combinación única de propiedades
       const uniqueExpenses = data.reduce((acc, current) => {
@@ -372,6 +382,7 @@ const PersonalExpenses = () => {
       amount: parseFloat(expenseData.amount),
       category: expenseData.category,
       description: expenseData.description,
+      name: expenseData.description,
       date: new Date(expenseData.date),
       type: expenseData.type,
       isRecurring: expenseData.isRecurring,
@@ -471,18 +482,43 @@ const PersonalExpenses = () => {
         return;
       }
 
-      if (!window.confirm('¿Estás seguro de que deseas eliminar este gasto?')) {
+      let confirmMessage = '¿Estás seguro de que deseas eliminar este gasto?';
+      let deleteAllRecurring = false;
+      
+      // Si es un gasto recurrente, preguntar si quiere eliminar todas las instancias
+      if (expenseToDelete?.isRecurring) {
+        const confirmRecurring = window.confirm(
+          '¿Deseas eliminar este gasto recurrente y todas sus instancias futuras?'
+        );
+        
+        if (confirmRecurring) {
+          deleteAllRecurring = true;
+          confirmMessage = '¿Estás seguro? Esto eliminará este gasto y todas sus instancias futuras.';
+        }
+      }
+      
+      if (!window.confirm(confirmMessage)) {
         return;
       }
 
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No hay token de autenticación');
 
-      await axios.delete(`/api/personal-expenses/${id}`, {
+      // Construir URL con los parámetros de eliminación según corresponda
+      let deleteUrl = `/api/personal-expenses/${id}`;
+      if (deleteAllRecurring) {
+        deleteUrl += `?deleteAllRecurring=true&deleteFutureOnly=true`;
+      }
+
+      await axios.delete(deleteUrl, {
         headers: { 'x-auth-token': token }
       });
 
+      // Recargar la lista de gastos
       await fetchExpenses();
+      
+      // Mostrar mensaje de éxito
+      setError(null);
     } catch (err) {
       console.error('Error al eliminar:', err);
       setError('Error al eliminar el gasto: ' + (err.response?.data?.msg || 'Error desconocido'));
@@ -515,8 +551,9 @@ const PersonalExpenses = () => {
 
   // Efectos
   useEffect(() => {
+    console.log(`useEffect: Cargando gastos para mes ${selectedMonth + 1}/${selectedYear}`);
     fetchExpenses();
-  }, [fetchExpenses]);
+  }, [fetchExpenses, selectedMonth, selectedYear]);
 
   // Cálculos derivados
   const totals = expenses.reduce((acc, expense) => {
@@ -540,7 +577,9 @@ const PersonalExpenses = () => {
       );
     }
 
-    if (expenses.length === 0) {
+    console.log(`Renderizando lista de gastos: ${expenses.length} elementos`);
+    
+    if (!expenses || expenses.length === 0) {
       return (
         <Alert severity="info" sx={{ mt: 2 }}>
           No hay movimientos registrados para este mes.
@@ -553,7 +592,7 @@ const PersonalExpenses = () => {
         <Box sx={{ mt: 2 }}>
           {expenses.map(expense => (
             <ExpenseCard
-              key={expense._id}
+              key={expense._id || generateExpenseKey(expense)}
               expense={expense}
               onEdit={handleEdit}
               onDelete={handleDelete}
@@ -584,7 +623,7 @@ const PersonalExpenses = () => {
               const isIncome = expense.type === 'income';
 
               return (
-                <TableRow key={expense._id}>
+                <TableRow key={expense._id || generateExpenseKey(expense)}>
                   <TableCell>{formattedDate}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -833,126 +872,128 @@ const PersonalExpenses = () => {
           sx: { borderRadius: 2 }
         }}
       >
-        <DialogTitle id="expense-dialog-title">
-          {selectedExpense ? 'Editar' : 'Nuevo'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}
-        </DialogTitle>
+        <form onSubmit={handleSubmit}>
+          <DialogTitle id="expense-dialog-title">
+            {selectedExpense ? 'Editar' : 'Nuevo'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}
+          </DialogTitle>
 
-        <DialogContent sx={{ pt: 2 }}>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+          <DialogContent sx={{ pt: 2 }}>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
 
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                name="amount"
-                label="Importe"
-                type="number"
-                fullWidth
-                required
-                value={expenseData.amount}
-                onChange={handleExpenseChange}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">€</InputAdornment>
-                }}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Categoría</InputLabel>
-                <Select
-                  name="category"
-                  value={expenseData.category}
-                  onChange={handleExpenseChange}
-                  label="Categoría"
-                >
-                  {(expenseData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(category => (
-                    <MenuItem key={category} value={category}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {CATEGORY_ICONS[category]}
-                        <Box sx={{ ml: 1 }}>{category}</Box>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                name="description"
-                label="Descripción"
-                fullWidth
-                required
-                value={expenseData.description}
-                onChange={handleExpenseChange}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                name="date"
-                label="Fecha"
-                type="date"
-                fullWidth
-                required
-                value={expenseData.date}
-                onChange={handleExpenseChange}
-                InputLabelProps={{ shrink: true }}
-              />
-              <FormHelperText>
-                Se guardará como {expenseData.type === 'income' ? 'ingreso' : 'gasto'} del mes{' '}
-                {new Date(expenseData.date).toLocaleDateString('es-ES', { month: 'long' })}
-              </FormHelperText>
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={expenseData.isRecurring}
-                    onChange={handleRecurringChange}
-                  />
-                }
-                label="Es recurrente (se repite cada mes)"
-              />
-            </Grid>
-
-            {expenseData.isRecurring && (
+            <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  name="recurringDay"
-                  label="Día del mes"
+                  name="amount"
+                  label="Importe"
                   type="number"
                   fullWidth
-                  value={expenseData.recurringDay}
+                  required
+                  value={expenseData.amount}
                   onChange={handleExpenseChange}
                   InputProps={{
-                    inputProps: { min: 1, max: 31 }
+                    startAdornment: <InputAdornment position="start">€</InputAdornment>
                   }}
-                  helperText="Día del mes en que se repite este gasto"
                 />
               </Grid>
-            )}
-          </Grid>
-        </DialogContent>
 
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={closeDialog} disabled={submitting}>
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            variant="contained"
-            color={expenseData.type === 'income' ? 'success' : 'primary'}
-            disabled={submitting}
-          >
-            {submitting ? 'Guardando...' : (selectedExpense ? 'Actualizar' : 'Guardar')}
-          </Button>
-        </DialogActions>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel>Categoría</InputLabel>
+                  <Select
+                    name="category"
+                    value={expenseData.category}
+                    onChange={handleExpenseChange}
+                    label="Categoría"
+                  >
+                    {(expenseData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(category => (
+                      <MenuItem key={category} value={category}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {CATEGORY_ICONS[category]}
+                          <Box sx={{ ml: 1 }}>{category}</Box>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  name="description"
+                  label="Descripción"
+                  fullWidth
+                  required
+                  value={expenseData.description}
+                  onChange={handleExpenseChange}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  name="date"
+                  label="Fecha"
+                  type="date"
+                  fullWidth
+                  required
+                  value={expenseData.date}
+                  onChange={handleExpenseChange}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <FormHelperText>
+                  Se guardará como {expenseData.type === 'income' ? 'ingreso' : 'gasto'} del mes{' '}
+                  {new Date(expenseData.date).toLocaleDateString('es-ES', { month: 'long' })}
+                </FormHelperText>
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={expenseData.isRecurring}
+                      onChange={handleRecurringChange}
+                    />
+                  }
+                  label="Es recurrente (se repite cada mes)"
+                />
+              </Grid>
+
+              {expenseData.isRecurring && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    name="recurringDay"
+                    label="Día del mes"
+                    type="number"
+                    fullWidth
+                    value={expenseData.recurringDay}
+                    onChange={handleExpenseChange}
+                    InputProps={{
+                      inputProps: { min: 1, max: 31 }
+                    }}
+                    helperText="Día del mes en que se repite este gasto"
+                  />
+                </Grid>
+              )}
+            </Grid>
+          </DialogContent>
+
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={closeDialog} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              color={expenseData.type === 'income' ? 'success' : 'primary'}
+              disabled={submitting}
+            >
+              {submitting ? 'Guardando...' : (selectedExpense ? 'Actualizar' : 'Guardar')}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
     </Container>
   );

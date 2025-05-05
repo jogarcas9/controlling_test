@@ -368,93 +368,95 @@ const SharedExpenses = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>
-          {dialogType === 'new' ? t('newSharedExpense') : t('editSharedExpense')}
-        </DialogTitle>
-        <DialogContent>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label={t('amount')}
-                  name="amount"
-                  type="number"
-                  value={formData.amount}
-                  onChange={handleFormChange}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>{t('category')}</InputLabel>
-                  <Select
-                    name="category"
-                    value={formData.category}
+        <form onSubmit={handleSubmit}>
+          <DialogTitle>
+            {dialogType === 'new' ? t('newSharedExpense') : t('editSharedExpense')}
+          </DialogTitle>
+          <DialogContent>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+            <Box sx={{ mt: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label={t('amount')}
+                    name="amount"
+                    type="number"
+                    value={formData.amount}
                     onChange={handleFormChange}
-                    label={t('category')}
-                  >
-                    {categories.map(category => (
-                      <MenuItem key={category} value={category}>
-                        {t(category)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label={t('description')}
-                  name="description"
-                  value={formData.description}
-                  onChange={handleFormChange}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label={t('date')}
-                  name="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={handleFormChange}
-                  required
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>{t('session')}</InputLabel>
-                  <Select
-                    name="sessionId"
-                    value={formData.sessionId}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel>{t('category')}</InputLabel>
+                    <Select
+                      name="category"
+                      value={formData.category}
+                      onChange={handleFormChange}
+                      label={t('category')}
+                    >
+                      {categories.map(category => (
+                        <MenuItem key={category} value={category}>
+                          {t(category)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label={t('description')}
+                    name="description"
+                    value={formData.description}
                     onChange={handleFormChange}
-                    label={t('session')}
-                  >
-                    {sessions.map(session => (
-                      <MenuItem key={session.id} value={session.id}>
-                        {session.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label={t('date')}
+                    name="date"
+                    type="date"
+                    value={formData.date}
+                    onChange={handleFormChange}
+                    required
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel>{t('session')}</InputLabel>
+                    <Select
+                      name="sessionId"
+                      value={formData.sessionId}
+                      onChange={handleFormChange}
+                      label={t('session')}
+                    >
+                      {sessions.map(session => (
+                        <MenuItem key={session.id} value={session.id}>
+                          {session.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
               </Grid>
-            </Grid>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>{t('cancel')}</Button>
-          <Button onClick={handleSubmit} variant="contained">
-            {dialogType === 'new' ? t('create') : t('update')}
-          </Button>
-        </DialogActions>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog}>{t('cancel')}</Button>
+            <Button type="submit" variant="contained">
+              {dialogType === 'new' ? t('create') : t('update')}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
     </Box>
   );

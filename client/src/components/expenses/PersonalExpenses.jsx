@@ -78,7 +78,20 @@ const PersonalExpenses = () => {
     setLoading(true);
     setError(null);
     try {
+      console.log('Solicitando gastos personales del mes actual...');
       const data = await getMonthlyExpenses();
+      console.log('Gastos personales recibidos:', data);
+      if (data && Array.isArray(data)) {
+        console.log(`Cantidad de gastos: ${data.length}`);
+        
+        // Verificar si hay gastos provenientes de asignaciones
+        const gastosDeAsignaciones = data.filter(g => g.allocationId);
+        console.log(`Gastos de asignaciones: ${gastosDeAsignaciones.length}`);
+        
+        if (gastosDeAsignaciones.length > 0) {
+          console.log('Ejemplo de gasto de asignación:', gastosDeAsignaciones[0]);
+        }
+      }
       setExpenses(data);
     } catch (err) {
       console.error('Error al cargar gastos personales:', err);

@@ -55,12 +55,15 @@ class AuthService {
       // Construir y guardar el nombre completo para mostrar
       let displayName = '';
       
-      if (userData.nombre && userData.apellidos) {
+      if (userData.name && userData.last_name) {
+        displayName = `${userData.name} ${userData.last_name}`;
+      } else if (userData.name) {
+        displayName = userData.name;
+      } else if (userData.nombre && userData.apellidos) {
+        // Para compatibilidad con datos antiguos
         displayName = `${userData.nombre} ${userData.apellidos}`;
       } else if (userData.nombre) {
         displayName = userData.nombre;
-      } else if (userData.name) {
-        displayName = userData.name;
       } else if (userData.username) {
         displayName = userData.username;
       } else if (userData.email) {

@@ -411,53 +411,58 @@ const SharedSession = () => {
           sx: { borderRadius: 2 }
         }}
       >
-        <DialogTitle>
-          {editingSession ? 'Editar Sesión' : 'Nueva Sesión'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              fullWidth
-              label="Nombre"
-              value={editingSession?.name || ''}
-              onChange={(e) => setEditingSession({ ...editingSession, name: e.target.value })}
-              sx={{ mb: 3 }}
-            />
-            <TextField
-              fullWidth
-              label="Descripción"
-              multiline
-              rows={3}
-              value={editingSession?.description || ''}
-              onChange={(e) => setEditingSession({ ...editingSession, description: e.target.value })}
-              sx={{ mb: 3 }}
-            />
-            <TextField
-              fullWidth
-              label="Participantes (separados por comas)"
-              value={editingSession?.participants?.join(', ') || ''}
-              onChange={(e) => setEditingSession({
-                ...editingSession,
-                participants: e.target.value.split(',').map(p => p.trim())
-              })}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setOpenDialog(false)}
-            sx={{ color: 'text.secondary' }}
-          >
-            Cancelar
-          </Button>
-          <Button
-            onClick={() => editingSession ? handleEditSession(editingSession) : handleCreateSession(editingSession)}
-            variant="contained"
-            sx={{ borderRadius: 2 }}
-          >
-            {editingSession ? 'Guardar' : 'Crear'}
-          </Button>
-        </DialogActions>
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          editingSession ? handleEditSession(editingSession) : handleCreateSession(editingSession);
+        }}>
+          <DialogTitle>
+            {editingSession ? 'Editar Sesión' : 'Nueva Sesión'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 2 }}>
+              <TextField
+                fullWidth
+                label="Nombre"
+                value={editingSession?.name || ''}
+                onChange={(e) => setEditingSession({ ...editingSession, name: e.target.value })}
+                sx={{ mb: 3 }}
+              />
+              <TextField
+                fullWidth
+                label="Descripción"
+                multiline
+                rows={3}
+                value={editingSession?.description || ''}
+                onChange={(e) => setEditingSession({ ...editingSession, description: e.target.value })}
+                sx={{ mb: 3 }}
+              />
+              <TextField
+                fullWidth
+                label="Participantes (separados por comas)"
+                value={editingSession?.participants?.join(', ') || ''}
+                onChange={(e) => setEditingSession({
+                  ...editingSession,
+                  participants: e.target.value.split(',').map(p => p.trim())
+                })}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => setOpenDialog(false)}
+              sx={{ color: 'text.secondary' }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              sx={{ borderRadius: 2 }}
+            >
+              {editingSession ? 'Guardar' : 'Crear'}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
     </Container>
   );
