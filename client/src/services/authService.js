@@ -1,11 +1,40 @@
 import api from '../utils/api';
-import config from '../utils/config';
+
+const AUTH_ENDPOINTS = {
+  LOGIN: '/api/auth/login',
+  REGISTER: '/api/auth/register',
+  VERIFY: '/api/auth/verify',
+  USER: '/api/auth/user'
+};
 
 /**
  * Servicio centralizado para la autenticación
  * Maneja todas las operaciones relacionadas con la autenticación y usuarios
  */
 class AuthService {
+  constructor() {
+    this.token = localStorage.getItem('token');
+    this.user = null;
+    this.initialized = false;
+  }
+
+  async initialize() {
+    if (this.initialized) return;
+    
+    try {
+      if (this.token) {
+        const userData = await this.getCurrentUser();
+        if (userData) {
+          this.user = userData;
+        }
+      }
+    } catch (error) {
+      this.logout();
+    } finally {
+      this.initialized = true;
+    }
+  }
+
   /**
    * Iniciar sesión
    * @param {Object} credentials - Credenciales {email, password}
@@ -13,27 +42,43 @@ class AuthService {
    */
   async login(credentials) {
     try {
-      console.log('AuthService: Iniciando login con:', credentials.email);
-      const response = await api.post(config.AUTH.LOGIN, credentials);
+      const response = await api.post(AUTH_ENDPOINTS.LOGIN, credentials);
       
-      if (response.data && response.data.token) {
-        console.log('AuthService: Login exitoso. Guardando token');
-        localStorage.setItem('token', response.data.token);
+      if (response.data?.token) {
+        this.token = response.data.token;
+        localStorage.setItem('token', this.token);
         
         if (response.data.user) {
-          const { id, email, username, nombre } = response.data.user;
-          localStorage.setItem('userId', id);
-          localStorage.setItem('userEmail', email);
-          localStorage.setItem('userName', nombre || username || email.split('@')[0]);
+          this.user = response.data.user;
+          localStorage.setItem('user', JSON.stringify(this.user));
+          
+          // Guardar también el nombre y email por separado para compatibilidad
+          let nombreCompleto = '';
+          
+          // Construir nombre completo si hay nombre y apellidos
+          if (this.user.nombre && this.user.apellidos) {
+            nombreCompleto = `${this.user.nombre} ${this.user.apellidos}`;
+            localStorage.setItem('userName', nombreCompleto);
+          } 
+          else if (this.user.nombre) {
+            localStorage.setItem('userName', this.user.nombre);
+          }
+          else if (this.user.username) {
+            localStorage.setItem('userName', this.user.username);
+          }
+          
+          if (this.user.email) {
+            localStorage.setItem('userEmail', this.user.email);
+          }
         }
         
-        // Disparar evento storage para actualizar componentes
-        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event('auth'));
+        return response.data;
       }
       
-      return response.data;
+      throw new Error('Token no recibido del servidor');
     } catch (error) {
-      console.error('AuthService: Error en login:', error);
+      this.logout();
       throw error;
     }
   }
@@ -43,12 +88,59 @@ class AuthService {
    * @returns {Promise} - Datos del usuario
    */
   async getCurrentUser() {
+    if (!this.token) return null;
+    
     try {
-      console.log('AuthService: Obteniendo datos del usuario actual');
-      const response = await api.get(config.AUTH.USER);
-      return response.data;
+      // Si ya tenemos los datos del usuario en memoria, devolverlos
+      if (this.user) {
+        return this.user;
+      }
+      
+      // Intentar obtener los datos del usuario desde localStorage
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        try {
+          this.user = JSON.parse(storedUser);
+          return this.user;
+        } catch (error) {
+          console.error('Error al parsear datos de usuario almacenados:', error);
+        }
+      }
+      
+      // Si no tenemos los datos en memoria ni en localStorage, obtenerlos del servidor
+      const response = await api.get(AUTH_ENDPOINTS.USER);
+      if (response.data) {
+        this.user = response.data;
+        
+        // Guardar los datos del usuario en localStorage
+        localStorage.setItem('user', JSON.stringify(this.user));
+        
+        // También guardar el nombre y email por separado para compatibilidad
+        let nombreCompleto = '';
+        
+        if (this.user.nombre && this.user.apellidos) {
+          nombreCompleto = `${this.user.nombre} ${this.user.apellidos}`;
+          localStorage.setItem('userName', nombreCompleto);
+        } 
+        else if (this.user.nombre) {
+          localStorage.setItem('userName', this.user.nombre);
+        }
+        else if (this.user.username) {
+          localStorage.setItem('userName', this.user.username);
+        }
+        else if (this.user.email) {
+          // Si no hay nombre, usar la parte local del email
+          localStorage.setItem('userName', this.user.email.split('@')[0]);
+        }
+        
+        if (this.user.email) {
+          localStorage.setItem('userEmail', this.user.email);
+        }
+      }
+      
+      return this.user;
     } catch (error) {
-      console.error('AuthService: Error al obtener usuario:', error);
+      this.logout();
       throw error;
     }
   }
@@ -58,14 +150,14 @@ class AuthService {
    * @returns {Promise} - Resultado de la verificación
    */
   async verifyToken() {
+    if (!this.token) return false;
+    
     try {
-      console.log('AuthService: Verificando token');
-      const response = await api.get(config.AUTH.VERIFY);
-      return response.data;
+      const response = await api.get(AUTH_ENDPOINTS.VERIFY);
+      return response.data?.valid === true;
     } catch (error) {
-      console.error('AuthService: Error al verificar token:', error);
       this.logout();
-      throw error;
+      return false;
     }
   }
   
@@ -75,40 +167,51 @@ class AuthService {
    * @returns {Promise} - Respuesta con token y datos del usuario
    */
   async register(userData) {
-    try {
-      console.log('AuthService: Registrando usuario:', userData.email);
-      const response = await api.post(config.AUTH.REGISTER, userData);
+    const response = await api.post(AUTH_ENDPOINTS.REGISTER, userData);
+    
+    if (response.data?.token) {
+      this.token = response.data.token;
+      localStorage.setItem('token', this.token);
       
-      if (response.data && response.data.token) {
-        localStorage.setItem('token', response.data.token);
+      if (response.data.user) {
+        this.user = response.data.user;
+        localStorage.setItem('user', JSON.stringify(this.user));
         
-        if (response.data.user) {
-          const { id, email, username, nombre } = response.data.user;
-          localStorage.setItem('userId', id);
-          localStorage.setItem('userEmail', email);
-          localStorage.setItem('userName', nombre || username || email.split('@')[0]);
+        // Guardar también el nombre y email por separado para compatibilidad
+        let nombreCompleto = '';
+        
+        // Construir nombre completo si hay nombre y apellidos
+        if (this.user.nombre && this.user.apellidos) {
+          nombreCompleto = `${this.user.nombre} ${this.user.apellidos}`;
+          localStorage.setItem('userName', nombreCompleto);
+        } 
+        else if (this.user.nombre) {
+          localStorage.setItem('userName', this.user.nombre);
+        }
+        else if (this.user.username) {
+          localStorage.setItem('userName', this.user.username);
         }
         
-        window.dispatchEvent(new Event('storage'));
+        if (this.user.email) {
+          localStorage.setItem('userEmail', this.user.email);
+        }
       }
       
+      window.dispatchEvent(new Event('auth'));
       return response.data;
-    } catch (error) {
-      console.error('AuthService: Error en registro:', error);
-      throw error;
     }
+    
+    throw new Error('Token no recibido del servidor');
   }
   
   /**
    * Cerrar sesión
    */
   logout() {
-    console.log('AuthService: Cerrando sesión');
-    localStorage.removeItem('token');
-    localStorage.removeItem('userId');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userName');
-    window.dispatchEvent(new Event('storage'));
+    this.token = null;
+    this.user = null;
+    localStorage.clear();
+    window.dispatchEvent(new Event('auth'));
   }
   
   /**
@@ -116,7 +219,15 @@ class AuthService {
    * @returns {Boolean} - true si está autenticado
    */
   isAuthenticated() {
-    return !!localStorage.getItem('token');
+    return !!this.token;
+  }
+
+  getToken() {
+    return this.token;
+  }
+
+  getUser() {
+    return this.user;
   }
 }
 

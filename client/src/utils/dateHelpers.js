@@ -5,6 +5,15 @@ export const formatDate = (date) => {
   return d.toLocaleDateString();
 };
 
+// Formatear mes y año
+export const formatMonthYear = (month, year) => {
+  const months = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  return `${months[month]} ${year}`;
+};
+
 // Obtener el primer día del mes actual
 export const getFirstDayOfMonth = () => {
   const date = new Date();

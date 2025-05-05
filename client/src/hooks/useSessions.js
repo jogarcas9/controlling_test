@@ -1,55 +1,35 @@
-import { useState, useCallback, useEffect } from 'react';
-import sessionService from '../services/sessionService';
+import { useState, useCallback } from 'react';
+import * as sharedSessionService from '../services/sharedSessionService';
 
-const useSessions = () => {
+export const useSessions = () => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchSessions = useCallback(async () => {
-    setLoading(true);
     try {
-      console.log('Obteniendo sesiones compartidas...');
-      const data = await sessionService.getSessions();
-      console.log(`Obtenidas ${data.length} sesiones compartidas`);
-      
-      if (Array.isArray(data)) {
-        setSessions(data);
-      } else {
-        console.error('El formato de datos recibido no es un array:', data);
-        setSessions([]);
-      }
-      
+      setLoading(true);
       setError(null);
+      const data = await sharedSessionService.fetchSharedSessions();
+      setSessions(data);
     } catch (err) {
-      const errorMsg = err.response?.data?.msg || err.message;
-      setError(errorMsg);
-      console.error('Error al obtener sesiones:', errorMsg);
+      console.error('Error al cargar las sesiones:', err);
+      setError('Error al cargar las sesiones');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Efecto para cargar sesiones automáticamente al montar el componente
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
   const createSession = useCallback(async (sessionData) => {
-    setLoading(true);
     try {
-      console.log('Creando nueva sesión compartida:', sessionData);
-      const newSession = await sessionService.createSession(sessionData);
-      
-      // Actualizar la lista de sesiones
-      setSessions(prevSessions => [...prevSessions, newSession]);
-      
-      console.log('Sesión creada con éxito:', newSession);
-      return newSession;
+      setLoading(true);
+      setError(null);
+      const data = await sharedSessionService.createSession(sessionData);
+      setSessions(prev => [...prev, data]);
+      return data;
     } catch (err) {
-      const errorMsg = err.response?.data?.msg || err.message;
-      setError(errorMsg);
-      console.error('Error al crear sesión:', errorMsg);
+      console.error('Error al crear la sesión:', err);
+      setError('Error al crear la sesión');
       throw err;
     } finally {
       setLoading(false);
@@ -57,24 +37,17 @@ const useSessions = () => {
   }, []);
 
   const updateSession = useCallback(async (sessionId, sessionData) => {
-    setLoading(true);
     try {
-      console.log(`Actualizando sesión ${sessionId}:`, sessionData);
-      const updatedSession = await sessionService.updateSession(sessionId, sessionData);
-      
-      // Actualizar la lista de sesiones
-      setSessions(prevSessions =>
-        prevSessions.map(session =>
-          session._id === sessionId ? updatedSession : session
-        )
-      );
-      
-      console.log('Sesión actualizada con éxito:', updatedSession);
-      return updatedSession;
+      setLoading(true);
+      setError(null);
+      const data = await sharedSessionService.updateSession(sessionId, sessionData);
+      setSessions(prev => prev.map(session => 
+        session._id === sessionId ? { ...session, ...data } : session
+      ));
+      return data;
     } catch (err) {
-      const errorMsg = err.response?.data?.msg || err.message;
-      setError(errorMsg);
-      console.error(`Error al actualizar sesión ${sessionId}:`, errorMsg);
+      console.error('Error al actualizar la sesión:', err);
+      setError('Error al actualizar la sesión');
       throw err;
     } finally {
       setLoading(false);
@@ -82,22 +55,32 @@ const useSessions = () => {
   }, []);
 
   const deleteSession = useCallback(async (sessionId) => {
-    setLoading(true);
     try {
-      console.log(`Eliminando sesión ${sessionId}`);
-      await sessionService.deleteSession(sessionId);
-      
-      // Eliminar la sesión de la lista
-      setSessions(prevSessions =>
-        prevSessions.filter(session => session._id !== sessionId)
-      );
-      
-      console.log(`Sesión ${sessionId} eliminada con éxito`);
-      return true;
+      setLoading(true);
+      setError(null);
+      await sharedSessionService.deleteSession(sessionId);
+      setSessions(prev => prev.filter(session => session._id !== sessionId));
     } catch (err) {
-      const errorMsg = err.response?.data?.msg || err.message;
-      setError(errorMsg);
-      console.error(`Error al eliminar sesión ${sessionId}:`, errorMsg);
+      console.error('Error al eliminar la sesión:', err);
+      setError('Error al eliminar la sesión');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const inviteParticipants = useCallback(async (sessionId, participants) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await sharedSessionService.addParticipant(sessionId, { participants });
+      setSessions(prev => prev.map(session => 
+        session._id === sessionId ? { ...session, participants: data.participants } : session
+      ));
+      return data;
+    } catch (err) {
+      console.error('Error al invitar participantes:', err);
+      setError('Error al invitar participantes');
       throw err;
     } finally {
       setLoading(false);
@@ -112,7 +95,7 @@ const useSessions = () => {
     createSession,
     updateSession,
     deleteSession,
-    setSessions
+    inviteParticipants
   };
 };
 

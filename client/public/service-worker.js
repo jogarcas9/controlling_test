@@ -9,6 +9,15 @@ const urlsToCache = [
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
 
+// Lista de patrones de URL a ignorar
+const IGNORED_PATTERNS = [
+  /notifications/i,
+  /startup/i,
+  /push/i,
+  /subscribe/i,
+  /\/api\//i
+];
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -35,13 +44,18 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', event => {
-  // Solo manejar solicitudes GET
-  if (event.request.method !== 'GET') return;
-  
-  // Evitar interceptar peticiones a /api/
-  if (event.request.url.includes('/api/')) {
+  // Verificar si la URL debe ser ignorada
+  const shouldIgnore = IGNORED_PATTERNS.some(pattern => 
+    pattern.test(event.request.url)
+  );
+
+  if (shouldIgnore) {
+    console.log('Ignorando solicitud:', event.request.url);
     return;
   }
+
+  // Solo manejar solicitudes GET
+  if (event.request.method !== 'GET') return;
 
   event.respondWith(
     caches.match(event.request)

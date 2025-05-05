@@ -1,19 +1,18 @@
 {
-  "name": "controling_v2",
+  "name": "controling_v3",
   "version": "1.0.0",
   "description": "Aplicación de finanzas personales",
   "main": "server/server.js",
   "engines": {
-    "node": "22.x",
-    "npm": "10.x"
+    "node": "18.x",
+    "npm": "9.x"
   },
   "scripts": {
     "start": "node server/server.js",
     "build": "cd client && npm install --legacy-peer-deps && npm run build",
     "server": "cd server && nodemon server.js",
-    "client": "cd client && powershell -Command \"$env:NODE_OPTIONS='--openssl-legacy-provider'; npx react-scripts start\"",
-    "dev:cmd": "start cmd /k \"cd server && npm run start\" && start cmd /k \"cd client && set NODE_OPTIONS=--openssl-legacy-provider && npx react-scripts start\"",
-    "dev": "start powershell -ArgumentList \"-NoExit\", \"cd server; npm start\" && start powershell -ArgumentList \"-NoExit\", \"cd client; $env:NODE_OPTIONS='--openssl-legacy-provider'; npx react-scripts start\"",
+    "client": "cd client && npm start",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
     "install-all": "npm install && cd server && npm install && cd ../client && npm install --legacy-peer-deps",
     "vercel-build": "npm run install-all && npm run build"
   },

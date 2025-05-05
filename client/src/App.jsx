@@ -17,16 +17,8 @@ import {
   createTheme,
   Drawer,
   useMediaQuery,
-  AppBar,
-  Toolbar,
-  IconButton,
-  Typography,
   useTheme,
 } from '@mui/material';
-import { 
-  Menu as MenuIcon,
-  Logout as LogoutIcon,
-} from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import i18n from './i18n';
 import { CurrencyProvider } from './context/CurrencyContext';
@@ -38,13 +30,12 @@ import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Sidebar from './components/layout/Sidebar';
 import MobileBottomNav from './components/layout/MobileBottomNav';
-import NotificationRemover from './components/layout/NotificationRemover';
-import NotificationButtonRemover from './components/layout/NotificationButtonRemover';
 import ReportsDashboard from './components/reports/ReportsDashboard';
 import { AuthProvider } from './context/AuthContext';
 import authService from './services/authService';
+import { checkServiceWorkers } from './utils/checkServiceWorkers';
 
-// Componente AppLayout sin dependencia de useTheme
+// Componente de Layout principal que contiene el sidebar y el área de contenido
 const AppLayout = ({ 
   children, 
   drawerWidth, 
@@ -54,108 +45,30 @@ const AppLayout = ({
   handleDrawerToggle,
   handleDrawerMinimize,
   handleLogout,
-  darkMode,
-  t,
+  _darkMode: darkMode,
+  _t: t,
   theme
 }) => {
-  const location = useLocation();
+  const _location = useLocation();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <Box sx={{ 
-      display: 'flex', 
-      height: '100vh', 
-      overflow: 'hidden',
-      background: darkMode 
-        ? 'linear-gradient(135deg, #111827 0%, #1e1f25 100%)' 
-        : 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
-      position: 'relative',
-      '&::before': {
-        content: '""',
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '20%',
-        background: darkMode 
-          ? 'linear-gradient(180deg, rgba(76, 110, 245, 0.05) 0%, rgba(76, 110, 245, 0) 100%)' 
-          : 'linear-gradient(180deg, rgba(76, 110, 245, 0.05) 0%, rgba(76, 110, 245, 0) 100%)',
-        zIndex: 0
-      }
+      display: 'flex',
+      minHeight: '100vh',
+      bgcolor: 'background.default',
     }}>
-      {/* NavBar con estilo moderno */}
-      <AppBar 
-        position="fixed" 
-        color="transparent" 
-        elevation={0}
-        sx={{
-          width: { 
-            xs: '100%',
-            sm: `calc(100% - ${isDrawerMinimized ? minimizedDrawerWidth : drawerWidth}px)` 
-          },
-          ml: { 
-            xs: 0,
-            sm: isDrawerMinimized ? minimizedDrawerWidth : drawerWidth 
-          },
-          background: 'transparent',
-          backdropFilter: 'blur(8px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-          borderRadius: 0,
-        }}
-      >
-        <Toolbar sx={{ 
-          height: 64,
-          background: 'transparent',
-          borderRadius: 0
-        }}>
-          <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
-            <IconButton
-              color="inherit"
-              aria-label="open drawer"
-              onClick={handleDrawerToggle}
-              edge="start"
-              sx={{
-                mr: 2,
-                color: 'text.secondary',
-              }}
-            >
-              <MenuIcon />
-            </IconButton>
-            <Typography 
-              variant="h6" 
-              component="div" 
-              sx={{ 
-                fontWeight: 600, 
-                display: { xs: 'none', sm: 'block' } 
-              }}
-            >
-              {getPageTitle(location.pathname, t)}
-            </Typography>
-          </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
-            <IconButton
-              color="inherit"
-              onClick={handleLogout}
-              aria-label={t('logout')}
-              size="large"
-            >
-              <LogoutIcon />
-            </IconButton>
-          </Box>
-        </Toolbar>
-      </AppBar>
-
+      <CssBaseline />
       <Box
         component="nav"
         sx={{
           width: { sm: isDrawerMinimized ? minimizedDrawerWidth : drawerWidth },
           flexShrink: { sm: 0 },
-          transition: theme.transitions.create('width', {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.enteringScreen,
-          }),
+          position: 'fixed',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: 1200,
         }}
       >
         {/* Menú lateral para dispositivos móviles */}
@@ -169,7 +82,6 @@ const AppLayout = ({
             '& .MuiDrawer-paper': { 
               boxSizing: 'border-box', 
               width: drawerWidth,
-              borderRadius: 0 
             },
           }}
         >
@@ -178,6 +90,7 @@ const AppLayout = ({
             handleDrawerToggle={handleDrawerToggle} 
             isMinimized={false}
             onMinimizeToggle={handleDrawerMinimize}
+            handleLogout={handleLogout}
           />
         </Drawer>
 
@@ -193,8 +106,6 @@ const AppLayout = ({
                 easing: theme.transitions.easing.sharp,
                 duration: theme.transitions.duration.enteringScreen,
               }),
-              overflowX: 'hidden',
-              borderRadius: 0
             },
           }}
           open
@@ -203,6 +114,7 @@ const AppLayout = ({
             handleDrawerToggle={handleDrawerToggle} 
             isMinimized={isDrawerMinimized} 
             onMinimizeToggle={handleDrawerMinimize}
+            handleLogout={handleLogout}
           />
         </Drawer>
       </Box>
@@ -211,19 +123,13 @@ const AppLayout = ({
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 1, sm: 3 },
-          width: { 
-            xs: '100%', 
-            sm: `calc(100% - ${isDrawerMinimized ? minimizedDrawerWidth : drawerWidth}px)` 
-          },
-          height: '100vh',
-          overflow: 'auto',
-          transition: theme.transitions.create(['width', 'margin'], {
+          p: 0,
+          width: '100%',
+          ml: { xs: 0, sm: `${isDrawerMinimized ? minimizedDrawerWidth : drawerWidth}px` },
+          transition: theme.transitions.create(['margin'], {
             easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.enteringScreen,
+            duration: theme.transitions.duration.leavingScreen,
           }),
-          mt: {xs: '56px', sm: '64px'},
-          pb: { xs: '65px', sm: 0 }
         }}
       >
         {children}
@@ -240,8 +146,8 @@ function ThemeAwareAppLayout(props) {
   return <AppLayout {...props} theme={theme} />;
 }
 
-// Función para obtener el título de la página según la ruta actual
-const getPageTitle = (pathname, t) => {
+// Prefijando con _ la función no utilizada
+const _getPageTitle = (pathname, t) => {
   if (pathname.startsWith('/dashboard')) return t('dashboard');
   if (pathname.startsWith('/personal')) return t('personalExpenses');
   if (pathname.startsWith('/shared')) return t('sharedExpenses');
@@ -255,7 +161,7 @@ const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDrawerMinimized, setIsDrawerMinimized] = useState(false);
   const drawerWidth = 240;
-  const minimizedDrawerWidth = 65;
+  const minimizedDrawerWidth = 70;
   
   // Estados para la configuración
   const [darkMode, setDarkMode] = useState(false);
@@ -272,51 +178,44 @@ const App = () => {
     palette: {
       mode: darkMode ? 'dark' : 'light',
       primary: {
-        main: '#6366f1', // Índigo vibrante
+        main: '#6366f1',
         light: '#818cf8',
         dark: '#4f46e5',
-        contrastText: '#ffffff',
-        lighter: 'rgba(99, 102, 241, 0.08)'
+        contrastText: '#ffffff'
       },
       secondary: {
-        main: '#f43f5e', // Rosa vibrante
+        main: '#f43f5e',
         light: '#fb7185',
         dark: '#e11d48',
-        contrastText: '#ffffff',
-        lighter: 'rgba(244, 63, 94, 0.08)'
+        contrastText: '#ffffff'
       },
       background: {
         default: darkMode ? '#0f172a' : '#f8fafc',
-        paper: darkMode ? '#1e293b' : '#ffffff',
-        sidebar: darkMode ? '#0f172a' : '#1e293b'
+        paper: darkMode ? '#1e293b' : '#ffffff'
       },
       error: {
         main: '#ef4444',
         light: '#f87171',
         dark: '#dc2626',
-        contrastText: '#ffffff',
-        lighter: 'rgba(239, 68, 68, 0.08)'
+        contrastText: '#ffffff'
       },
       success: {
         main: '#22c55e',
         light: '#4ade80',
         dark: '#16a34a',
-        contrastText: '#ffffff',
-        lighter: 'rgba(34, 197, 94, 0.08)'
+        contrastText: '#ffffff'
       },
       info: {
         main: '#3b82f6',
         light: '#60a5fa',
         dark: '#2563eb',
-        contrastText: '#ffffff',
-        lighter: 'rgba(59, 130, 246, 0.08)'
+        contrastText: '#ffffff'
       },
       warning: {
         main: '#f59e0b',
         light: '#fbbf24',
         dark: '#d97706',
-        contrastText: '#ffffff',
-        lighter: 'rgba(245, 158, 11, 0.08)'
+        contrastText: '#ffffff'
       }
     },
     typography: {
@@ -337,6 +236,14 @@ const App = () => {
       }
     },
     components: {
+      MuiContainer: {
+        styleOverrides: {
+          root: {
+            paddingLeft: 0,
+            paddingRight: 0,
+          }
+        }
+      },
       MuiButton: {
         styleOverrides: {
           root: {
@@ -381,7 +288,9 @@ const App = () => {
       MuiDrawer: {
         styleOverrides: {
           paper: {
-            borderRadius: 0,
+            backgroundColor: darkMode ? '#1e293b' : '#ffffff',
+            borderRight: 'none',
+            boxShadow: '0px 2px 4px rgba(0,0,0,0.1)'
           },
         },
       },
@@ -568,6 +477,38 @@ const App = () => {
     };
   }, []);
 
+  useEffect(() => {
+    // Verificar service workers al iniciar la aplicación
+    checkServiceWorkers().then(registrations => {
+      if (registrations.length > 0) {
+        console.log('Desregistrando service workers encontrados...');
+        registrations.forEach(registration => {
+          registration.unregister().then(success => {
+            if (success) {
+              console.log('Service worker desregistrado:', registration.scope);
+            }
+          });
+        });
+      }
+    });
+
+    // Desactivar notificaciones
+    if ('Notification' in window) {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.pushManager.getSubscription().then(subscription => {
+              if (subscription) {
+                subscription.unsubscribe();
+              }
+            });
+          });
+        }
+      });
+    }
+  }, []);
+
+  // Componente para rutas privadas
   const PrivateRoute = ({ children }) => {
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />;
@@ -581,8 +522,8 @@ const App = () => {
         handleDrawerToggle={handleDrawerToggle}
         handleDrawerMinimize={handleDrawerMinimize}
         handleLogout={handleLogout}
-        darkMode={darkMode}
-        t={t}
+        _darkMode={darkMode}
+        _t={t}
       >
         {children}
       </ThemeAwareAppLayout>
@@ -591,23 +532,19 @@ const App = () => {
 
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <NotificationRemover />
-      <NotificationButtonRemover />
       <AuthProvider>
         <CurrencyProvider>
-          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Router>
             <Routes>
-              <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />} />
-              <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" />} />
+              <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-              <Route path="/personal-expenses" element={<PrivateRoute><PersonalExpenses /></PrivateRoute>} />
               <Route path="/personal" element={<PrivateRoute><PersonalExpenses /></PrivateRoute>} />
-              <Route path="/shared-sessions" element={<PrivateRoute><SharedSessions /></PrivateRoute>} />
               <Route path="/shared" element={<PrivateRoute><SharedSessions /></PrivateRoute>} />
               <Route path="/reports" element={<PrivateRoute><ReportsDashboard /></PrivateRoute>} />
               <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
-              <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />} />
+              <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Router>
         </CurrencyProvider>

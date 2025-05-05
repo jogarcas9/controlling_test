@@ -45,7 +45,7 @@ const MobileBottomNav = () => {
         showLabels
       >
         {navigationItems.map((item) => (
-          <BottomNavigationAction
+          <BottomNavigationAction 
             key={item.path}
             label={item.label}
             icon={item.icon}

@@ -22,15 +22,6 @@ app.use('/api/income', incomeRoutes);
 app.use('/api/shared-sessions', sharedSessionsRoutes);
 app.use('/api/reports', reportsRoutes);
 
-// Manejador de fallback para la ruta de notificaciones eliminada
-app.use('/api/notifications', (req, res) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'El servicio de notificaciones ha sido deshabilitado',
-    data: []
-  });
-});
-
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

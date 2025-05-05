@@ -1,94 +1,159 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Typography,
+  Box,
   Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Button,
+  Typography,
+  Chip,
   Tooltip,
+  TablePagination,
+  useTheme
 } from '@mui/material';
 import {
-  Delete as DeleteIcon,
   Edit as EditIcon,
+  Delete as DeleteIcon,
+  Add as AddIcon,
+  AttachMoney as MoneyIcon
 } from '@mui/icons-material';
-import { formatDate, formatCurrency } from '../../utils/dateHelpers';
+import { formatCurrency, formatDate } from '../../utils/helpers';
 
-const ExpenseList = ({ expenses, onEdit, onDelete }) => {
-  if (!expenses || expenses.length === 0) {
-    return (
-      <Paper sx={{ p: 2, textAlign: 'center' }}>
-        <Typography color="textSecondary">
-          No hay gastos registrados
-        </Typography>
-      </Paper>
-    );
-  }
+const ExpenseList = ({
+  expenses,
+  onAddExpense,
+  onEditExpense,
+  onDeleteExpense,
+  total,
+  loading,
+  userRole,
+  currentSession
+}) => {
+  const theme = useTheme();
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  const canAddExpense = true;
+  
+  const isSessionParticipant = () => {
+    return true;
+  };
+
+  const canEditExpense = (expense) => {
+    return true;
+  };
+  
+  const canDeleteExpense = (expense) => {
+    return true;
+  };
 
   return (
-    <Paper>
-      <List>
-        {expenses.map((expense) => (
-          <ListItem key={expense._id} divider>
-            <ListItemText
-              primary={expense.description}
-              secondary={
-                <>
-                  <Typography
-                    component="span"
-                    variant="body2"
-                    color="textSecondary"
-                  >
-                    {formatDate(expense.date)}
-                  </Typography>
-                  {expense.category && (
-                    <Typography
-                      component="span"
-                      variant="body2"
-                      color="textSecondary"
-                      sx={{ ml: 2 }}
-                    >
-                      {expense.category}
-                    </Typography>
-                  )}
-                </>
-              }
-            />
-            <Typography
-              variant="body1"
-              color="primary"
-              sx={{ mr: 2, fontWeight: 'medium' }}
+    <Box>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        mb: 2 
+      }}>
+        <Typography variant="h6" component="h2">
+          Lista de Gastos
+        </Typography>
+        
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {canAddExpense && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={onAddExpense}
             >
-              {formatCurrency(expense.amount)}
-            </Typography>
-            <ListItemSecondaryAction>
-              <Tooltip title="Editar">
-                <IconButton
-                  edge="end"
-                  aria-label="editar"
-                  onClick={() => onEdit(expense)}
-                  sx={{ mr: 1 }}
-                >
-                  <EditIcon />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Eliminar">
-                <IconButton
-                  edge="end"
-                  aria-label="eliminar"
-                  onClick={() => onDelete(expense._id)}
-                  color="error"
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Tooltip>
-            </ListItemSecondaryAction>
-          </ListItem>
-        ))}
-      </List>
-    </Paper>
+              Nuevo Gasto
+            </Button>
+          )}
+        </Box>
+      </Box>
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Nombre</TableCell>
+              <TableCell>Categoría</TableCell>
+              <TableCell>Fecha</TableCell>
+              <TableCell align="right">Monto</TableCell>
+              <TableCell>Recurrente</TableCell>
+              <TableCell align="right">Acciones</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {expenses
+              .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+              .map((expense) => (
+                <TableRow key={expense._id}>
+                  <TableCell>{expense.name}</TableCell>
+                  <TableCell>{expense.category}</TableCell>
+                  <TableCell>{formatDate(expense.date)}</TableCell>
+                  <TableCell align="right">
+                    {formatCurrency(expense.amount)}
+                  </TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={expense.isRecurring ? "Sí" : "No"}
+                      color={expense.isRecurring ? "info" : "default"}
+                      size="small"
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    {canEditExpense(expense) && (
+                      <Tooltip title="Editar">
+                        <IconButton
+                          size="small"
+                          onClick={() => onEditExpense(expense)}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {canDeleteExpense(expense) && (
+                      <Tooltip title="Eliminar">
+                        <IconButton
+                          size="small"
+                          onClick={() => onDeleteExpense(expense)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+          </TableBody>
+        </Table>
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25]}
+          component="div"
+          count={expenses.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+        />
+      </TableContainer>
+    </Box>
   );
 };
 
-export default ExpenseList; 
+export default ExpenseList;

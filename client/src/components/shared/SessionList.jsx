@@ -1,291 +1,203 @@
 import React from 'react';
 import {
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Typography,
-  Paper,
-  Box,
-  Tooltip,
-  Divider,
-  Button,
+  Grid,
   Card,
   CardContent,
   CardActions,
-  Fab,
-  Grid
+  Typography,
+  IconButton,
+  Box,
+  Avatar,
+  Tooltip,
+  Button,
+  AvatarGroup,
+  Chip
 } from '@mui/material';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Group as GroupIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
-  Lock as LockIcon,
-  Today as TodayIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  People as PeopleIcon,
+  CalendarToday as CalendarIcon,
+  Lock as LockIcon
 } from '@mui/icons-material';
+import { formatDate, getInitials, generateRandomColor } from '../../utils/helpers';
 
 const SessionList = ({ 
   sessions, 
   onSelectSession, 
   onEditSession, 
   onDeleteSession,
-  renderSessionStatus,
-  onAddSession
+  onAddSession 
 }) => {
-  const formatDate = (date) => {
-    if (!date) return '';
-    try {
-      const dateObj = new Date(date);
-      if (isNaN(dateObj.getTime())) {
-        console.warn('Fecha inválida en formatDate de SessionList:', date);
-        return 'Fecha inválida';
-      }
-      
-      // Formateamos la fecha usando toLocaleDateString en español
-      const options = { day: 'numeric', month: 'long', year: 'numeric' };
-      return dateObj.toLocaleDateString('es-ES', options);
-    } catch (error) {
-      console.error('Error al formatear fecha en SessionList:', error, 'date:', date);
-      return 'Fecha inválida';
-    }
-  };
-
-  // Función para obtener el estado de la sesión
-  const getSessionStatus = (session) => {
-    const userId = localStorage.getItem('userId');
-    
-    // Verificar si el usuario es el creador
-    const isCreator = session.userId === userId || 
-                     (session.userId && session.userId._id === userId);
-    
-    if (isCreator) {
-      // Si es el creador, verificar si todos los participantes han aceptado
-      const allAccepted = session.participants?.every(p => p.status === 'accepted');
-      return allAccepted ? 'active' : 'pending';
-    }
-    
-    // Buscar al usuario como participante
-    const participant = session.participants?.find(p => {
-      const pUserId = p.userId?._id || p.userId;
-      return pUserId === userId || (pUserId && pUserId.toString() === userId);
-    });
-    
-    if (participant) {
-      if (participant.status === 'pending') {
-        return 'waiting'; // Cambiado de invitation a waiting - funcionalidad eliminada
-      } else if (participant.status === 'accepted') {
-        // Si el usuario aceptó, verificar si todos los demás participantes también aceptaron
-        const allAccepted = session.participants?.every(p => p.status === 'accepted');
-        return allAccepted ? 'active' : 'waiting';
-      } else {
-        return 'rejected';
-      }
-    }
-    
-    return null;
-  };
-
-  if (!sessions || sessions.length === 0) {
-    console.log("No hay sesiones para mostrar");
-    return (
-      <Paper sx={{ p: 3, textAlign: 'center', position: 'relative' }}>
-        <Typography color="textSecondary">
-          No hay sesiones compartidas disponibles
-        </Typography>
-        {onAddSession && (
-          <Fab 
-            color="primary" 
-            aria-label="add"
-            onClick={onAddSession}
-            size="medium"
-            sx={{ position: 'absolute', bottom: -20, right: 20 }}
-          >
-            <AddIcon />
-          </Fab>
-        )}
-      </Paper>
-    );
-  }
-
-  // Log de depuración para entender qué sesiones se están procesando
-  console.log("Procesando sesiones en SessionList:", sessions);
-
-  // Clasificar sesiones según su estado
-  const activeSessions = [];
-  const pendingSessions = [];
-  const waitingSessions = [];
-  const rejectedSessions = [];
-
-  sessions.forEach(session => {
-    const status = getSessionStatus(session);
-    
-    if (status === 'active') {
-      activeSessions.push(session);
-    } else if (status === 'pending') {
-      pendingSessions.push(session);
-    } else if (status === 'waiting') {
-      waitingSessions.push(session);
-    } else if (status === 'rejected') {
-      rejectedSessions.push(session);
-    } else if (status === 'invitation') {
-      // Las invitaciones no se procesan - funcionalidad eliminada
-    }
-  });
-
-  // Sesiones ordenadas por fecha (más recientes primero)
-  const sortByDate = (a, b) => {
-    const dateA = a.updatedAt || a.createdAt || 0;
-    const dateB = b.updatedAt || b.createdAt || 0;
-    return new Date(dateB) - new Date(dateA);
-  };
-
-  activeSessions.sort(sortByDate);
-  pendingSessions.sort(sortByDate);
-  waitingSessions.sort(sortByDate);
-  rejectedSessions.sort(sortByDate);
-
-  // Ver si hay sesiones para mostrar después de filtrar
-  const hasActiveSessions = activeSessions.length > 0;
-  const hasPendingSessions = pendingSessions.length > 0;
-  const hasWaitingSessions = waitingSessions.length > 0;
-  const hasRejectedSessions = rejectedSessions.length > 0;
-
-  if (!hasActiveSessions && !hasPendingSessions && !hasWaitingSessions && !hasRejectedSessions) {
-    console.log("No hay sesiones después de clasificar por estado");
-    return (
-      <Paper sx={{ p: 3, textAlign: 'center', position: 'relative' }}>
-        <Typography color="textSecondary">
-          No hay sesiones compartidas disponibles según tu perfil de usuario
-        </Typography>
-        {onAddSession && (
-          <Fab 
-            color="primary" 
-            aria-label="add"
-            onClick={onAddSession}
-            size="medium"
-            sx={{ position: 'absolute', bottom: -20, right: 20 }}
-          >
-            <AddIcon />
-          </Fab>
-        )}
-      </Paper>
-    );
-  }
-
-  const renderActiveSession = (session, index) => (
-    <Card key={session._id || index} variant="outlined" sx={{ mb: 2 }}>
-      <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Box>
-            <Typography variant="h6" component="div">
-              {session.name}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Creador:</strong> {session.userId?.nombre || "Usuario"}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Participantes:</strong> {session.participants?.length || 0}
-            </Typography>
-            {session.description && (
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                {session.description}
-              </Typography>
-            )}
-          </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            {renderSessionStatus && renderSessionStatus(session)}
-          </Box>
-        </Box>
-      </CardContent>
-      <CardActions>
-        <Button 
-          size="small" 
-          color="primary"
-          startIcon={<GroupIcon />}
-          onClick={() => onSelectSession(session)}
-        >
-          Ver Detalles
-        </Button>
-
-        {/* Botones de edición/eliminación para el creador */}
-        {session.userId?._id === localStorage.getItem('userId') && (
-          <>
-            <Button 
-              size="small" 
-              startIcon={<EditIcon />}
-              onClick={() => onEditSession(session)}
-            >
-              Editar
-            </Button>
-            <Button 
-              size="small" 
-              color="error"
-              startIcon={<DeleteIcon />}
-              onClick={() => onDeleteSession(session._id)}
-            >
-              Eliminar
-            </Button>
-          </>
-        )}
-      </CardActions>
-    </Card>
-  );
-
   return (
-    <div>
-      {/* Sección de sesiones activas */}
-      {hasActiveSessions && (
-        <Box sx={{ mb: 4 }} data-section="active-sessions">
-          <Typography variant="h6" gutterBottom>
-            Sesiones activas ({activeSessions.length})
-          </Typography>
-          <Box>
-            {activeSessions.map((session, index) => renderActiveSession(session, index))}
-          </Box>
-        </Box>
-      )}
-
-      {/* Sección de sesiones pendientes (creadas por el usuario) */}
-      {hasPendingSessions && (
-        <Box sx={{ mb: 4 }} data-section="pending-sessions">
-          <Typography variant="h6" gutterBottom>
-            Sesiones pendientes ({pendingSessions.length})
-          </Typography>
-          <Box>
-            {pendingSessions.map((session, index) => renderActiveSession(session, index))}
-          </Box>
-        </Box>
-      )}
-
-      {/* Sección de sesiones en espera */}
-      {hasWaitingSessions && (
-        <Box sx={{ mb: 4 }} data-section="waiting-sessions">
-          <Typography variant="h6" gutterBottom>
-            Sesiones en espera ({waitingSessions.length})
-          </Typography>
-          <Box>
-            {waitingSessions.map((session, index) => renderActiveSession(session, index))}
-          </Box>
-        </Box>
-      )}
-
-      {/* Botón para agregar nueva sesión */}
-      {onAddSession && (
-        <Fab 
-          color="primary" 
-          aria-label="add"
+    <Box sx={{ pt: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" component="h2" fontWeight="bold">
+          Sesiones Compartidas
+        </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
           onClick={onAddSession}
-          size="medium"
-          sx={{ position: 'fixed', bottom: 80, right: 24 }}
+          sx={{ borderRadius: 2 }}
         >
-          <AddIcon />
-        </Fab>
-      )}
-    </div>
+          Nueva Sesión
+        </Button>
+      </Box>
+
+      <Grid container spacing={3}>
+        {sessions.length === 0 ? (
+          <Grid item xs={12}>
+            <Card sx={{ 
+              p: 4, 
+              textAlign: 'center',
+              backgroundColor: 'background.default',
+              border: '2px dashed',
+              borderColor: 'divider'
+            }}>
+              <Box sx={{ mb: 2 }}>
+                <PeopleIcon sx={{ fontSize: 60, color: 'text.secondary' }} />
+              </Box>
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                No tienes sesiones compartidas
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Crea una nueva sesión para empezar a compartir gastos con otros usuarios
+              </Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={onAddSession}
+              >
+                Crear Nueva Sesión
+              </Button>
+            </Card>
+          </Grid>
+        ) : (
+          sessions.map(session => (
+            <Grid item xs={12} sm={6} md={4} key={session._id}>
+              <Card 
+                sx={{ 
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  '&:hover': {
+                    boxShadow: 6
+                  }
+                }}
+                onClick={() => onSelectSession(session)}
+              >
+                {session.isLocked && (
+                  <Chip
+                    icon={<LockIcon />}
+                    label="Pendiente de confirmación"
+                    color="warning"
+                    size="small"
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      zIndex: 1
+                    }}
+                  />
+                )}
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Avatar 
+                      sx={{ 
+                        bgcolor: generateRandomColor(session._id),
+                        width: 40,
+                        height: 40,
+                        mr: 1
+                      }}
+                    >
+                      {getInitials(session.name)}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="h6" component="h3" noWrap>
+                        {session.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatDate(session.date)}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {session.description && (
+                    <Typography 
+                      variant="body2" 
+                      color="text.secondary"
+                      sx={{
+                        mb: 2,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {session.description}
+                    </Typography>
+                  )}
+
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 24, height: 24, fontSize: '0.75rem' } }}>
+                      {session.participants?.map((participant, index) => (
+                        <Tooltip key={index} title={participant.email || 'Usuario'}>
+                          <Avatar sx={{ bgcolor: generateRandomColor(participant.email) }}>
+                            {getInitials(participant.email)}
+                          </Avatar>
+                        </Tooltip>
+                      ))}
+                    </AvatarGroup>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Tooltip title="Tipo de sesión">
+                        <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
+                          <CalendarIcon 
+                            fontSize="small" 
+                            sx={{ 
+                              color: 'text.secondary',
+                              mr: 0.5
+                            }} 
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {session.sessionType === 'permanent' ? 'Permanente' : 'Única'}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                </CardContent>
+                <CardActions sx={{ justifyContent: 'flex-end', p: 1 }}>
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditSession(session);
+                    }}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton 
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteSession(session._id);
+                    }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </CardActions>
+              </Card>
+            </Grid>
+          ))
+        )}
+      </Grid>
+    </Box>
   );
 };
 

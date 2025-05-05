@@ -1,9 +1,3 @@
-import useSessions from './useSessions';
-import useExpenses from './useExpenses';
-import useDistribution from './useDistribution';
-
-export {
-  useSessions,
-  useExpenses,
-  useDistribution
-}; 
+export { default as useSessions } from './useSessions';
+export { default as useExpenses } from './useExpenses';
+export { default as useDistribution } from './useDistribution'; 

@@ -13,84 +13,11 @@
       name="description"
       content="Controling - Gestión de gastos personales y compartidos"
     />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <link rel="stylesheet" href="%PUBLIC_URL%/notification-remover.css" />
     <title>Controling</title>
-    <script src="%PUBLIC_URL%/patch.js"></script>
-    <script>
-      // Script para limpiar caché
-      window.onload = function() {
-        // Intentar eliminar cualquier servicio de caché o serviceWorker
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations().then(function(registrations) {
-            for(let registration of registrations) {
-              registration.unregister();
-            }
-          });
-        }
-        
-        // Forzar la recarga de recursos
-        if (window.caches) {
-          caches.keys().then(function(cacheNames) {
-            cacheNames.forEach(function(cacheName) {
-              caches.delete(cacheName);
-            });
-          });
-        }
-        
-        console.log('Caché del navegador limpiada');
-      };
-
-      // Script para eliminar el botón de notificaciones tan pronto como sea posible
-      (function() {
-        function removeNotificationButton() {
-          // Selector específico del botón mostrado en la imagen
-          const specificButtons = document.querySelectorAll('.css-zylse7-MuiButtonBase-root-MuiIconButton-root');
-          specificButtons.forEach(button => {
-            button.style.display = 'none';
-          });
-          
-          // Buscar botones que contengan el icono de notificaciones
-          document.querySelectorAll('button').forEach(button => {
-            if (button.querySelector('svg[data-testid="NotificationsIcon"]')) {
-              button.style.display = 'none';
-            }
-          });
-          
-          // Buscar en elementos con clase que contiene "notifications-container"
-          document.querySelectorAll('[class*="notifications"]').forEach(element => {
-            element.style.display = 'none';
-          });
-        }
-        
-        // Ejecutar tan pronto como el DOM esté listo
-        if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', removeNotificationButton);
-        } else {
-          removeNotificationButton();
-        }
-        
-        // Crear un observador para detectar cambios en el DOM
-        if (window.MutationObserver) {
-          var observer = new MutationObserver(function(mutations) {
-            removeNotificationButton();
-          });
-          
-          // Comenzar a observar una vez que el body esté disponible
-          if (document.body) {
-            observer.observe(document.body, { childList: true, subtree: true });
-          } else {
-            document.addEventListener('DOMContentLoaded', function() {
-              observer.observe(document.body, { childList: true, subtree: true });
-            });
-          }
-        }
-      })();
-    </script>
   </head>
   <body>
-    <noscript>Necesitas habilitar JavaScript para ejecutar esta aplicación.</noscript>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
   </body>
 </html> 

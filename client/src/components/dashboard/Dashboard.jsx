@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -20,18 +20,13 @@ import {
 } from '@mui/material';
 import {
   AccountBalance as AccountBalanceIcon,
-  Group as GroupIcon,
   Receipt as ReceiptIcon,
-  Paid as PaidIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
   Refresh as RefreshIcon,
   TrendingUp as TrendingUpIcon,
   Face as FaceIcon,
   AttachMoney as AttachMoneyIcon,
-  Dashboard as DashboardIcon,
-  MenuBook as MenuBookIcon,
-  Settings as SettingsIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -41,12 +36,10 @@ import authService from '../../services/authService';
 const Dashboard = () => {
   const { t } = useTranslation();
   const theme = useTheme();
-  // eslint-disable-next-line no-unused-vars
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const _isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   
   const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState('');
   const [balance, setBalance] = useState(0);
   const [activeSessions, setActiveSessions] = useState(0);
   const [monthlyExpenses, setMonthlyExpenses] = useState(0);
@@ -54,257 +47,126 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Formatear la fecha actual
   const currentDate = new Date();
-  // Usar formato nativo en lugar de date-fns
-  let capitalizedMonth = ""; 
-  try {
-    // Formatear usando toLocaleString en lugar de date-fns
-    const formattedMonth = currentDate.toLocaleDateString('es-ES', {
-      month: 'long',
-      year: 'numeric'
-    });
-    // Asegurar que el mes comienza con mayúscula
-    capitalizedMonth = formattedMonth.charAt(0).toUpperCase() + formattedMonth.slice(1);
-  } catch (err) {
-    console.error("Error al formatear fecha:", err);
-    capitalizedMonth = "Mes actual";
-  }
+  const capitalizedMonth = new Intl.DateTimeFormat('es-ES', {
+    month: 'long',
+    year: 'numeric'
+  }).format(currentDate).replace(/^\w/, c => c.toUpperCase());
 
   // Función para formatear cantidades monetarias
   const formatAmount = (amount) => {
-    if (!amount && amount !== 0) return '0,00 €';
-    return amount.toLocaleString('es-ES', { 
-      style: 'currency', 
-      currency: 'EUR',
-      minimumFractionDigits: 2
-    });
-  };
-
-  // Función para obtener las iniciales del nombre de usuario
-  const getUserInitials = () => {
-    if (!userName) return "U";
-    return userName.split(' ').map(name => name[0]).join('').toUpperCase().substring(0, 2);
-  };
-
-  const loadExampleData = (showError = true) => {
-    const storedName = localStorage.getItem('userName') || localStorage.getItem('nombre');
-    if (storedName) {
-      setUserName(storedName);
-    }
-    
-    // Usar valores cero en lugar de datos de ejemplo
-    setMonthlyExpenses(0);
-    setMonthlyIncome(0);
-    setBalance(0);
-    setActiveSessions(0);
-    
-    if (showError) {
-      setError('Datos no disponibles. Mostrando valores iniciales.');
+    try {
+      if (amount === null || amount === undefined) return '0,00 €';
+      return new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(amount);
+    } catch (error) {
+      console.error('Error al formatear cantidad:', error);
+      return '0,00 €';
     }
   };
 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchData = async () => {
+  // Mover la lógica de loadExampleData dentro de fetchData
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Verificar autenticación
+      const token = authService.getToken();
+      if (!token) {
+        console.log('No hay token, redirigiendo a login...');
+        navigate('/login');
+        return;
+      }
+
+      // Verificar usuario actual
+      const userData = await authService.getCurrentUser();
+      if (!userData) {
+        console.log('No hay datos de usuario, redirigiendo a login...');
+        navigate('/login');
+        return;
+      }
+
       try {
-        setLoading(true);
-        const token = localStorage.getItem('token');
-        console.log('Token al cargar Dashboard:', token ? 'Existe' : 'No existe');
-
-        if (!token) {
-          console.log('No hay token, redirigiendo a login...');
-          navigate('/login');
-          return;
+        // Verificar salud del servidor
+        const serverStatus = await checkServerHealth();
+        if (!serverStatus.ok) {
+          throw new Error('El servidor no está respondiendo correctamente');
         }
 
-        // Verificar el token primero
-        try {
-          const userData = await authService.getCurrentUser();
-          console.log('Usuario autenticado:', userData);
-          
-          // Actualizar nombre de usuario si está disponible
-          if (userData) {
-            const userName = userData.nombre || userData.name || userData.username || userData.email.split('@')[0];
-            setUserName(userName);
-          }
-        } catch (authError) {
-          console.error('Error al obtener datos del usuario:', authError);
-          navigate('/login');
-          return;
-        }
-
-        // Si llegamos aquí, el token es válido
-        const results = await Promise.allSettled([
+        // Obtener datos financieros
+        const [expensesResponse, incomesResponse, sessionsResponse] = await Promise.all([
           api.get('/api/personal-expenses/monthly'),
           api.get('/api/income/monthly'),
           api.get('/api/shared-sessions')
         ]);
-        
-        if (results[0].status === 'fulfilled') {
-          const expenses = results[0].value.data;
-          const totalExpenses = expenses
-            .filter(exp => exp.type === 'expense')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-          setMonthlyExpenses(totalExpenses);
-          
-          const totalIncome = expenses
-            .filter(exp => exp.type === 'income')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-          
-          if (totalIncome > 0) {
-            setMonthlyIncome(totalIncome);
-          }
-        }
-        
-        if (results[1].status === 'fulfilled') {
-          const incomes = results[1].value.data;
-          const totalIncome = incomes.reduce((sum, inc) => sum + inc.amount, 0);
-          
-          if (!(results[0].status === 'fulfilled' && 
-              results[0].value.data.some(exp => exp.type === 'income'))) {
-            setMonthlyIncome(totalIncome);
-          }
-        }
-        
-        if (results[2].status === 'fulfilled') {
-          const sessions = results[2].value.data;
-          setActiveSessions(sessions.length);
-        }
-        
-        let calculatedExpenses = 0;
-        let calculatedIncome = 0;
-        
-        if (results[0].status === 'fulfilled') {
-          const expenses = results[0].value.data;
-          calculatedExpenses = expenses
-            .filter(exp => exp.type === 'expense')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-            
-          calculatedIncome = expenses
-            .filter(exp => exp.type === 'income')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-        }
-        
-        if (results[1].status === 'fulfilled' && 
-            !(results[0].status === 'fulfilled' && 
-              results[0].value.data.some(exp => exp.type === 'income'))) {
-          const incomes = results[1].value.data;
-          calculatedIncome = incomes.reduce((sum, inc) => sum + inc.amount, 0);
-        }
-        
-        setBalance(calculatedIncome - calculatedExpenses);
-        
-        if (results.every(result => result.status === 'rejected')) {
-          setError('No se pudieron cargar los datos del usuario. Verifica tu conexión.');
-        } else {
-          setError(null);
-        }
-      } catch (error) {
-        console.error('Error al cargar datos:', error);
-        setError('Error al cargar los datos del dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
 
-    fetchData();
+        // Procesar gastos
+        const expenses = expensesResponse.data || [];
+        const totalExpenses = expenses
+          .filter(exp => exp.type === 'expense')
+          .reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+        setMonthlyExpenses(totalExpenses);
+
+        // Procesar ingresos
+        const incomes = incomesResponse.data || [];
+        const totalIncome = incomes.reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+        setMonthlyIncome(totalIncome);
+
+        // Procesar sesiones compartidas
+        const sessions = sessionsResponse.data || [];
+        setActiveSessions(sessions.length);
+
+        // Calcular balance
+        setBalance(totalIncome - totalExpenses);
+
+      } catch (apiError) {
+        console.error('Error al obtener datos:', apiError);
+        setError('Error al cargar los datos. Por favor, intenta de nuevo más tarde.');
+        
+        // Restablecer valores por defecto
+        setMonthlyExpenses(0);
+        setMonthlyIncome(0);
+        setBalance(0);
+        setActiveSessions(0);
+      }
+
+    } catch (error) {
+      console.error('Error en fetchData:', error);
+      setError('Error al cargar los datos. Por favor, verifica tu conexión.');
+      
+      // Restablecer valores por defecto
+      setMonthlyExpenses(0);
+      setMonthlyIncome(0);
+      setBalance(0);
+      setActiveSessions(0);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [navigate]);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    const fetchData = async () => {
-      try {
-        const serverAvailable = await checkServerHealth();
-        if (!serverAvailable) {
-          setError('No se pudo conectar al servidor. Verifica que el servidor esté en ejecución en http://localhost:5000');
-          loadExampleData(false);
-          return;
-        }
-        
-        const token = localStorage.getItem('token');
-        console.log('Token al refrescar:', token ? 'Existe' : 'No existe');
-        
-        if (!token) {
-          console.log('No hay token en refresh, redirigiendo a login...');
-          navigate('/login');
-          return;
-        }
-        
-        const results = await Promise.allSettled([
-          api.get('/api/personal-expenses/monthly'),
-          api.get('/api/income/monthly'),
-          api.get('/api/shared-sessions')
-        ]);
-        
-        if (results[0].status === 'fulfilled') {
-          const expenses = results[0].value.data;
-          const totalExpenses = expenses
-            .filter(exp => exp.type === 'expense')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-          setMonthlyExpenses(totalExpenses);
-          
-          const totalIncome = expenses
-            .filter(exp => exp.type === 'income')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-          
-          if (totalIncome > 0) {
-            setMonthlyIncome(totalIncome);
-          }
-        }
-        
-        if (results[1].status === 'fulfilled') {
-          const incomes = results[1].value.data;
-          const totalIncome = incomes.reduce((sum, inc) => sum + inc.amount, 0);
-          
-          if (!(results[0].status === 'fulfilled' && 
-              results[0].value.data.some(exp => exp.type === 'income'))) {
-            setMonthlyIncome(totalIncome);
-          }
-        }
-        
-        if (results[2].status === 'fulfilled') {
-          const sessions = results[2].value.data;
-          setActiveSessions(sessions.length);
-        }
-        
-        let calculatedExpenses = 0;
-        let calculatedIncome = 0;
-        
-        if (results[0].status === 'fulfilled') {
-          const expenses = results[0].value.data;
-          calculatedExpenses = expenses
-            .filter(exp => exp.type === 'expense')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-            
-          calculatedIncome = expenses
-            .filter(exp => exp.type === 'income')
-            .reduce((sum, exp) => sum + exp.amount, 0);
-        }
-        
-        if (results[1].status === 'fulfilled' && 
-            !(results[0].status === 'fulfilled' && 
-              results[0].value.data.some(exp => exp.type === 'income'))) {
-          const incomes = results[1].value.data;
-          calculatedIncome = incomes.reduce((sum, inc) => sum + inc.amount, 0);
-        }
-        
-        setBalance(calculatedIncome - calculatedExpenses);
-        
-        if (results.every(result => result.status === 'rejected')) {
-          setError('No se pudieron cargar los datos del usuario. Verifica tu conexión.');
-        } else {
-          setError(null);
-        }
-      } catch (error) {
-        console.error('Error al actualizar datos:', error);
-        setError('No se pudieron actualizar los datos. Intenta de nuevo más tarde.');
-        loadExampleData(false);
-      } finally {
-        setRefreshing(false);
-      }
-    };
+  useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchData();
+    } catch (error) {
+      console.error('Error al refrescar datos:', error);
+      setError('Error al refrescar los datos. Por favor, intenta de nuevo.');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Calcular el porcentaje del balance respecto a los ingresos
@@ -341,13 +203,15 @@ const Dashboard = () => {
   return (
     <Container 
       maxWidth={false}
+      disableGutters
       sx={{ 
-        width: { xs: '100%', sm: `calc(100% - 240px)` },
-        ml: { xs: 0, sm: 0 },
+        width: '100%',
+        ml: 0,
         mr: 0,
-        pt: 3,
-        pb: 4,
-        px: { xs: 2, sm: 3 }
+        pt: 0,
+        pb: 0,
+        px: 0,
+        overflow: 'hidden'
       }}
     >
       {/* Header con bienvenida y actualización */}
@@ -356,44 +220,34 @@ const Dashboard = () => {
           mb: 4, 
           display: 'flex', 
           justifyContent: 'space-between', 
-          alignItems: 'center' 
+          alignItems: 'center',
+          pl: 3, // Padding izquierdo para el contenido
+          pr: 3,  // Padding derecho para el contenido
+          pt: 1.5
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Avatar 
+        <Box>
+          <Typography 
+            variant="h4" 
+            component="h1" 
+            fontWeight="bold" 
             sx={{ 
-              width: 48, 
-              height: 48, 
-              mr: 2,
-              bgcolor: 'primary.main',
-              fontSize: '1.25rem',
-              fontWeight: 'bold'
+              fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' } 
             }}
           >
-            {getUserInitials()}
-          </Avatar>
-          <Box>
-            <Typography 
-              variant="h4" 
-              component="h1" 
-              fontWeight="bold" 
-              sx={{ 
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' } 
-              }}
-            >
-              {t('dashboard')}
-            </Typography>
-            <Typography 
-              variant="subtitle1" 
-              color="text.secondary"
-              sx={{ 
-                fontSize: { xs: '0.875rem', sm: '1rem' },
-                mt: 0.5
-              }}
-            >
-              {t('welcome')}, {userName}
-            </Typography>
-          </Box>
+            {t('dashboard')}
+          </Typography>
+          <Typography 
+            variant="h6" 
+            sx={{ 
+              fontSize: { xs: '1.2rem', sm: '1.4rem', md: '1.6rem' },
+              mt: 0.5,
+              fontWeight: 500,
+              color: 'primary.main'
+            }}
+          >
+            {t('welcome')}
+          </Typography>
         </Box>
         
         <Tooltip title={t('refresh')}>
@@ -419,6 +273,7 @@ const Dashboard = () => {
           elevation={0}
           sx={{
             p: 2,
+            mx: 3, // Margen horizontal
             mb: 3,
             borderRadius: 3,
             backgroundColor: alpha(theme.palette.error.main, 0.1),
@@ -430,7 +285,7 @@ const Dashboard = () => {
       )}
       
       {/* Resumen financiero */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={3} sx={{ mb: 4, px: 3 }}>
         <Grid item xs={12} md={6}>
           <Card 
             sx={{ 
@@ -693,7 +548,8 @@ const Dashboard = () => {
           borderRadius: 4,
           backgroundImage: 'linear-gradient(135deg, rgba(255, 152, 0, 0.05) 0%, rgba(0, 0, 0, 0) 100%)',
           boxShadow: '0 8px 16px rgba(0, 0, 0, 0.05)',
-          mb: 3
+          mb: 3,
+          mx: 3
         }}
       >
         <CardContent sx={{ p: 3 }}>
@@ -756,6 +612,7 @@ const Dashboard = () => {
         elevation={0}
         sx={{
           p: 3,
+          mx: 3,
           borderRadius: 4,
           backgroundColor: alpha(theme.palette.info.main, 0.05),
           border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,

@@ -1,38 +1,20 @@
 {
   "extends": [
-    "eslint:recommended",
-    "plugin:react/recommended"
+    "react-app",
+    "react-app/jest"
   ],
-  "parserOptions": {
-    "ecmaVersion": 2021,
-    "sourceType": "module",
-    "ecmaFeatures": {
-      "jsx": true
-    }
-  },
-  "env": {
-    "browser": true,
-    "node": true,
-    "es6": true
-  },
   "plugins": [
-    "react"
-  ],
-  "settings": {
-    "react": {
-      "version": "detect"
-    }
-  },
-  "ignorePatterns": [
-    ".babelrc",
-    "node_modules/**/*",
-    "build/**/*"
+    "react-hooks"
   ],
   "rules": {
-    "react/prop-types": "off",
-    "react/react-in-jsx-scope": "off",
-    "no-unused-vars": "off",
-    "react/no-unescaped-entities": "off",
-    "no-prototype-builtins": "off"
+    "react-hooks/exhaustive-deps": "warn",
+    "react-hooks/rules-of-hooks": "error",
+    "no-unused-vars": ["warn", {
+      "vars": "all",
+      "args": "after-used",
+      "ignoreRestSiblings": true,
+      "varsIgnorePattern": "^_",
+      "argsIgnorePattern": "^_"
+    }]
   }
 } 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
 
-const API_URL = process.env.REACT_APP_API_URL || '';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -17,7 +17,8 @@ axiosRetry(api, {
   retries: 3,
   retryDelay: axiosRetry.exponentialDelay,
   retryCondition: (error) => {
-    return axiosRetry.isNetworkOrIdempotentRequestError(error) || error.response?.status >= 500;
+    return axiosRetry.isNetworkOrIdempotentRequestError(error) || 
+           (error.response?.status >= 500 && error.response?.status !== 501);
   }
 });
 
@@ -41,50 +42,36 @@ api.interceptors.request.use(
   error => Promise.reject(error)
 );
 
-// Interceptor para añadir el token a todas las peticiones
+// Interceptor para añadir el token de autenticación
 api.interceptors.request.use(
   config => {
     try {
       const token = localStorage.getItem('token');
-      console.log('Interceptor - Token existente:', token ? 'Sí' : 'No');
       
       if (token) {
-        // Validar formato del token (JWT básico)
-        if (!token.match(/^[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]*$/)) {
-          console.warn('Interceptor - Formato de token inválido. Eliminando token...');
-          localStorage.removeItem('token');
-        } else {
-          console.log('Interceptor - Añadiendo token al header Authorization');
-          // Asegurarse de que el token se envía en el formato correcto
+        if (token.match(/^[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]*$/)) {
           config.headers.Authorization = `Bearer ${token}`;
+        } else {
+          localStorage.removeItem('token');
         }
-      } else {
-        console.warn('Interceptor - No hay token disponible para:', config.url);
       }
       
       return config;
     } catch (error) {
-      console.error('Interceptor - Error al procesar request:', error);
+      console.error('Error en interceptor de request:', error);
       return config;
     }
   },
-  error => {
-    console.error('Interceptor - Error en request:', error);
-    return Promise.reject(error);
-  }
+  error => Promise.reject(error)
 );
 
 // Interceptor para manejar errores
 api.interceptors.response.use(
   response => response,
   error => {
-    // Si el error es de autenticación (401), redirigir al login
     if (error.response?.status === 401) {
       // Limpiar datos de autenticación
-      localStorage.removeItem('token');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('userEmail');
-      localStorage.removeItem('userName');
+      localStorage.clear();
       
       // Disparar evento de storage para actualizar el estado de autenticación
       window.dispatchEvent(new Event('storage'));
@@ -94,27 +81,14 @@ api.interceptors.response.use(
       return Promise.reject(new Error('Sesión expirada. Por favor, inicia sesión nuevamente.'));
     }
     
-    // Si el error es de timeout
     if (error.code === 'ECONNABORTED') {
-      error.message = 'La solicitud está tardando demasiado. Por favor, inténtalo de nuevo.';
+      return Promise.reject(new Error('La solicitud está tardando demasiado. Por favor, inténtalo de nuevo.'));
     }
     
-    // Si es un error de red
-    if (error.message === 'Network Error') {
-      error.message = 'No se pudo conectar con el servidor. Verifica tu conexión a internet.';
+    if (!error.response) {
+      return Promise.reject(new Error('No se pudo conectar con el servidor. Verifica tu conexión a internet.'));
     }
 
-    // Log del error en desarrollo
-    if (process.env.NODE_ENV !== 'production') {
-      if (error.response) {
-        console.error('Error en la respuesta:', error.response.status, error.response.data);
-      } else if (error.request) {
-        console.error('No se recibió respuesta del servidor:', error.request);
-      } else {
-        console.error('Error en la configuración de la solicitud:', error.message);
-      }
-    }
-    
     return Promise.reject(error);
   }
 );
@@ -150,11 +124,11 @@ export const fetchWithCache = async (url, options = {}) => {
 // Función para verificar la salud del servidor
 export const checkServerHealth = async () => {
   try {
-    const response = await api.get('/api/health');
-    return response.status === 200;
+    const response = await api.get('/api/health', { timeout: 5000 });
+    return { ok: response.status === 200, data: response.data };
   } catch (error) {
     console.error('Error al verificar la salud del servidor:', error);
-    return false;
+    return { ok: false, error: error.message };
   }
 };
 
@@ -202,24 +176,39 @@ export const categoriesAPI = {
 };
 
 export const expensesAPI = {
-  getAll: async (filters) => {
-    const response = await api.get('/api/expenses', { params: filters });
-    return response.data;
-  },
-  getById: async (id) => {
-    const response = await api.get(`/api/expenses/${id}`);
+  getMonthly: async () => {
+    const response = await api.get('/api/personal-expenses/monthly');
     return response.data;
   },
   create: async (expense) => {
-    const response = await api.post('/api/expenses', expense);
+    const response = await api.post('/api/personal-expenses', expense);
     return response.data;
   },
   update: async (id, expense) => {
-    const response = await api.put(`/api/expenses/${id}`, expense);
+    const response = await api.put(`/api/personal-expenses/${id}`, expense);
     return response.data;
   },
   delete: async (id) => {
-    const response = await api.delete(`/api/expenses/${id}`);
+    const response = await api.delete(`/api/personal-expenses/${id}`);
+    return response.data;
+  }
+};
+
+export const incomeAPI = {
+  getMonthly: async () => {
+    const response = await api.get('/api/income/monthly');
+    return response.data;
+  },
+  create: async (income) => {
+    const response = await api.post('/api/income', income);
+    return response.data;
+  },
+  update: async (id, income) => {
+    const response = await api.put(`/api/income/${id}`, income);
+    return response.data;
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/api/income/${id}`);
     return response.data;
   }
 };

@@ -3,7 +3,7 @@ import api from '../utils/api';
 export const fetchExpenses = async (filters = {}) => {
   try {
     const queryParams = new URLSearchParams(filters).toString();
-    const response = await api.get(`/expenses?${queryParams}`);
+    const response = await api.get(`/api/expenses?${queryParams}`);
     return response.data;
   } catch (error) {
     console.error('Error en fetchExpenses:', error);
@@ -13,7 +13,7 @@ export const fetchExpenses = async (filters = {}) => {
 
 export const createExpense = async (expenseData) => {
   try {
-    const response = await api.post('/expenses', expenseData);
+    const response = await api.post('/api/expenses', expenseData);
     return response.data;
   } catch (error) {
     console.error('Error en createExpense:', error);
@@ -23,7 +23,7 @@ export const createExpense = async (expenseData) => {
 
 export const updateExpense = async (id, expenseData) => {
   try {
-    const response = await api.put(`/expenses/${id}`, expenseData);
+    const response = await api.put(`/api/expenses/${id}`, expenseData);
     return response.data;
   } catch (error) {
     console.error('Error en updateExpense:', error);
@@ -33,7 +33,7 @@ export const updateExpense = async (id, expenseData) => {
 
 export const deleteExpense = async (id) => {
   try {
-    const response = await api.delete(`/expenses/${id}`);
+    const response = await api.delete(`/api/expenses/${id}`);
     return response.data;
   } catch (error) {
     console.error('Error en deleteExpense:', error);
@@ -43,7 +43,7 @@ export const deleteExpense = async (id) => {
 
 export const getExpenseStatistics = async (period) => {
   try {
-    const response = await api.get(`/expenses/statistics?period=${period}`);
+    const response = await api.get(`/api/expenses/statistics?period=${period}`);
     return response.data;
   } catch (error) {
     console.error('Error en getExpenseStatistics:', error);
@@ -53,7 +53,7 @@ export const getExpenseStatistics = async (period) => {
 
 export const getPersonalExpenses = async () => {
   try {
-    const response = await api.get('/personal-expenses/monthly');
+    const response = await api.get('/api/personal-expenses/monthly');
     return response.data;
   } catch (error) {
     console.error('Error en getPersonalExpenses:', error);

@@ -9,11 +9,12 @@ import {
   Paper,
   Alert
 } from '@mui/material';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { Link as RouterLink, useNavigate, Navigate } from 'react-router-dom';
+import { useAuth as _useAuth } from '../../context/AuthContext';
 // eslint-disable-next-line no-unused-vars
 import api from '../../utils/api';
 import authService from '../../services/authService';
+import { useTranslation } from 'react-i18next';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -31,10 +32,34 @@ const Login = () => {
       console.log('Intentando login para:', email);
       
       // Usar el servicio de autenticación en lugar de la petición directa
-      await authService.login({ email, password });
+      const response = await authService.login({ email, password });
+      
+      // Guardar información del usuario de forma explícita
+      if (response && response.user) {
+        // Establecer un nombre para mostrar basado en la información disponible
+        let displayName = '';
+        
+        // Si hay nombre y apellidos, construir el nombre completo
+        if (response.user.nombre && response.user.apellidos) {
+          displayName = `${response.user.nombre} ${response.user.apellidos}`;
+        } else {
+          displayName = response.user.nombre || 
+                        response.user.name || 
+                        response.user.username || 
+                        email.split('@')[0];
+        }
+                            
+        localStorage.setItem('userName', displayName);
+        localStorage.setItem('userEmail', response.user.email || email);
+      }
       
       // Si llegamos aquí, el login fue exitoso
-      navigate('/dashboard');
+      // Usar setTimeout para asegurar que todos los datos se hayan guardado
+      // antes de redirigir
+      setTimeout(() => {
+        navigate('/dashboard', { replace: true });
+        window.location.reload(); // Forzar recarga para asegurar que los datos se actualicen
+      }, 100);
     } catch (err) {
       console.error('Error en login:', err);
       setError(err.response?.data?.msg || err.message || 'Error al iniciar sesión. Por favor, verifica tus credenciales.');

@@ -1,129 +1,114 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  fetchExpenses as fetchExpensesService,
-  createExpense,
-  updateExpense as updateExpenseService,
-  deleteExpense as deleteExpenseService,
-  getExpenseStatistics
-} from '../services/expenseService';
+import { useState, useCallback, useEffect } from 'react';
+import * as sharedSessionService from '../services/sharedSessionService';
+import * as expenseService from '../services/expenseService';
 import { getFirstDayOfMonth, getLastDayOfMonth } from '../utils/dateHelpers';
 
-const useExpenses = (sessionId, selectedMonth, selectedYear) => {
+export const useExpenses = (sessionId, month, year) => {
   const [expenses, setExpenses] = useState([]);
-  const [allExpenses, setAllExpenses] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [sessionInfo, setSessionInfo] = useState(null);
 
-  // Obtener todos los gastos de la sesión
-  const fetchAllExpenses = useCallback(async () => {
+  const fetchExpenses = useCallback(async () => {
     if (!sessionId) return;
+    
     try {
       setLoading(true);
-      
-      // Determinar si se deben pasar los parámetros de filtrado
-      let response;
-      if (selectedMonth !== undefined && selectedYear !== undefined) {
-        response = await fetchExpensesService({ sessionId, month: selectedMonth, year: selectedYear });
-      } else {
-        response = await fetchExpensesService({ sessionId });
-      }
-      
-      setAllExpenses(response);
-      
-      // Obtener información de la sesión
-      if (response.length > 0 && response[0].session) {
-        setSessionInfo(response[0].session);
-      }
-      
       setError(null);
+      
+      let data;
+      if (sessionId) {
+        // Fetching expenses for a shared session
+        data = await sharedSessionService.getSessionDetails(sessionId);
+        setExpenses(data.expenses || []);
+      } else {
+        // Fetching personal expenses
+        data = await expenseService.getPersonalExpenses();
+        setExpenses(data || []);
+      }
     } catch (err) {
-      setError(err.message);
+      console.error('Error al cargar los gastos:', err);
+      setError('Error al cargar los gastos');
     } finally {
       setLoading(false);
     }
-  }, [sessionId, selectedMonth, selectedYear]);
-  
-  // Actualizar los gastos filtrados por mes y año si es necesario
-  useEffect(() => {
-    if (!allExpenses.length) return;
-    
-    if (sessionInfo?.sessionType === 'permanent' && selectedMonth !== undefined && selectedYear !== undefined) {
-      // Filtrar gastos por el mes y año seleccionados
-      const startDate = getFirstDayOfMonth(selectedYear, selectedMonth);
-      const endDate = getLastDayOfMonth(selectedYear, selectedMonth);
-      
-      const filteredExpenses = allExpenses.filter(expense => {
-        const expenseDate = new Date(expense.date);
-        return expenseDate >= startDate && expenseDate <= endDate;
-      });
-      
-      setExpenses(filteredExpenses);
-    } else {
-      // Si no es permanente o no hay mes/año seleccionados, mostrar todos
-      setExpenses(allExpenses);
-    }
-  }, [allExpenses, selectedMonth, selectedYear, sessionInfo]);
+  }, [sessionId]);
 
-  const fetchExpenses = useCallback(async () => {
-    await fetchAllExpenses();
-  }, [fetchAllExpenses]);
+  useEffect(() => {
+    fetchExpenses();
+  }, [fetchExpenses, month, year]);
 
   const addExpense = useCallback(async (expenseData) => {
-    if (!sessionId) throw new Error('ID de sesión no disponible');
-    
     try {
-      // Si es sesión permanente y hay mes/año seleccionados, asignar esa fecha
-      if (sessionInfo?.sessionType === 'permanent' && selectedMonth !== undefined && selectedYear !== undefined) {
-        // Usar el día 15 del mes seleccionado o la fecha actual del gasto si existe
-        const currentDate = new Date(expenseData.date || Date.now());
-        const newDate = new Date(selectedYear, selectedMonth, currentDate.getDate());
-        expenseData.date = newDate;
+      setLoading(true);
+      setError(null);
+      
+      let data;
+      if (sessionId) {
+        // Add expense to shared session
+        data = await sharedSessionService.addExpenseToSession(sessionId, expenseData);
+      } else {
+        // Add personal expense
+        data = await expenseService.createExpense(expenseData);
       }
       
-      const response = await createExpense({ ...expenseData, sessionId });
-      setAllExpenses(prev => [...prev, response]);
-      return response;
+      setExpenses(prev => [...prev, data]);
+      return data;
     } catch (err) {
-      setError(err.message);
+      console.error('Error al añadir gasto:', err);
+      setError('Error al añadir gasto');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [sessionId, selectedMonth, selectedYear, sessionInfo]);
+  }, [sessionId]);
 
   const updateExpense = useCallback(async (expenseId, expenseData) => {
-    if (!sessionId) throw new Error('ID de sesión no disponible');
-    
     try {
-      // Si es sesión permanente y hay mes/año seleccionados, mantener el mes/año actual
-      if (sessionInfo?.sessionType === 'permanent' && selectedMonth !== undefined && selectedYear !== undefined) {
-        // Mantener el día pero cambiar mes/año
-        const currentDate = new Date(expenseData.date);
-        const newDate = new Date(selectedYear, selectedMonth, currentDate.getDate());
-        expenseData.date = newDate;
+      setLoading(true);
+      setError(null);
+      
+      let data;
+      if (sessionId) {
+        // Update expense in shared session
+        data = await sharedSessionService.updateSessionExpense(sessionId, expenseId, expenseData);
+      } else {
+        // Update personal expense
+        data = await expenseService.updateExpense(expenseId, expenseData);
       }
       
-      const response = await updateExpenseService(expenseId, { ...expenseData, sessionId });
-      setAllExpenses(prev =>
-        prev.map(expense =>
-          expense._id === expenseId ? response : expense
-        )
-      );
-      return response;
+      setExpenses(prev => prev.map(expense => 
+        expense._id === expenseId ? { ...expense, ...data } : expense
+      ));
+      return data;
     } catch (err) {
-      setError(err.message);
+      console.error('Error al actualizar gasto:', err);
+      setError('Error al actualizar gasto');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [sessionId, selectedMonth, selectedYear, sessionInfo]);
+  }, [sessionId]);
 
   const deleteExpense = useCallback(async (expenseId) => {
-    if (!sessionId) throw new Error('ID de sesión no disponible');
     try {
-      await deleteExpenseService(expenseId);
-      setAllExpenses(prev => prev.filter(expense => expense._id !== expenseId));
+      setLoading(true);
+      setError(null);
+      
+      if (sessionId) {
+        // Delete expense from shared session
+        await sharedSessionService.deleteSessionExpense(sessionId, expenseId);
+      } else {
+        // Delete personal expense
+        await expenseService.deleteExpense(expenseId);
+      }
+      
       setExpenses(prev => prev.filter(expense => expense._id !== expenseId));
     } catch (err) {
-      setError(err.message);
+      console.error('Error al eliminar gasto:', err);
+      setError('Error al eliminar gasto');
       throw err;
+    } finally {
+      setLoading(false);
     }
   }, [sessionId]);
 
@@ -131,21 +116,15 @@ const useExpenses = (sessionId, selectedMonth, selectedYear) => {
     return expenses.reduce((total, expense) => total + expense.amount, 0);
   }, [expenses]);
 
-  useEffect(() => {
-    fetchExpenses();
-  }, [fetchExpenses]);
-
   return {
     expenses,
-    allExpenses,
     loading,
     error,
     fetchExpenses,
     addExpense,
     updateExpense,
     deleteExpense,
-    calculateTotal,
-    refreshExpenses: fetchExpenses
+    calculateTotal
   };
 };
 

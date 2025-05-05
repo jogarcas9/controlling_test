@@ -20,6 +20,8 @@ import {
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import format from 'date-fns/format';
+import es from 'date-fns/locale/es';
 
 const EXPENSE_CATEGORIES = [
   'Alimentación',
@@ -42,11 +44,11 @@ const ExpenseForm = ({
   error = null
 }) => {
   const [formData, setFormData] = useState({
-    description: initialData?.description || '',
+    name: initialData?.name || '',
     amount: initialData?.amount || '',
     category: initialData?.category || '',
     date: initialData?.date ? new Date(initialData.date) : new Date(),
-    notes: initialData?.notes || '',
+    description: initialData?.description || '',
     isRecurring: initialData?.isRecurring || false
   });
 
@@ -55,8 +57,8 @@ const ExpenseForm = ({
 
   const validateForm = () => {
     const errors = {};
-    if (!formData.description.trim()) {
-      errors.description = 'La descripción es requerida';
+    if (!formData.name.trim()) {
+      errors.name = 'El nombre es requerido';
     }
     if (!formData.amount || formData.amount <= 0) {
       errors.amount = 'El monto debe ser mayor a 0';
@@ -123,16 +125,16 @@ const ExpenseForm = ({
           <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
             <TextField
               autoComplete="off"
-              label="Descripción"
-              name="description"
-              value={formData.description}
+              label="Nombre"
+              name="name"
+              value={formData.name}
               onChange={handleChange}
               fullWidth
               margin="normal"
               variant="outlined"
               required
-              error={!!formErrors.description}
-              helperText={formErrors.description}
+              error={!!formErrors.name}
+              helperText={formErrors.name}
               sx={{ flex: 2 }}
             />
 
@@ -173,7 +175,7 @@ const ExpenseForm = ({
             </FormControl>
           </Box>
 
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
             <DatePicker
               label="Fecha"
               value={formData.date}
@@ -187,26 +189,27 @@ const ExpenseForm = ({
                   date: ''
                 }));
               }}
-              slotProps={{
-                textField: {
-                  fullWidth: true,
-                  error: !!formErrors.date,
-                  helperText: formErrors.date,
-                  sx: { mb: 2 }
-                }
-              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  fullWidth
+                  error={!!formErrors.date}
+                  helperText={formErrors.date}
+                  sx={{ mb: 2 }}
+                />
+              )}
             />
           </LocalizationProvider>
 
           <TextField
             margin="dense"
-            name="notes"
-            label="Notas adicionales (opcional)"
+            name="description"
+            label="Descripción (opcional)"
             type="text"
             fullWidth
             multiline
             rows={3}
-            value={formData.notes}
+            value={formData.description}
             onChange={handleChange}
           />
 
