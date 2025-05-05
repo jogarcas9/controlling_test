@@ -51,18 +51,26 @@ const AppLayout = ({
 }) => {
   const _location = useLocation();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
+  
+  // Calculamos el ancho efectivo del drawer basado en el dispositivo
+  const effectiveDrawerWidth = isMobile ? 0 : 
+                               isTablet ? (isDrawerMinimized ? minimizedDrawerWidth : 200) : 
+                               isDrawerMinimized ? minimizedDrawerWidth : drawerWidth;
 
   return (
     <Box sx={{ 
       display: 'flex',
       minHeight: '100vh',
       bgcolor: 'background.default',
+      flexDirection: { xs: 'column', sm: 'row' },
     }}>
       <CssBaseline />
       <Box
         component="nav"
         sx={{
-          width: { sm: isDrawerMinimized ? minimizedDrawerWidth : drawerWidth },
+          width: { xs: drawerWidth, sm: isDrawerMinimized ? minimizedDrawerWidth : drawerWidth },
           flexShrink: { sm: 0 },
           position: 'fixed',
           top: 0,
@@ -82,6 +90,7 @@ const AppLayout = ({
             '& .MuiDrawer-paper': { 
               boxSizing: 'border-box', 
               width: drawerWidth,
+              boxShadow: theme.shadows[8],
             },
           }}
         >
@@ -91,6 +100,34 @@ const AppLayout = ({
             isMinimized={false}
             onMinimizeToggle={handleDrawerMinimize}
             handleLogout={handleLogout}
+            isMobile={true}
+          />
+        </Drawer>
+
+        {/* Menú lateral para tablets */}
+        <Drawer
+          variant={isTablet ? "temporary" : "permanent"}
+          open={isTablet ? mobileOpen : true}
+          onClose={isTablet ? handleDrawerToggle : undefined}
+          sx={{
+            display: { xs: 'none', sm: 'block', md: isTablet ? 'block' : 'none' },
+            '& .MuiDrawer-paper': { 
+              boxSizing: 'border-box', 
+              width: isDrawerMinimized ? minimizedDrawerWidth : 200,
+              transition: theme.transitions.create('width', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.enteringScreen,
+              }),
+              boxShadow: theme.shadows[3],
+            },
+          }}
+        >
+          <Sidebar 
+            handleDrawerToggle={handleDrawerToggle} 
+            isMinimized={isDrawerMinimized} 
+            onMinimizeToggle={handleDrawerMinimize}
+            handleLogout={handleLogout}
+            isTablet={isTablet}
           />
         </Drawer>
 
@@ -98,7 +135,7 @@ const AppLayout = ({
         <Drawer
           variant="permanent"
           sx={{
-            display: { xs: 'none', sm: 'block' },
+            display: { xs: 'none', sm: 'none', md: 'block' },
             '& .MuiDrawer-paper': { 
               boxSizing: 'border-box', 
               width: isDrawerMinimized ? minimizedDrawerWidth : drawerWidth,
@@ -121,21 +158,23 @@ const AppLayout = ({
 
       <Box
         component="main"
+        className={(isMobile || isTablet) ? 'main-content-with-bottom-nav' : ''}
         sx={{
           flexGrow: 1,
-          p: 0,
-          width: '100%',
-          ml: { xs: 0, sm: `${isDrawerMinimized ? minimizedDrawerWidth : drawerWidth}px` },
-          transition: theme.transitions.create(['margin'], {
+          p: { xs: 1, sm: 2, md: 3 },
+          width: { xs: '100%', sm: `calc(100% - ${effectiveDrawerWidth}px)` },
+          ml: { xs: 0, sm: `${effectiveDrawerWidth}px` },
+          transition: theme.transitions.create(['margin', 'width'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
           }),
+          overflow: 'hidden',
         }}
       >
         {children}
       </Box>
 
-      {isMobile && <MobileBottomNav />}
+      {(isMobile || isTablet) && <MobileBottomNav />}
     </Box>
   );
 };

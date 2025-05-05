@@ -29,9 +29,54 @@ class AuthService {
         }
       }
     } catch (error) {
+      console.error('Error al inicializar servicio de autenticación:', error);
       this.logout();
     } finally {
       this.initialized = true;
+    }
+  }
+
+  /**
+   * Persistir información del usuario en localStorage
+   * @param {Object} userData - Datos del usuario a persistir
+   */
+  _persistUserData(userData) {
+    if (!userData) return;
+
+    try {
+      // Guardar objeto completo de usuario
+      localStorage.setItem('user', JSON.stringify(userData));
+      
+      // Guardar el ID del usuario, si está disponible
+      if (userData._id || userData.id) {
+        localStorage.setItem('userId', userData._id || userData.id);
+      }
+      
+      // Construir y guardar el nombre completo para mostrar
+      let displayName = '';
+      
+      if (userData.nombre && userData.apellidos) {
+        displayName = `${userData.nombre} ${userData.apellidos}`;
+      } else if (userData.nombre) {
+        displayName = userData.nombre;
+      } else if (userData.name) {
+        displayName = userData.name;
+      } else if (userData.username) {
+        displayName = userData.username;
+      } else if (userData.email) {
+        displayName = userData.email.split('@')[0];
+      }
+      
+      if (displayName) {
+        localStorage.setItem('userName', displayName);
+      }
+      
+      // Guardar email si está disponible
+      if (userData.email) {
+        localStorage.setItem('userEmail', userData.email);
+      }
+    } catch (error) {
+      console.error('Error al persistir datos de usuario:', error);
     }
   }
 
@@ -42,6 +87,7 @@ class AuthService {
    */
   async login(credentials) {
     try {
+      console.log('Iniciando sesión con:', credentials.email);
       const response = await api.post(AUTH_ENDPOINTS.LOGIN, credentials);
       
       if (response.data?.token) {
@@ -50,34 +96,17 @@ class AuthService {
         
         if (response.data.user) {
           this.user = response.data.user;
-          localStorage.setItem('user', JSON.stringify(this.user));
-          
-          // Guardar también el nombre y email por separado para compatibilidad
-          let nombreCompleto = '';
-          
-          // Construir nombre completo si hay nombre y apellidos
-          if (this.user.nombre && this.user.apellidos) {
-            nombreCompleto = `${this.user.nombre} ${this.user.apellidos}`;
-            localStorage.setItem('userName', nombreCompleto);
-          } 
-          else if (this.user.nombre) {
-            localStorage.setItem('userName', this.user.nombre);
-          }
-          else if (this.user.username) {
-            localStorage.setItem('userName', this.user.username);
-          }
-          
-          if (this.user.email) {
-            localStorage.setItem('userEmail', this.user.email);
-          }
+          this._persistUserData(this.user);
         }
         
         window.dispatchEvent(new Event('auth'));
+        console.log('Sesión iniciada correctamente');
         return response.data;
       }
       
       throw new Error('Token no recibido del servidor');
     } catch (error) {
+      console.error('Error durante el inicio de sesión:', error);
       this.logout();
       throw error;
     }
@@ -108,39 +137,23 @@ class AuthService {
       }
       
       // Si no tenemos los datos en memoria ni en localStorage, obtenerlos del servidor
+      console.log('Obteniendo datos de usuario desde el servidor');
       const response = await api.get(AUTH_ENDPOINTS.USER);
+      
       if (response.data) {
         this.user = response.data;
-        
-        // Guardar los datos del usuario en localStorage
-        localStorage.setItem('user', JSON.stringify(this.user));
-        
-        // También guardar el nombre y email por separado para compatibilidad
-        let nombreCompleto = '';
-        
-        if (this.user.nombre && this.user.apellidos) {
-          nombreCompleto = `${this.user.nombre} ${this.user.apellidos}`;
-          localStorage.setItem('userName', nombreCompleto);
-        } 
-        else if (this.user.nombre) {
-          localStorage.setItem('userName', this.user.nombre);
-        }
-        else if (this.user.username) {
-          localStorage.setItem('userName', this.user.username);
-        }
-        else if (this.user.email) {
-          // Si no hay nombre, usar la parte local del email
-          localStorage.setItem('userName', this.user.email.split('@')[0]);
-        }
-        
-        if (this.user.email) {
-          localStorage.setItem('userEmail', this.user.email);
-        }
+        this._persistUserData(this.user);
+        console.log('Datos de usuario obtenidos correctamente');
       }
       
       return this.user;
     } catch (error) {
-      this.logout();
+      console.error('Error al obtener datos del usuario:', error);
+      // Solo cerrar sesión si es un error de autenticación (401)
+      if (error.response && error.response.status === 401) {
+        console.log('Sesión expirada o no válida, cerrando sesión');
+        this.logout();
+      }
       throw error;
     }
   }
@@ -156,6 +169,7 @@ class AuthService {
       const response = await api.get(AUTH_ENDPOINTS.VERIFY);
       return response.data?.valid === true;
     } catch (error) {
+      console.error('Error al verificar token:', error);
       this.logout();
       return false;
     }
@@ -167,41 +181,29 @@ class AuthService {
    * @returns {Promise} - Respuesta con token y datos del usuario
    */
   async register(userData) {
-    const response = await api.post(AUTH_ENDPOINTS.REGISTER, userData);
-    
-    if (response.data?.token) {
-      this.token = response.data.token;
-      localStorage.setItem('token', this.token);
+    try {
+      console.log('Registrando nuevo usuario');
+      const response = await api.post(AUTH_ENDPOINTS.REGISTER, userData);
       
-      if (response.data.user) {
-        this.user = response.data.user;
-        localStorage.setItem('user', JSON.stringify(this.user));
+      if (response.data?.token) {
+        this.token = response.data.token;
+        localStorage.setItem('token', this.token);
         
-        // Guardar también el nombre y email por separado para compatibilidad
-        let nombreCompleto = '';
-        
-        // Construir nombre completo si hay nombre y apellidos
-        if (this.user.nombre && this.user.apellidos) {
-          nombreCompleto = `${this.user.nombre} ${this.user.apellidos}`;
-          localStorage.setItem('userName', nombreCompleto);
-        } 
-        else if (this.user.nombre) {
-          localStorage.setItem('userName', this.user.nombre);
-        }
-        else if (this.user.username) {
-          localStorage.setItem('userName', this.user.username);
+        if (response.data.user) {
+          this.user = response.data.user;
+          this._persistUserData(this.user);
         }
         
-        if (this.user.email) {
-          localStorage.setItem('userEmail', this.user.email);
-        }
+        window.dispatchEvent(new Event('auth'));
+        console.log('Usuario registrado correctamente');
+        return response.data;
       }
       
-      window.dispatchEvent(new Event('auth'));
-      return response.data;
+      throw new Error('Token no recibido del servidor');
+    } catch (error) {
+      console.error('Error durante el registro de usuario:', error);
+      throw error;
     }
-    
-    throw new Error('Token no recibido del servidor');
   }
   
   /**
@@ -212,6 +214,7 @@ class AuthService {
     this.user = null;
     localStorage.clear();
     window.dispatchEvent(new Event('auth'));
+    console.log('Sesión cerrada');
   }
   
   /**

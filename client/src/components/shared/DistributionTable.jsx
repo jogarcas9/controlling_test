@@ -27,6 +27,7 @@ import {
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import { formatCurrency } from '../../utils/helpers';
+import * as sharedSessionService from '../../services/sharedSessionService';
 
 const DistributionTable = ({
   participants,
@@ -35,52 +36,129 @@ const DistributionTable = ({
   loading,
   error
 }) => {
-  const [participantsWithNames, setParticipantsWithNames] = useState(participants);
+  // Eliminar duplicados basados en userId
+  const uniqueParticipants = Array.from(new Map(
+    participants.map(p => [p.userId, p])
+  ).values());
+
+  const [participantsWithNames, setParticipantsWithNames] = useState(uniqueParticipants);
   const [percentages, setPercentages] = useState({});
   const [showSettlements, setShowSettlements] = useState(false);
   const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
+    // Aplicar filtro de participantes únicos
+    const uniqueParticipants = Array.from(new Map(
+      participants.filter(p => p && p.userId).map(p => [p.userId, p])
+    ).values());
+    
+    console.log('Participantes recibidos:', participants);
+    console.log('Participantes únicos filtrados:', uniqueParticipants);
+    
     const newPercentages = {};
-    participants.forEach(participant => {
-      newPercentages[participant.userId] = participant.percentage || Math.round(100 / participants.length);
+    
+    // Número total de participantes únicos
+    const totalParticipants = uniqueParticipants.length;
+    
+    // Si no hay participantes, salir
+    if (totalParticipants === 0) {
+      console.warn('No se encontraron participantes para la distribución');
+      return;
+    }
+    
+    // Calcular el porcentaje equitativo (siempre debe sumar 100%)
+    const equalPercentage = Math.floor(100 / totalParticipants);
+    let remainder = 100 - (equalPercentage * totalParticipants);
+    
+    uniqueParticipants.forEach((participant, index) => {
+      // Usar el porcentaje definido si existe
+      if (participant.percentage !== undefined && participant.percentage !== null) {
+        newPercentages[participant.userId] = participant.percentage;
+      } else {
+        // Añadir el residuo al primer participante
+        const adjustedPercentage = index === 0 ? equalPercentage + remainder : equalPercentage;
+        newPercentages[participant.userId] = adjustedPercentage;
+      }
     });
+    
+    // Verificar que sume exactamente 100%
+    const sum = Object.values(newPercentages).reduce((a, b) => a + b, 0);
+    if (sum !== 100 && uniqueParticipants.length > 0) {
+      // Ajustar el primer participante
+      const firstId = uniqueParticipants[0].userId;
+      newPercentages[firstId] = newPercentages[firstId] + (100 - sum);
+    }
+    
+    console.log('Porcentajes calculados:', newPercentages);
     setPercentages(newPercentages);
+    setParticipantsWithNames(uniqueParticipants);
   }, [participants]);
 
   useEffect(() => {
     const fetchParticipantNames = async () => {
+      // Si no hay participantes, no hacer nada
+      if (!participantsWithNames.length) {
+        console.log('No hay participantes para obtener nombres');
+        return;
+      }
+      
+      console.log('Obteniendo nombres para participantes:', participantsWithNames);
+      
       const updatedParticipants = await Promise.all(
-        participants.map(async (participant) => {
-          if (participant.name) return participant;
-          if (!participant.email) return { ...participant, name: 'Participante' };
+        participantsWithNames.map(async (participant) => {
+          // Si no tiene userId o email, mantener como está
+          if (!participant.userId || !participant.email) {
+            console.warn('Participante sin userId o email:', participant);
+            return { ...participant, name: participant.name || 'Participante' };
+          }
+          
+          // Si ya tiene nombre que no sea el email o parte del email, mantenerlo
+          if (participant.name && 
+              participant.email && 
+              !participant.email.includes(participant.name) && 
+              participant.name !== participant.email) {
+            return participant;
+          }
           
           try {
-            const response = await fetch(`/api/users/by-email/${encodeURIComponent(participant.email)}`, {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                'Content-Type': 'application/json'
+            console.log(`Obteniendo nombre para email: ${participant.email}`);
+            const data = await sharedSessionService.getUserByEmail(participant.email);
+            
+            // Extraer el mejor nombre disponible del usuario
+            let bestName = participant.email.split('@')[0]; // Default: parte del email
+            
+            if (data && data.user) {
+              const user = data.user;
+              
+              // Preferir nombre+apellidos si están disponibles
+              if (user.nombre && user.apellidos) {
+                bestName = `${user.nombre} ${user.apellidos}`.trim();
+              } else if (user.nombre) {
+                bestName = user.nombre;
+              } else if (user.name && user.name !== participant.email) {
+                bestName = user.name;
               }
-            });
-
-            if (!response.ok) {
-              throw new Error(`Error HTTP: ${response.status}`);
+              
+              console.log(`Nombre obtenido para ${participant.email}: ${bestName}`);
+            } else {
+              console.warn(`No se encontraron datos de usuario para email: ${participant.email}`);
             }
-
-            const data = await response.json();
+            
             return {
               ...participant,
-              name: data.user?.name || participant.email
+              name: bestName || participant.email.split('@')[0]
             };
           } catch (error) {
-            console.error('Error al obtener nombre del participante:', error);
+            console.error(`Error al obtener nombre para ${participant.email}:`, error);
             return {
               ...participant,
-              name: participant.email || 'Participante'
+              name: participant.email.split('@')[0] || 'Participante'
             };
           }
         })
       );
+      
+      console.log('Participantes con nombres actualizados:', updatedParticipants);
       setParticipantsWithNames(updatedParticipants);
     };
 
@@ -90,29 +168,48 @@ const DistributionTable = ({
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
   const handlePercentageChange = (participantId, value) => {
-    const newValue = Math.max(0, Math.min(100, Number(value) || 0));
+    // Redondear al entero más cercano y asegurar que esté entre 0 y 100
+    const newValue = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    
+    // Si no cambió el valor, no hacer nada
+    if (newValue === percentages[participantId]) {
+      return;
+    }
+    
     const newPercentages = { ...percentages };
     newPercentages[participantId] = newValue;
 
-    // Ajustar otros porcentajes
-    const otherParticipants = participants
+    // Ajustar otros porcentajes para mantener la suma en 100%
+    const otherParticipants = participantsWithNames
       .filter(p => p.userId !== participantId)
       .map(p => p.userId);
 
     if (otherParticipants.length > 0) {
       const remaining = 100 - newValue;
-      const perParticipant = Math.round(remaining / otherParticipants.length);
       
-      otherParticipants.forEach((id, index) => {
-        if (index === otherParticipants.length - 1) {
-          // El último participante toma el resto para asegurar que sume 100
-          const sumOthers = otherParticipants.slice(0, -1)
-            .reduce((sum, pid) => sum + newPercentages[pid], 0);
-          newPercentages[id] = 100 - newValue - sumOthers;
-        } else {
-          newPercentages[id] = perParticipant;
-        }
-      });
+      // Si solo hay un participante adicional, darle todo el resto
+      if (otherParticipants.length === 1) {
+        newPercentages[otherParticipants[0]] = remaining;
+      } else {
+        // Si hay más de uno, distribuir proporcionalmente
+        const perParticipant = Math.floor(remaining / otherParticipants.length);
+        let remainderForDistribution = remaining - (perParticipant * otherParticipants.length);
+        
+        otherParticipants.forEach((id, index) => {
+          if (index === 0) {
+            newPercentages[id] = perParticipant + remainderForDistribution;
+          } else {
+            newPercentages[id] = perParticipant;
+          }
+        });
+      }
+    }
+
+    // Verificar que sume exactamente 100
+    const sum = Object.values(newPercentages).reduce((a, b) => a + b, 0);
+    if (sum !== 100 && otherParticipants.length > 0) {
+      // Ajustar el primer "otro" participante para asegurar suma exacta
+      newPercentages[otherParticipants[0]] += (100 - sum);
     }
 
     setPercentages(newPercentages);
@@ -121,15 +218,27 @@ const DistributionTable = ({
 
   const validatePercentages = () => {
     const sum = Object.values(percentages).reduce((a, b) => a + b, 0);
-    if (Math.abs(sum - 100) > 0.01) {
-      setValidationError('Los porcentajes deben sumar 100%');
+    if (Math.abs(sum - 100) > 0.1) {  // Tolerancia de 0.1 para errores de redondeo
+      setValidationError(`Los porcentajes deben sumar 100%. Actualmente suman ${sum}%`);
       return false;
     }
     return true;
   };
 
   const handleApplyDistribution = () => {
-    if (validatePercentages()) {
+    // Asegurar que sumen 100% exactamente antes de aplicar
+    const sum = Object.values(percentages).reduce((a, b) => a + b, 0);
+    if (sum !== 100 && participantsWithNames.length > 0) {
+      // Ajustar silenciosamente el primer participante para que sume 100%
+      const newPercentages = { ...percentages };
+      newPercentages[participantsWithNames[0].userId] += (100 - sum);
+      setPercentages(newPercentages);
+      
+      // Validar de nuevo con los valores ajustados
+      if (validatePercentages()) {
+        onUpdateDistribution(newPercentages);
+      }
+    } else if (validatePercentages()) {
       onUpdateDistribution(percentages);
     }
   };
@@ -151,7 +260,7 @@ const DistributionTable = ({
   };
 
   const calculateSettlements = () => {
-    const balances = participants.map(p => ({
+    const balances = participantsWithNames.map(p => ({
       id: p.userId,
       name: p.name,
       balance: calculateBalance(p.userId)
@@ -208,18 +317,22 @@ const DistributionTable = ({
       <TableContainer component={Paper} sx={{ mb: 3, borderRadius: 2 }}>
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Participante</TableCell>
-              <TableCell align="right">Porcentaje</TableCell>
-              <TableCell align="right">Monto</TableCell>
+            <TableRow sx={{ backgroundColor: 'primary.light' }}>
+              <TableCell sx={{ fontWeight: 'bold', color: 'white' }}>Participante</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 'bold', color: 'white' }}>Porcentaje</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 'bold', color: 'white' }}>Monto</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {participantsWithNames.map((participant) => (
-              <TableRow key={participant.userId}>
+            {participantsWithNames.map((participant, index) => (
+              <TableRow key={`participant-${participant.userId || index}`}>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {participant.name || participant.email}
+                    <Typography variant="body1" fontWeight="medium">
+                      {participant.name && participant.email && !participant.email.includes(participant.name) 
+                        ? participant.name 
+                        : (participant.email ? participant.email.split('@')[0] : `Participante ${index + 1}`)}
+                    </Typography>
                     {participant.canEdit && (
                       <Tooltip title="Puede editar">
                         <EditIcon fontSize="small" color="action" />
@@ -235,12 +348,16 @@ const DistributionTable = ({
                 <TableCell align="right">
                   <TextField
                     type="number"
-                    value={percentages[participant.userId] || 0}
+                    value={Math.round(percentages[participant.userId] || 0)}
                     onChange={(e) => handlePercentageChange(participant.userId, e.target.value)}
                     size="small"
                     InputProps={{
                       endAdornment: '%',
-                      inputProps: { min: 0, max: 100 }
+                      inputProps: { 
+                        min: 0, 
+                        max: 100,
+                        step: 1 // Forzar enteros
+                      }
                     }}
                     sx={{ width: 100 }}
                   />
@@ -254,21 +371,23 @@ const DistributionTable = ({
         </Table>
       </TableContainer>
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-        <Button
-          variant="contained"
-          onClick={handleApplyDistribution}
-          disabled={loading}
-          startIcon={<CalculateIcon />}
-        >
-          Aplicar Distribución
-        </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Button
           variant="outlined"
           onClick={() => setShowSettlements(!showSettlements)}
           startIcon={showSettlements ? <ExpandLessIcon /> : <ExpandMoreIcon />}
         >
           {showSettlements ? 'Ocultar Pagos' : 'Ver Pagos Sugeridos'}
+        </Button>
+        
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleApplyDistribution}
+          disabled={loading}
+          sx={{ borderRadius: 2, fontWeight: 'bold' }}
+        >
+          Aplicar Distribución
         </Button>
       </Box>
 
@@ -281,7 +400,7 @@ const DistributionTable = ({
           
           {calculateSettlements().map((settlement, index) => (
             <Box
-              key={index}
+              key={`settlement-${index}`}
               sx={{
                 display: 'flex',
                 alignItems: 'center',

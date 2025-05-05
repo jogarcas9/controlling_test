@@ -10,13 +10,18 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  Paper,
+  Chip,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { 
   ArrowBack as ArrowBackIcon,
   Today as TodayIcon,
   ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon
+  ChevronRight as ChevronRightIcon,
+  Notifications as NotificationsIcon
 } from '@mui/icons-material';
 
 import SessionList from './SessionList';
@@ -24,8 +29,9 @@ import SessionForm from './SessionForm';
 import ExpenseList from './ExpenseList';
 import ExpenseForm from './ExpenseForm';
 import DistributionTable from './DistributionTable';
+import PendingInvitations from './PendingInvitations';
 
-import { useSessions, useExpenses, useDistribution } from '../../hooks';
+import { useSessions, useExpenses, useDistribution, useInvitations } from '../../hooks';
 import * as sharedSessionService from '../../services/sharedSessionService';
 import * as expenseService from '../../services/expenseService';
 import { formatMonthYear } from '../../utils/dateHelpers';
@@ -37,11 +43,17 @@ const SharedSessions = () => {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [editingExpense, setEditingExpense] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
   
   // Estados para la vista mensual
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+  
+  // Theme y responsive
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   // Nombres de los meses en español
   const monthNames = [
@@ -64,7 +76,7 @@ const SharedSessions = () => {
     createSession,
     updateSession,
     deleteSession,
-    inviteParticipants
+    getSessionDetails
   } = useSessions();
 
   const {
@@ -85,6 +97,13 @@ const SharedSessions = () => {
     calculateCustomDistribution,
     calculateSettlements
   } = useDistribution(expenses, currentSession?.participants || []);
+
+  const {
+    invitations,
+    count: pendingInvitationsCount,
+    fetchInvitations,
+    error: invitationsError
+  } = useInvitations();
 
   // Manejadores para la vista mensual
   const handleMonthChange = (event) => {
@@ -145,19 +164,65 @@ const SharedSessions = () => {
     }
   }, [currentSession, fetchExpenses, selectedMonth, selectedYear]);
 
+  // Nuevo efecto para gestionar invitaciones pendientes
+  const [showPendingInvitations, setShowPendingInvitations] = useState(false);
+
+  // Manejadores para invitaciones
+  const handleInvitationAccepted = async () => {
+    await fetchSessions();
+    await fetchInvitations();
+    
+    if (pendingInvitationsCount === 0) {
+      setShowPendingInvitations(false);
+    }
+  };
+  
+  const handleInvitationRejected = async () => {
+    await fetchInvitations();
+    
+    if (pendingInvitationsCount === 0) {
+      setShowPendingInvitations(false);
+    }
+  };
+
   // Manejadores de sesiones
-  const handleSelectSession = (session) => {
+  const handleSelectSession = async (session) => {
     console.log('Seleccionando sesión:', session);
+    
     // Verificar que la sesión tenga un ID antes de establecerla como actual
-    if (session && session._id) {
-      if (session.isLocked) {
-        // Si la sesión está bloqueada, mostrar un mensaje
+    if (!session || !session._id) {
+      console.error('Se intentó seleccionar una sesión sin ID:', session);
+      alert('Error: No se pudo cargar la sesión seleccionada');
+      return;
+    }
+    
+    try {
+      // Primero verificar si la sesión está bloqueada en los datos actualizados
+      const updatedSessionData = await getSessionDetails(session._id);
+      
+      if (!updatedSessionData) {
+        throw new Error('No se pudieron obtener los detalles actualizados de la sesión');
+      }
+      
+      if (updatedSessionData.isLocked) {
+        // Si la sesión está bloqueada, mostrar un mensaje informativo
         alert('Esta sesión está pendiente de confirmación por parte de los participantes. No se puede acceder hasta que todos los participantes acepten la invitación.');
         return;
       }
-      setCurrentSession(session);
-    } else {
-      console.error('Se intentó seleccionar una sesión sin ID:', session);
+      
+      // Establecer la sesión actual con los datos completos y actualizados
+      setCurrentSession(updatedSessionData);
+      
+      // Cargar gastos si es necesario
+      if (fetchExpenses) {
+        fetchExpenses(updatedSessionData._id);
+      }
+    } catch (error) {
+      console.error('Error al cargar los detalles de la sesión:', error);
+      const errorMessage = error.userMessage || error.message || 'Error desconocido';
+      alert(`Error al cargar los detalles de la sesión: ${errorMessage}`);
+      // Si hay error, limpiar la sesión actual
+      setCurrentSession(null);
     }
   };
 
@@ -167,9 +232,15 @@ const SharedSessions = () => {
   };
 
   const handleEditSession = (session) => {
-    // Solo el creador y administradores pueden editar la sesión
+    // Verificar permisos
     const userId = localStorage.getItem('userId');
     const userRole = getUserRoleInSession(session, userId);
+    
+    if (!userId) {
+      console.error('No se encontró el userId en localStorage');
+      alert('Error al verificar permisos: información de usuario no disponible');
+      return;
+    }
     
     if (userRole === 'Creador' || userRole === 'Administrador') {
       setEditingSession(session);
@@ -180,19 +251,26 @@ const SharedSessions = () => {
   };
 
   const handleDeleteSession = async (sessionId) => {
-    // Eliminamos la verificación de roles para permitir que cualquier usuario pueda eliminar sesiones
+    if (!sessionId) {
+      console.error('Se intentó eliminar una sesión sin ID');
+      return;
+    }
     
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta sesión?')) {
+    if (window.confirm('¿Estás seguro de que deseas eliminar esta sesión? Esta acción no se puede deshacer.')) {
       try {
         console.log('Intentando eliminar sesión:', sessionId);
         await deleteSession(sessionId);
         
+        // Si la sesión actual es la que se acaba de eliminar, resetear la vista
         if (currentSession?._id === sessionId) {
           setCurrentSession(null);
         }
+        
+        // La lista de sesiones ya se actualiza en el hook useSessions
       } catch (error) {
-        console.error('Error al eliminar sesión:', error);
-        alert(`Error al eliminar la sesión: ${error.response?.data?.msg || error.message}`);
+        console.error('Error al eliminar la sesión:', error);
+        const errorMessage = error.userMessage || error.message || 'Error desconocido';
+        alert(`Error al eliminar la sesión: ${errorMessage}`);
       }
     }
   };
@@ -211,63 +289,91 @@ const SharedSessions = () => {
     return participant ? participant.role : null;
   };
 
-  const handleSessionSubmit = async (sessionData) => {
+  // Modificar getUserNameByEmail para usar el servicio correctamente
+  const getUserNameByEmail = async (email) => {
+    if (!email) return null;
+    
     try {
-      console.log('Recibiendo datos del formulario:', JSON.stringify(sessionData, null, 2));
+      console.log(`Obteniendo información para el usuario con email: ${email}`);
+      const result = await sharedSessionService.getUserByEmail(email);
+      
+      if (result && result.user) {
+        console.log(`Nombre obtenido para ${email}: ${result.user.name}`);
+        return result.user.name || email.split('@')[0];
+      } else {
+        console.warn(`No se encontró información para el usuario con email: ${email}`);
+        return email.split('@')[0];
+      }
+    } catch (error) {
+      console.error(`Error al obtener información para el usuario con email ${email}:`, error);
+      return email.split('@')[0];
+    }
+  };
+
+  // Modificar handleSessionSubmit para incluir la obtención de nombres reales
+  const handleSubmitSession = async (sessionData) => {
+    try {
+      // Procesar participantes para obtener nombres reales
+      console.log('Procesando participantes para obtener nombres reales...');
+      const processedParticipants = await Promise.all(
+        sessionData.participants.map(async (participant) => {
+          if (!participant.email) return participant;
+          
+          try {
+            // Obtener nombre del usuario por email
+            const userName = await getUserNameByEmail(participant.email);
+            
+            console.log(`Participante ${participant.email} - Nombre obtenido: ${userName}`);
+            
+            return {
+              ...participant,
+              name: userName || participant.email.split('@')[0] // Usar el nombre real obtenido o parte del email como fallback
+            };
+          } catch (error) {
+            console.error(`Error al obtener nombre para ${participant.email}:`, error);
+            // En caso de error, usar el email como nombre
+            return {
+              ...participant,
+              name: participant.email.split('@')[0]
+            };
+          }
+        })
+      );
+      
+      const processedSessionData = {
+        ...sessionData,
+        participants: processedParticipants
+      };
+      
+      console.log('Datos de sesión procesados:', processedSessionData);
       
       if (editingSession) {
-        await updateSession(editingSession._id, sessionData);
-        if (currentSession?._id === editingSession._id) {
-          setCurrentSession(prev => ({ ...prev, ...sessionData }));
+        // Editar sesión existente
+        console.log('Actualizando sesión:', editingSession._id);
+        const updatedSession = await updateSession(editingSession._id, processedSessionData);
+        
+        // Si la sesión actual es la que se acaba de editar, actualizarla
+        if (currentSession && currentSession._id === editingSession._id) {
+          setCurrentSession(updatedSession);
         }
       } else {
-        console.log('Creando nueva sesión...');
-        // Asegurarnos de que los participantes tengan el formato correcto
-        const formattedData = {
-          ...sessionData,
-          participants: sessionData.participants.map(p => ({
-            email: p.email,
-            canEdit: p.canEdit || false,
-            canDelete: p.canDelete || false
-          }))
-        };
+        // Crear nueva sesión
+        console.log('Creando nueva sesión');
+        const newSession = await createSession(processedSessionData);
         
-        const response = await createSession(formattedData);
-        
-        // Extraer los datos de la sesión (puede estar en .data o directo)
-        const newSession = response.data || response;
-        console.log('Sesión creada:', JSON.stringify(newSession, null, 2));
-        
-        // Asegurarse que tenemos un ID de sesión válido
-        const sessionId = newSession._id;
-        if (!sessionId) {
-          console.error('La respuesta no incluye un ID de sesión válido:', newSession);
-          throw new Error('No se pudo obtener el ID de la sesión creada');
+        // Si la creación fue exitosa, seleccionar la nueva sesión
+        if (newSession && newSession._id) {
+          handleSelectSession(newSession);
         }
-        
-        // Enviar invitaciones a los participantes con roles
-        if (formattedData.participants && formattedData.participants.length > 0) {
-          try {
-            // Pasar la lista de participantes completa con sus permisos
-            const inviteResponse = await inviteParticipants(sessionId, formattedData.participants);
-            console.log('Respuesta de invitación:', inviteResponse);
-            
-            // Mostrar mensaje de éxito
-            alert(`Invitaciones enviadas correctamente a ${formattedData.participants.length} participantes.`);
-          } catch (inviteError) {
-            console.error('Error al enviar invitaciones:', inviteError);
-            alert('Error al enviar invitaciones: ' + (inviteError.response?.data?.msg || inviteError.message));
-          }
-        }
-        
-        // Recargar la lista de sesiones sin seleccionar la nueva
-        await fetchSessions();
       }
+      
+      // Cerrar el formulario
       setShowSessionForm(false);
       setEditingSession(null);
     } catch (error) {
       console.error('Error al guardar la sesión:', error);
-      alert('Error al guardar la sesión: ' + (error.response?.data?.msg || error.message));
+      const errorMessage = error.userMessage || error.message || 'Error desconocido';
+      alert(`Error al guardar la sesión: ${errorMessage}`);
     }
   };
 
@@ -278,17 +384,31 @@ const SharedSessions = () => {
   };
 
   const handleEditExpense = (expense) => {
-    // Verificar los permisos de usuario para editar gastos
+    // Verificar que el usuario sea participante de la sesión
     const userId = localStorage.getItem('userId');
-    const userRole = getUserRoleInSession(currentSession, userId);
     
-    // Administradores y creadores pueden editar cualquier gasto
-    // Usuarios normales solo pueden editar sus propios gastos
-    if (userRole === 'Administrador' || userRole === 'Creador' || expense.user === userId) {
+    if (!userId) {
+      console.error('No se encontró el userId en localStorage');
+      alert('Error al verificar permisos: información de usuario no disponible');
+      return;
+    }
+    
+    // Comprobar que existe una sesión seleccionada
+    if (!currentSession) {
+      console.error('No hay una sesión seleccionada');
+      return;
+    }
+    
+    // Comprobar que el usuario es participante de la sesión
+    const isParticipant = currentSession.participants?.some(
+      p => p.userId?._id === userId || p.userId === userId
+    );
+    
+    if (isParticipant) {
       setEditingExpense(expense);
       setShowExpenseForm(true);
     } else {
-      alert('No tienes permiso para editar este gasto.');
+      alert('No tienes permiso para editar gastos en esta sesión.');
     }
   };
 
@@ -355,7 +475,7 @@ const SharedSessions = () => {
       // Actualizar el estado local con la sesión actualizada
       setCurrentSession(prev => ({
         ...prev,
-        allocation: distribution
+        allocations: distribution
       }));
 
       // Recargar la sesión para asegurar que tenemos los datos actualizados
@@ -371,20 +491,26 @@ const SharedSessions = () => {
   // Manejador para sincronizar gastos compartidos con gastos personales
   const handleSyncToPersonal = async () => {
     if (!currentSession || !currentSession._id) {
-      console.error('No hay una sesión seleccionada');
+      console.error('No hay una sesión seleccionada para sincronizar');
       return;
     }
     
+    setLoading(true);
     try {
-      const response = await sharedSessionService.syncToPersonal(currentSession._id);
-      const result = response.data;
-      
+      const result = await sharedSessionService.syncToPersonal(currentSession._id);
       console.log('Resultado de sincronización:', result);
-      
-      alert(`Sincronización completada.\nGastos procesados: ${result.sync.processed}\nCreados: ${result.sync.created}\nActualizados: ${result.sync.updated}`);
+      setMessage({
+        type: 'success',
+        text: 'Los gastos de esta sesión han sido sincronizados a tus gastos personales'
+      });
     } catch (error) {
       console.error('Error al sincronizar gastos:', error);
-      alert('Error al sincronizar gastos: ' + (error.response?.data?.msg || error.message));
+      setMessage({
+        type: 'error',
+        text: 'Error al sincronizar los gastos a personales'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -399,45 +525,125 @@ const SharedSessions = () => {
   }
 
   return (
-    <Container maxWidth={false} sx={{ px: 0, pt: 3 }}>
-      {sessionsError && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {sessionsError}
-        </Alert>
+    <Container maxWidth="lg" sx={{ py: isMobile ? 2 : 4, px: isMobile ? 1 : 3 }}>
+      <Typography 
+        variant={isMobile ? "h5" : "h4"} 
+        component="h1" 
+        sx={{ 
+          mb: isMobile ? 2 : 4, 
+          fontWeight: 'bold',
+          fontSize: isMobile ? '1.3rem' : '2rem' 
+        }}
+      >
+        Sesiones Compartidas
+      </Typography>
+      
+      {/* Sección de invitaciones pendientes */}
+      {pendingInvitationsCount > 0 && (
+        <Box sx={{ mb: isMobile ? 2 : 3 }}>
+          <Button
+            variant={showPendingInvitations ? "contained" : "outlined"}
+            color="primary"
+            startIcon={<NotificationsIcon />}
+            onClick={() => setShowPendingInvitations(!showPendingInvitations)}
+            endIcon={
+              <Chip 
+                label={pendingInvitationsCount} 
+                color="error" 
+                size={isMobile ? "small" : "small"} 
+                sx={{ 
+                  ml: 1, 
+                  height: isMobile ? 18 : 20, 
+                  minWidth: isMobile ? 18 : 20,
+                  fontSize: isMobile ? '0.65rem' : '0.75rem'
+                }} 
+              />
+            }
+            sx={{ 
+              mb: 2,
+              fontSize: isMobile ? '0.75rem' : '0.875rem'
+            }}
+            size={isMobile ? "small" : "medium"}
+          >
+            {isMobile ? 'Invitaciones' : 'Invitaciones Pendientes'}
+          </Button>
+          
+          {showPendingInvitations && (
+            <Paper sx={{ p: isMobile ? 1.5 : 2, mb: isMobile ? 2 : 4, borderRadius: 2 }}>
+              <PendingInvitations 
+                onInvitationAccepted={handleInvitationAccepted}
+                onInvitationRejected={handleInvitationRejected}
+              />
+            </Paper>
+          )}
+        </Box>
       )}
-
+      
+      {/* Si no hay sesión seleccionada, mostrar la lista de sesiones */}
       {!currentSession ? (
-        <SessionList
-          sessions={sessions}
-          onSelectSession={handleSelectSession}
-          onEditSession={handleEditSession}
-          onDeleteSession={handleDeleteSession}
-          onAddSession={handleAddSession}
-        />
+        <Box>
+          {sessionsError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {sessionsError}
+            </Alert>
+          )}
+          
+          <SessionList
+            sessions={sessions}
+            onSelectSession={handleSelectSession}
+            onEditSession={handleEditSession}
+            onDeleteSession={handleDeleteSession}
+            onAddSession={handleAddSession}
+          />
+        </Box>
       ) : (
         <Box>
           <Box sx={{ 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'space-between', 
-            mb: 4 
+            mb: isMobile ? 2 : 4,
+            flexDirection: isMobile ? 'column' : 'row'
           }}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              mb: isMobile ? 2 : 0,
+              width: isMobile ? '100%' : 'auto'
+            }}>
               <IconButton
                 onClick={() => setCurrentSession(null)}
-                sx={{ mr: 2 }}
+                sx={{ mr: 1.5 }}
+                size={isMobile ? "small" : "medium"}
               >
-                <ArrowBackIcon />
+                <ArrowBackIcon fontSize={isMobile ? "small" : "medium"} />
               </IconButton>
-              <Typography variant="h4" component="h1">
+              <Typography 
+                variant={isMobile ? "h5" : "h4"} 
+                component="h1"
+                sx={{ 
+                  fontSize: isMobile ? '1.2rem' : '1.75rem',
+                  fontWeight: 'bold'
+                }}
+              >
                 {currentSession.name}
               </Typography>
             </Box>
             
-            <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              gap: 1.5,
+              flexDirection: isMobile ? 'column' : 'row',
+              width: isMobile ? '100%' : 'auto'
+            }}>
               {/* Botones de navegación para sesión permanente */}
               {currentSession.sessionType === 'permanent' && (
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  mb: isMobile ? 1 : 0,
+                  justifyContent: isMobile ? 'center' : 'flex-start'
+                }}>
                   <IconButton 
                     size="small" 
                     color="primary" 
@@ -446,13 +652,21 @@ const SharedSessions = () => {
                     sx={{ 
                       border: '1px solid', 
                       borderColor: 'divider',
-                      borderRadius: 2
+                      borderRadius: 2,
+                      p: isMobile ? 0.5 : 0.75
                     }}
                   >
-                    <ChevronLeftIcon fontSize="small" />
+                    <ChevronLeftIcon fontSize={isMobile ? "small" : "small"} />
                   </IconButton>
                   
-                  <Typography variant="subtitle1" sx={{ mx: 2 }}>
+                  <Typography 
+                    variant={isMobile ? "body1" : "subtitle1"} 
+                    sx={{ 
+                      mx: 1.5,
+                      fontSize: isMobile ? '0.85rem' : '1rem',
+                      fontWeight: 'medium'
+                    }}
+                  >
                     {monthNames[selectedMonth]} {selectedYear}
                   </Typography>
                   
@@ -464,10 +678,11 @@ const SharedSessions = () => {
                     sx={{ 
                       border: '1px solid', 
                       borderColor: 'divider',
-                      borderRadius: 2
+                      borderRadius: 2,
+                      p: isMobile ? 0.5 : 0.75
                     }}
                   >
-                    <ChevronRightIcon fontSize="small" />
+                    <ChevronRightIcon fontSize={isMobile ? "small" : "small"} />
                   </IconButton>
                   
                   <IconButton 
@@ -479,10 +694,11 @@ const SharedSessions = () => {
                       border: '1px solid', 
                       borderColor: 'divider',
                       borderRadius: 2,
-                      ml: 1
+                      ml: 1,
+                      p: isMobile ? 0.5 : 0.75
                     }}
                   >
-                    <TodayIcon fontSize="small" />
+                    <TodayIcon fontSize={isMobile ? "small" : "small"} />
                   </IconButton>
                 </Box>
               )}
@@ -491,14 +707,30 @@ const SharedSessions = () => {
                 variant="outlined"
                 color="primary"
                 onClick={handleSyncToPersonal}
-                sx={{ borderRadius: 2 }}
+                sx={{ 
+                  borderRadius: 2,
+                  fontSize: isMobile ? '0.75rem' : '0.875rem'
+                }}
+                disabled={loading}
+                size={isMobile ? "small" : "medium"}
+                fullWidth={isMobile}
               >
-                Sincronizar a Gastos Personales
+                {loading ? 'Sincronizando...' : (isMobile ? 'Sincronizar Gastos' : 'Sincronizar a Gastos Personales')}
               </Button>
             </Box>
           </Box>
           
-          {currentSession.sessionType === 'permanent' && (
+          {message && (
+            <Alert 
+              severity={message.type} 
+              sx={{ mb: isMobile ? 2 : 3 }}
+              onClose={() => setMessage(null)}
+            >
+              {message.text}
+            </Alert>
+          )}
+          
+          {currentSession.sessionType === 'permanent' && !isMobile && (
             <Typography variant="h6" sx={{ mb: 3, color: 'primary.main' }}>
               {monthNames[selectedMonth]} {selectedYear}
               {(selectedMonth !== today.getMonth() || selectedYear !== today.getFullYear()) && (
@@ -514,7 +746,7 @@ const SharedSessions = () => {
             </Typography>
           )}
 
-          <Box sx={{ mb: 4 }}>
+          <Box sx={{ mb: isMobile ? 2 : 4 }}>
             <ExpenseList
               expenses={expenses}
               onAddExpense={handleAddExpense}
@@ -530,19 +762,82 @@ const SharedSessions = () => {
           {currentSession.participants?.length > 0 && (
             <Box>
               <DistributionTable
-                participants={[
-                  ...new Map(currentSession.participants.map(p => [
-                    typeof p.userId === 'object' ? p.userId.toString() : p.userId,
-                    {
-                      userId: typeof p.userId === 'object' ? p.userId.toString() : p.userId,
-                      name: p.name,
-                      email: p.email,
-                      percentage: currentSession.allocation?.find(
-                        a => a.userId.toString() === (typeof p.userId === 'object' ? p.userId.toString() : p.userId)
-                      )?.percentage || Math.round(100 / currentSession.participants.length)
+                participants={(() => {
+                  const participantsList = [];
+                  const addedUserIds = new Set(); // Para evitar duplicados
+
+                  // Función para obtener el mejor nombre disponible
+                  const getBestName = (participant) => {
+                    // Si tenemos un objeto usuario completo
+                    if (participant.userId && typeof participant.userId === 'object') {
+                      const user = participant.userId;
+                      
+                      // Intentar obtener nombre+apellidos
+                      if (user.nombre && user.apellidos) {
+                        return `${user.nombre} ${user.apellidos}`.trim();
+                      } else if (user.nombre) {
+                        return user.nombre;
+                      } else if (user.name) {
+                        return user.name;
+                      }
                     }
-                  ])).values()
-                ]}
+                    
+                    // Usar el nombre explícito del participante si existe y no es el email
+                    if (participant.name && 
+                        participant.email && 
+                        participant.name !== participant.email && 
+                        !participant.email.includes(participant.name)) {
+                      return participant.name;
+                    }
+                    
+                    // Si todo lo demás falla, usar la parte local del email
+                    return participant.email ? participant.email.split('@')[0] : 'Participante';
+                  };
+                  
+                  // Procesar todos los participantes
+                  const allParticipants = currentSession.participants || [];
+                  
+                  allParticipants.forEach(participant => {
+                    // Obtener el ID del usuario
+                    let userId = participant.userId;
+                    
+                    // Si es un objeto, extraer su ID
+                    if (userId && typeof userId === 'object') {
+                      userId = userId._id || userId.id || userId.toString();
+                    }
+                    
+                    // Si no hay ID o ya fue agregado, saltar
+                    if (!userId || addedUserIds.has(userId.toString())) {
+                      return;
+                    }
+                    
+                    // Registrar este ID como procesado
+                    addedUserIds.add(userId.toString());
+                    
+                    // Obtener el mejor nombre disponible
+                    const name = getBestName(participant);
+                    
+                    // Obtener el porcentaje de asignación si existe
+                    const allocation = currentSession.allocations?.find(
+                      a => {
+                        const allocUserId = typeof a.userId === 'object' 
+                          ? (a.userId._id || a.userId.id || a.userId.toString()) 
+                          : a.userId;
+                        return allocUserId?.toString() === userId.toString();
+                      }
+                    );
+                    
+                    participantsList.push({
+                      userId: userId.toString(),
+                      name: name,
+                      email: participant.email,
+                      percentage: allocation?.percentage || 0
+                    });
+                  });
+                  
+                  console.log('Participantes procesados para distribución:', participantsList);
+                  return participantsList;
+                })()}
                 expenses={expenses}
                 onUpdateDistribution={handleUpdateDistribution}
                 loading={expensesLoading}
@@ -560,7 +855,7 @@ const SharedSessions = () => {
           setShowSessionForm(false);
           setEditingSession(null);
         }}
-        onSubmit={handleSessionSubmit}
+        onSubmit={handleSubmitSession}
         initialData={editingSession}
         loading={sessionsLoading}
         error={sessionsError}

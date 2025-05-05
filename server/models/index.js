@@ -5,6 +5,8 @@ const Allocation = require('./Allocation');
 const SharedExpense = require('./SharedExpense');
 const ExpenseDistribution = require('./ExpenseDistribution');
 const PersonalExpense = require('./PersonalExpense');
+const Expense = require('./Expense');
+const ParticipantAllocation = require('./ParticipantAllocation');
 
 module.exports = {
   User,
@@ -13,5 +15,7 @@ module.exports = {
   Allocation,
   SharedExpense,
   ExpenseDistribution,
-  PersonalExpense
+  PersonalExpense,
+  Expense,
+  ParticipantAllocation
 }; 

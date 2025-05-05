@@ -14,6 +14,8 @@ import {
   useMediaQuery,
   useTheme,
   Paper,
+  Collapse,
+  Badge,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -25,16 +27,30 @@ import {
   Group as GroupIcon,
   Logout as LogoutIcon,
   Menu as MenuIcon,
+  ExpandLess,
+  ExpandMore,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import authService from '../../services/authService';
 
-const Sidebar = ({ isMinimized, onMinimizeToggle, handleLogout, handleDrawerToggle, mobileOpen }) => {
+const Sidebar = ({ 
+  isMinimized, 
+  onMinimizeToggle, 
+  handleLogout, 
+  handleDrawerToggle, 
+  mobileOpen, 
+  isMobile = false,
+  isTablet = false
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMediumScreen = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  
+  // Calcular la visualización del sidebar según el dispositivo
+  const effectiveMinimized = isMobile ? false : isMinimized;
   
   // Estado para almacenar los datos del usuario
   const [userData, setUserData] = useState(null);
@@ -57,54 +73,58 @@ const Sidebar = ({ isMinimized, onMinimizeToggle, handleLogout, handleDrawerTogg
           // Si tenemos nombre y apellidos, construir nombre completo
           if (user.nombre && user.apellidos) {
             name = `${user.nombre} ${user.apellidos}`;
+          } else if (user.nombre) {
+            name = user.nombre;
+          } else if (user.name) {
+            name = user.name;
+          } else if (user.username) {
+            name = user.username;
+          } else if (user.email) {
+            name = user.email.split('@')[0];
           } else {
-            name = user.nombre || 
-                   user.name || 
-                   user.username || 
-                   (user.email ? user.email.split('@')[0] : '');
+            name = 'Usuario';
           }
-                       
+          
           setDisplayName(name);
           setUserEmail(user.email || '');
         } else {
-          // Si no hay datos del usuario desde el servicio, intentar desde localStorage
+          // Si no hay datos del usuario, cargar desde localStorage como fallback
           const storedUser = localStorage.getItem('user');
+          const userName = localStorage.getItem('userName');
+          const userEmail = localStorage.getItem('userEmail');
+          
           if (storedUser) {
             try {
               const parsedUser = JSON.parse(storedUser);
               setUserData(parsedUser);
               
-              // Establecer el nombre para mostrar
-              let name = '';
-              
-              // Si tenemos nombre y apellidos, construir nombre completo
-              if (parsedUser.nombre && parsedUser.apellidos) {
-                name = `${parsedUser.nombre} ${parsedUser.apellidos}`;
+              if (userName) {
+                setDisplayName(userName);
               } else {
-                name = parsedUser.nombre || 
-                       parsedUser.name || 
-                       parsedUser.username || 
-                       (parsedUser.email ? parsedUser.email.split('@')[0] : '');
+                let name = parsedUser.nombre || parsedUser.name || parsedUser.username;
+                if (!name && parsedUser.email) name = parsedUser.email.split('@')[0];
+                setDisplayName(name || 'Usuario');
               }
-                           
-              setDisplayName(name);
-              setUserEmail(parsedUser.email || '');
+              
+              setUserEmail(userEmail || parsedUser.email || '');
             } catch (error) {
               console.error('Error al parsear datos de usuario:', error);
-              setDisplayName(localStorage.getItem('userName') || '');
-              setUserEmail(localStorage.getItem('userEmail') || '');
+              setDisplayName(userName || 'Usuario');
+              setUserEmail(userEmail || '');
             }
           } else {
             // Último intento: usar los valores directos de localStorage
-            setDisplayName(localStorage.getItem('userName') || '');
-            setUserEmail(localStorage.getItem('userEmail') || '');
+            setDisplayName(userName || 'Usuario');
+            setUserEmail(userEmail || '');
           }
         }
       } catch (error) {
         console.error('Error al cargar datos del usuario:', error);
         // Usar los valores de localStorage como fallback
-        setDisplayName(localStorage.getItem('userName') || '');
-        setUserEmail(localStorage.getItem('userEmail') || '');
+        const userName = localStorage.getItem('userName');
+        const userEmail = localStorage.getItem('userEmail');
+        setDisplayName(userName || 'Usuario');
+        setUserEmail(userEmail || '');
       }
     };
     
@@ -141,22 +161,23 @@ const Sidebar = ({ isMinimized, onMinimizeToggle, handleLogout, handleDrawerTogg
         position: 'relative',
         boxShadow: theme.shadows[1],
         overflowX: 'hidden',
+        maxWidth: '100%',
       }}
     >
-      {/* Botón para minimizar/maximizar en la esquina superior derecha (solo en desktop) */}
-      {!isMobile && (
+      {/* Botón para minimizar/maximizar (solo en desktop) */}
+      {!isSmallScreen && !isTablet && (
         <Box
           sx={{
             position: 'absolute',
-            top: isMinimized ? 12 : 16,
-            right: isMinimized ? 12 : 16,
+            top: effectiveMinimized ? 12 : 16,
+            right: effectiveMinimized ? 12 : 16,
             zIndex: 10,
             transition: theme.transitions.create(['top', 'right'], {
               duration: theme.transitions.duration.shorter,
             }),
           }}
         >
-          <Tooltip title={isMinimized ? t('expand') : t('collapse')} placement="left">
+          <Tooltip title={effectiveMinimized ? t('expand') : t('collapse')} placement="left">
             <IconButton 
               onClick={onMinimizeToggle}
               size="small"
@@ -176,7 +197,7 @@ const Sidebar = ({ isMinimized, onMinimizeToggle, handleLogout, handleDrawerTogg
                 }),
               }}
             >
-              {isMinimized ? <ChevronRight fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+              {effectiveMinimized ? <ChevronRight fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
         </Box>
@@ -185,58 +206,80 @@ const Sidebar = ({ isMinimized, onMinimizeToggle, handleLogout, handleDrawerTogg
       {/* Header con información del usuario y botón de menú móvil */}
       <Box
         sx={{
-          p: 2.5,
+          p: { xs: 1.5, sm: 2, md: 2.5 },
           display: 'flex',
           flexDirection: 'column',
-          alignItems: isMinimized ? 'center' : 'flex-start',
-          gap: 1.5,
-          pb: 3,
-          pt: isMinimized ? 5 : 4,
+          alignItems: effectiveMinimized ? 'center' : 'flex-start',
+          gap: { xs: 1, sm: 1.5 },
+          pb: { xs: 2, sm: 3 },
+          pt: effectiveMinimized ? 5 : { xs: 3, sm: 4 },
+          borderBottom: '1px solid',
+          borderColor: 'divider',
         }}
       >
-        <Box 
-          sx={{ 
-            width: '100%', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: isMinimized ? 'center' : 'space-between',
-            mb: isMinimized ? 0 : 1.5,
-            position: 'relative',
-          }}
-        >
-          <Avatar
-            sx={{
-              width: isMinimized ? 46 : 56,
-              height: isMinimized ? 46 : 56,
-              bgcolor: 'primary.main',
-              fontSize: isMinimized ? '1.1rem' : '1.4rem',
-              fontWeight: 'bold',
-              boxShadow: 2,
-              transition: theme.transitions.create(['width', 'height', 'fontSize'], {
-                duration: theme.transitions.duration.shorter,
-              }),
-              border: '2px solid',
-              borderColor: 'background.paper',
-            }}
-          >
-            {getUserInitials()}
-          </Avatar>
-          {isMobile && (
-            <IconButton
+        {/* Mostrar botón de menú hamburgesa en móvil */}
+        {(isMobile || isTablet) && (
+          <Box sx={{ width: '100%', display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <IconButton 
+              edge="start" 
               onClick={handleDrawerToggle}
-              sx={{ color: 'text.secondary' }}
+              sx={{ color: 'primary.main' }}
             >
               <MenuIcon />
             </IconButton>
-          )}
-        </Box>
-        {!isMinimized && (
-          <Box sx={{ width: '100%' }}>
-            <Typography variant="subtitle1" fontWeight="bold" noWrap>
-              {displayName || userEmail.split('@')[0]}
+          </Box>
+        )}
+
+        {/* Avatar del usuario */}
+        <Avatar
+          sx={{
+            width: effectiveMinimized ? 40 : { xs: 48, sm: 56 },
+            height: effectiveMinimized ? 40 : { xs: 48, sm: 56 },
+            bgcolor: 'primary.main',
+            fontSize: effectiveMinimized ? '1rem' : { xs: '1.2rem', sm: '1.4rem' },
+            fontWeight: 'bold',
+            boxShadow: 2,
+            border: '2px solid',
+            borderColor: 'background.paper',
+            transition: theme.transitions.create(['width', 'height'], {
+              duration: theme.transitions.duration.shortest,
+            }),
+          }}
+        >
+          {getUserInitials()}
+        </Avatar>
+
+        {/* Nombre y correo electrónico del usuario */}
+        {!effectiveMinimized && (
+          <Box sx={{ mt: { xs: 0.5, sm: 1 } }}>
+            <Typography 
+              variant="subtitle1" 
+              sx={{ 
+                fontWeight: 'bold',
+                fontSize: { xs: '0.95rem', sm: '1.1rem' }, 
+                lineHeight: 1.2,
+                mb: 0.5,
+                maxWidth: { xs: '180px', sm: '200px' },
+                textOverflow: 'ellipsis',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {displayName}
             </Typography>
             {userEmail && (
-              <Typography variant="body2" color="text.secondary" noWrap>
+              <Typography 
+                variant="caption" 
+                color="text.secondary"
+                sx={{ 
+                  fontSize: { xs: '0.75rem', sm: '0.8rem' },
+                  maxWidth: { xs: '180px', sm: '200px' },
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                  display: 'block',
+                }}
+              >
                 {userEmail}
               </Typography>
             )}
@@ -244,85 +287,72 @@ const Sidebar = ({ isMinimized, onMinimizeToggle, handleLogout, handleDrawerTogg
         )}
       </Box>
 
-      <Divider sx={{ opacity: 0.7 }} />
-
-      {/* Menú principal */}
+      {/* Lista de elementos de navegación */}
       <List 
         sx={{ 
-          flexGrow: 1,
-          px: isMinimized ? 1 : 1.5,
-          py: 2,
+          width: '100%', 
+          p: { xs: 1, sm: 1.5 },
+          flexGrow: 1
         }}
       >
         {menuItems.map((item) => {
-          const isSelected = location.pathname === item.path;
+          const isActive = location.pathname.startsWith(item.path);
+          
           return (
             <ListItem
-              button
               key={item.path}
+              button
               onClick={() => {
                 navigate(item.path);
-                if (isMobile) handleDrawerToggle();
+                if (isMobile || isTablet) {
+                  handleDrawerToggle();
+                }
               }}
-              selected={isSelected}
               sx={{
-                justifyContent: isMinimized ? 'center' : 'flex-start',
-                py: 1.2,
-                mb: 0.8,
+                px: { xs: 1.5, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                mb: { xs: 0.5, sm: 0.75 },
                 borderRadius: 1.5,
-                transition: theme.transitions.create(
-                  ['background-color', 'box-shadow'],
-                  { duration: theme.transitions.duration.standard }
-                ),
-                '&.Mui-selected': {
-                  bgcolor: 'primary.main',
-                  color: 'primary.contrastText',
-                  boxShadow: 1,
-                  '&:hover': {
-                    bgcolor: 'primary.dark',
-                  },
-                  '& .MuiListItemIcon-root': {
-                    color: 'primary.contrastText',
-                  },
-                },
+                position: 'relative',
+                backgroundColor: isActive ? 'action.selected' : 'transparent',
                 '&:hover': {
-                  bgcolor: isSelected ? 'primary.dark' : 'action.hover',
-                  borderRadius: 1.5,
-                  transform: 'translateY(-2px)',
-                  boxShadow: 2,
+                  backgroundColor: isActive ? 'action.selected' : 'action.hover',
                 },
+                overflow: 'hidden',
+                flexWrap: 'nowrap',
               }}
             >
-              <Tooltip title={isMinimized ? item.text : ''} placement="right">
-                <ListItemIcon
+              {isActive && (
+                <Box
                   sx={{
-                    minWidth: isMinimized ? 'auto' : 44,
-                    color: location.pathname === item.path ? 'inherit' : 'text.secondary',
-                    transition: theme.transitions.create(['color', 'transform'], {
-                      duration: theme.transitions.duration.shorter,
-                    }),
-                    '& .MuiSvgIcon-root': {
-                      fontSize: '1.4rem',
-                      transition: theme.transitions.create('transform', {
-                        duration: theme.transitions.duration.shorter,
-                      }),
-                    },
-                    '&:hover .MuiSvgIcon-root': {
-                      transform: 'scale(1.1)',
-                    },
-                    mx: isMinimized ? 'auto' : 0,
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 4,
+                    bgcolor: 'primary.main',
+                    borderRadius: '0 4px 4px 0',
                   }}
-                >
-                  {item.icon}
-                </ListItemIcon>
-              </Tooltip>
-              {!isMinimized && (
+                />
+              )}
+              <ListItemIcon
+                sx={{
+                  minWidth: effectiveMinimized ? 0 : 40,
+                  color: isActive ? 'primary.main' : 'text.primary',
+                  justifyContent: effectiveMinimized ? 'center' : 'flex-start',
+                  mr: effectiveMinimized ? 0 : 1,
+                }}
+              >
+                {item.icon}
+              </ListItemIcon>
+              
+              {!effectiveMinimized && (
                 <ListItemText
                   primary={item.text}
                   primaryTypographyProps={{
-                    sx: {
-                      fontWeight: location.pathname === item.path ? 600 : 400,
-                    },
+                    fontSize: { xs: '0.9rem', sm: '0.95rem' },
+                    fontWeight: isActive ? 'bold' : 'normal',
+                    color: isActive ? 'primary.main' : 'text.primary',
                   }}
                 />
               )}
@@ -331,72 +361,45 @@ const Sidebar = ({ isMinimized, onMinimizeToggle, handleLogout, handleDrawerTogg
         })}
       </List>
 
-      {/* Botón de logout */}
-      <Divider sx={{ opacity: 0.7 }} />
-      <List sx={{ px: isMinimized ? 1 : 1.5, py: 1.5 }}>
+      {/* Divider antes del botón de cerrar sesión */}
+      <Divider sx={{ my: { xs: 0.5, sm: 1 } }} />
+      
+      {/* Botón de cerrar sesión */}
+      <Box sx={{ p: { xs: 1, sm: 1.5 }, mb: { xs: 1, sm: 2 } }}>
         <ListItem
           button
           onClick={handleLogout}
           sx={{
-            justifyContent: isMinimized ? 'center' : 'flex-start',
-            py: 1.2,
             borderRadius: 1.5,
-            transition: theme.transitions.create(
-              ['background-color', 'color', 'box-shadow', 'transform'],
-              { duration: theme.transitions.duration.shorter }
-            ),
+            py: { xs: 0.75, sm: 1 },
+            px: { xs: 1.5, sm: 2 },
             '&:hover': {
-              bgcolor: 'error.lighter',
-              borderRadius: 1.5,
-              transform: 'translateY(-2px)',
-              boxShadow: 2,
-              '& .MuiListItemIcon-root': {
-                color: 'error.main',
-              },
-              '& .MuiListItemText-primary': {
-                color: 'error.main',
-              },
+              backgroundColor: 'action.hover',
             },
           }}
         >
-          <Tooltip title={isMinimized ? t('logout') : ''} placement="right">
-            <ListItemIcon
-              sx={{
-                minWidth: isMinimized ? 'auto' : 44,
-                color: 'text.secondary',
-                transition: theme.transitions.create('color', {
-                  duration: theme.transitions.duration.shorter,
-                }),
-                '& .MuiSvgIcon-root': {
-                  fontSize: '1.4rem',
-                  transition: theme.transitions.create('transform', {
-                    duration: theme.transitions.duration.shorter,
-                  }),
-                },
-                '&:hover .MuiSvgIcon-root': {
-                  transform: 'scale(1.1)',
-                },
-                mx: isMinimized ? 'auto' : 0,
-              }}
-            >
-              <LogoutIcon />
-            </ListItemIcon>
-          </Tooltip>
-          {!isMinimized && (
+          <ListItemIcon
+            sx={{
+              minWidth: effectiveMinimized ? 0 : 40,
+              color: 'text.secondary',
+              justifyContent: effectiveMinimized ? 'center' : 'flex-start',
+              mr: effectiveMinimized ? 0 : 1,
+            }}
+          >
+            <LogoutIcon />
+          </ListItemIcon>
+          
+          {!effectiveMinimized && (
             <ListItemText
               primary={t('logout')}
               primaryTypographyProps={{
-                sx: { 
-                  color: 'text.secondary',
-                  transition: theme.transitions.create('color', {
-                    duration: theme.transitions.duration.shorter,
-                  }),
-                },
+                fontSize: { xs: '0.9rem', sm: '0.95rem' },
+                color: 'text.secondary',
               }}
             />
           )}
         </ListItem>
-      </List>
+      </Box>
     </Box>
   );
 };

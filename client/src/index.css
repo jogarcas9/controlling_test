@@ -41,6 +41,13 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  /* Variables para breakpoints */
+  --breakpoint-xs: 0;
+  --breakpoint-sm: 600px;
+  --breakpoint-md: 960px;
+  --breakpoint-lg: 1280px;
+  --breakpoint-xl: 1920px;
 }
 
 * {
@@ -51,6 +58,7 @@
 
 html {
   scroll-behavior: smooth;
+  font-size: 14px;
 }
 
 body {
@@ -132,4 +140,237 @@ button, a, input, select, textarea {
 
 .slide-up {
   animation: slideUp 0.4s ease-out;
+}
+
+/* Media Queries para Responsive Design */
+
+/* Mobile (xs) - hasta 599px */
+@media screen and (max-width: 599px) {
+  .hide-xs {
+    display: none !important;
+  }
+  
+  .container {
+    padding: var(--spacing-sm);
+  }
+  
+  /* Ajustes para formularios en móvil */
+  form {
+    width: 100%;
+  }
+  
+  .form-container {
+    width: 100%;
+    padding: var(--spacing-sm);
+  }
+  
+  /* Ajustes para tablas en móvil */
+  table {
+    font-size: 0.8rem;
+  }
+  
+  /* Ajustes para botones en móvil */
+  button {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+  }
+
+  /* Reducir espaciado en móviles */
+  .MuiContainer-root {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  /* Reducir tamaño de tarjetas en móviles */
+  .MuiCard-root {
+    border-radius: 8px !important;
+  }
+  
+  .MuiCardContent-root {
+    padding: 12px !important;
+  }
+  
+  /* Reducir tamaño de tipografía en móviles */
+  h1, .MuiTypography-h1 {
+    font-size: 1.6rem !important;
+  }
+  
+  h2, .MuiTypography-h2 {
+    font-size: 1.4rem !important;
+  }
+  
+  h3, .MuiTypography-h3 {
+    font-size: 1.3rem !important;
+  }
+  
+  h4, .MuiTypography-h4 {
+    font-size: 1.2rem !important;
+  }
+  
+  h5, .MuiTypography-h5 {
+    font-size: 1.1rem !important;
+  }
+  
+  h6, .MuiTypography-h6 {
+    font-size: 1rem !important;
+  }
+
+  /* Ajustar espaciado entre elementos */
+  .MuiGrid-container {
+    margin-top: -8px !important;
+    margin-left: -8px !important;
+    width: calc(100% + 16px) !important;
+  }
+  
+  .MuiGrid-item {
+    padding-top: 8px !important;
+    padding-left: 8px !important;
+  }
+
+  /* Hacer los inputs más pequeños */
+  .MuiInputBase-root {
+    font-size: 0.85rem !important;
+  }
+  
+  .MuiInputLabel-root {
+    font-size: 0.85rem !important;
+    transform: translate(14px, 12px) scale(1) !important;
+  }
+  
+  .MuiInputBase-input {
+    padding: 10px 14px !important;
+  }
+
+  /* Reducir padding en diálogos */
+  .MuiDialogContent-root {
+    padding: 12px !important;
+  }
+  
+  .MuiDialogActions-root {
+    padding: 8px 12px !important;
+  }
+
+  /* Reducir tamaño de avatares */
+  .MuiAvatar-root {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 1rem !important;
+  }
+
+  /* Ajustar barra inferior */
+  .MuiBottomNavigation-root {
+    height: 48px !important;
+  }
+}
+
+/* Asegurarse que el contenido principal tenga suficiente espacio para la barra de navegación móvil */
+.main-content-with-bottom-nav {
+  padding-bottom: 56px !important;
+}
+
+@media screen and (max-width: 599px) {
+  .main-content-with-bottom-nav {
+    padding-bottom: 48px !important;
+  }
+}
+
+/* Tablet (sm) - 600px a 959px */
+@media screen and (min-width: 600px) and (max-width: 959px) {
+  .hide-sm {
+    display: none !important;
+  }
+  
+  .container {
+    padding: var(--spacing-md);
+  }
+  
+  /* Ajustes para layouts en tablet */
+  .grid-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop pequeño (md) - 960px a 1279px */
+@media screen and (min-width: 960px) and (max-width: 1279px) {
+  .hide-md {
+    display: none !important;
+  }
+  
+  .container {
+    padding: var(--spacing-lg);
+  }
+  
+  .grid-container {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Desktop grande (lg) - 1280px en adelante */
+@media screen and (min-width: 1280px) {
+  .hide-lg {
+    display: none !important;
+  }
+  
+  .container {
+    padding: var(--spacing-xl);
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+  
+  .grid-container {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Utilidades responsive */
+.flex-col-xs {
+  display: flex;
+  flex-direction: column;
+}
+
+@media screen and (min-width: 600px) {
+  .flex-row-sm {
+    display: flex;
+    flex-direction: row;
+  }
+}
+
+.text-center-xs {
+  text-align: center;
+}
+
+@media screen and (min-width: 600px) {
+  .text-left-sm {
+    text-align: left;
+  }
+}
+
+/* Espaciado responsive */
+.p-responsive {
+  padding: var(--spacing-sm);
+}
+
+@media screen and (min-width: 600px) {
+  .p-responsive {
+    padding: var(--spacing-md);
+  }
+}
+
+@media screen and (min-width: 960px) {
+  .p-responsive {
+    padding: var(--spacing-lg);
+  }
+}
+
+/* Tamaños de fuente responsive */
+@media screen and (min-width: 600px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+@media screen and (min-width: 960px) {
+  html {
+    font-size: 16px;
+  }
 }

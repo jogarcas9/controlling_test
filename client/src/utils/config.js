@@ -26,6 +26,15 @@ const config = {
     DETAIL: (id) => `/api/personal-expenses/${id}`
   },
   
+  PERSONAL_EXPENSES: {
+    MONTHLY: '/api/personal-expenses/monthly',
+    FILTERED: (month, year) => `/api/personal-expenses?month=${month}&year=${year}`,
+    CREATE: '/api/personal-expenses',
+    UPDATE: (id) => `/api/personal-expenses/${id}`,
+    DELETE: (id) => `/api/personal-expenses/${id}`,
+    SHARED_SUMMARY: '/api/personal-expenses/generate-shared-month'
+  },
+  
   INCOME: {
     MONTHLY: '/api/income/monthly',
     BASE: '/api/income',
@@ -34,7 +43,10 @@ const config = {
   
   SHARED: {
     BASE: '/api/shared-sessions',
-    DETAIL: (id) => `/api/shared-sessions/${id}`
+    DETAIL: (id) => `/api/shared-sessions/${id}`,
+    EXPENSES: (id) => `/api/shared-sessions/${id}/expenses`,
+    EXPENSE: (sessionId, expenseId) => `/api/shared-sessions/${sessionId}/expenses/${expenseId}`,
+    SYNC_TO_PERSONAL: (id) => `/api/shared-sessions/${id}/sync-to-personal`
   },
   
   REPORTS: {

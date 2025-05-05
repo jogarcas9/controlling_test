@@ -43,6 +43,11 @@ router.put('/:id', auth, sharedSessionController.updateSession);
 // @access  Private
 router.delete('/:id', auth, sharedSessionController.deleteSession);
 
+// @route   GET api/shared-sessions/invitations/pending
+// @desc    Obtener todas las invitaciones pendientes para el usuario actual
+// @access  Private
+router.get('/invitations/pending', auth, sharedSessionController.getPendingInvitations);
+
 // @route   POST api/shared-sessions/:id/respond
 // @desc    Responder a una invitación (aceptar o rechazar)
 // @access  Private
@@ -62,5 +67,35 @@ router.post('/:id/sync-to-personal', auth, sharedSessionController.syncToPersona
 // @desc    Actualizar la distribución de gastos
 // @access  Private
 router.put('/:id/update-distribution', auth, sharedSessionController.updateDistribution);
+
+// @route   GET api/shared-sessions/:id/allocations
+// @desc    Obtener asignaciones de montos por participante
+// @access  Private
+router.get('/:id/allocations', auth, sharedSessionController.getSessionAllocations);
+
+// @route   GET api/shared-sessions/user/allocations
+// @desc    Obtener asignaciones de un usuario
+// @access  Private
+router.get('/user/allocations', auth, sharedSessionController.getUserAllocations);
+
+// @route   PUT api/shared-sessions/allocations/:allocationId
+// @desc    Actualizar estado de una asignación
+// @access  Private
+router.put('/allocations/:allocationId', auth, sharedSessionController.updateAllocationStatus);
+
+// @route   POST api/shared-sessions/:id/expenses
+// @desc    Añadir un gasto a una sesión compartida
+// @access  Private
+router.post('/:id/expenses', auth, sharedSessionController.addExpense);
+
+// @route   PUT api/shared-sessions/:id/expenses/:expenseId
+// @desc    Actualizar un gasto en una sesión compartida
+// @access  Private
+router.put('/:id/expenses/:expenseId', auth, sharedSessionController.updateExpense);
+
+// @route   DELETE api/shared-sessions/:id/expenses/:expenseId
+// @desc    Eliminar un gasto de una sesión compartida
+// @access  Private
+router.delete('/:id/expenses/:expenseId', auth, sharedSessionController.deleteExpense);
 
 module.exports = router; 

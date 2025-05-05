@@ -24,6 +24,7 @@ import {
 import { validateEmail } from '../../utils/helpers';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import * as sharedSessionService from '../../services/sharedSessionService';
 
 const SessionForm = ({
   open,
@@ -57,7 +58,7 @@ const SessionForm = ({
     }));
   };
 
-  const handleAddParticipant = (e) => {
+  const handleAddParticipant = async (e) => {
     e.preventDefault();
     const normalizedEmail = email.trim().toLowerCase();
     
@@ -77,43 +78,61 @@ const SessionForm = ({
       return;
     }
 
-    // Buscar si el usuario ya existe en el sistema
-    fetch(`/api/users/by-email/${encodeURIComponent(normalizedEmail)}`)
-      .then(res => res.json())
-      .then(data => {
-        const participant = {
-          email: normalizedEmail,
-          canEdit: Boolean(canEdit),
-          canDelete: Boolean(canDelete),
-          name: data.user ? data.user.name : null
-        };
+    try {
+      // Usar el servicio para obtener información del usuario
+      const userData = await sharedSessionService.getUserByEmail(normalizedEmail);
+      
+      // Determinar el mejor nombre para mostrar
+      let displayName = null;
+      
+      if (userData.user) {
+        const user = userData.user;
+        
+        // Preferir nombre y apellido si están disponibles
+        if (user.nombre || user.apellido) {
+          displayName = `${user.nombre || ''} ${user.apellido || ''}`.trim();
+        }
+        // Si no, usar el nombre si existe y no es igual al email
+        else if (user.name && user.name !== normalizedEmail && !normalizedEmail.includes(user.name)) {
+          displayName = user.name;
+        }
+      }
+      
+      // Si no se encuentra un nombre adecuado, usar el email como respaldo
+      const participant = {
+        email: normalizedEmail,
+        canEdit: Boolean(canEdit),
+        canDelete: Boolean(canDelete),
+        name: displayName || normalizedEmail.split('@')[0]
+      };
 
-        setFormData(prev => ({
-          ...prev,
-          participants: [...prev.participants, participant]
-        }));
-        setEmail('');
-        setCanEdit(false);
-        setCanDelete(false);
-        setEmailError('');
-      })
-      .catch(() => {
-        // Si no se encuentra el usuario, agregarlo solo con el email
-        const participant = {
-          email: normalizedEmail,
-          canEdit: Boolean(canEdit),
-          canDelete: Boolean(canDelete)
-        };
+      setFormData(prev => ({
+        ...prev,
+        participants: [...prev.participants, participant]
+      }));
+      
+    } catch (error) {
+      console.error('Error al obtener datos del usuario:', error);
+      
+      // Si hay error, agregar participante solo con email
+      const participant = {
+        email: normalizedEmail,
+        canEdit: Boolean(canEdit),
+        canDelete: Boolean(canDelete),
+        name: normalizedEmail.split('@')[0]
+      };
 
-        setFormData(prev => ({
-          ...prev,
-          participants: [...prev.participants, participant]
-        }));
-        setEmail('');
-        setCanEdit(false);
-        setCanDelete(false);
-        setEmailError('');
-      });
+      setFormData(prev => ({
+        ...prev,
+        participants: [...prev.participants, participant]
+      }));
+    }
+    
+    // Limpiar el formulario
+    setEmail('');
+    setCanEdit(false);
+    setCanDelete(false);
+    setEmailError('');
   };
 
   const handleRemoveParticipant = (emailToRemove) => {
@@ -284,7 +303,7 @@ const SessionForm = ({
                 key={participant.email}
                 label={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <span>{participant.name || participant.email}</span>
+                    <span>{participant.name && participant.name !== participant.email ? participant.name : participant.email.split('@')[0]}</span>
                     {participant.canEdit && (
                       <Tooltip title="Puede editar">
                         <EditIcon fontSize="small" color="action" />

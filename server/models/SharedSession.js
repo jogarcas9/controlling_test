@@ -50,6 +50,44 @@ const participantSchema = new mongoose.Schema({
   toObject: { getters: true }
 });
 
+// Definición del esquema de gastos como subdocumento
+const expenseSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    default: 'Gasto'
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  amount: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  date: {
+    type: Date,
+    default: Date.now,
+    required: true
+  },
+  category: {
+    type: String,
+    default: 'Otros'
+  },
+  paidBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  isRecurring: {
+    type: Boolean,
+    default: false
+  }
+}, {
+  timestamps: true
+});
+
 const allocationSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -89,10 +127,7 @@ const sharedSessionSchema = new mongoose.Schema({
     required: false
   },
   participants: [participantSchema],
-  expenses: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Expense'
-  }],
+  expenses: [expenseSchema],
   totalAmount: {
     type: Number,
     default: 0
@@ -192,7 +227,7 @@ sharedSessionSchema.pre('save', async function(next) {
           status: 'accepted', // El creador siempre acepta automáticamente
           canEdit: true,
           canDelete: true,
-          responseDate: null // Sin fecha de respuesta
+          responseDate: new Date() // Con fecha de respuesta
         });
       } else {
         // Si ya existe, asegurarnos de que tiene estado "accepted"
@@ -203,13 +238,52 @@ sharedSessionSchema.pre('save', async function(next) {
         if (creatorParticipant && creatorParticipant.status !== 'accepted') {
           console.log(`Actualizando estado del creador ${creator._id} a 'accepted'`);
           creatorParticipant.status = 'accepted';
-          creatorParticipant.responseDate = null; // Sin fecha de respuesta
+          creatorParticipant.responseDate = new Date(); // Con fecha de respuesta
         }
       }
       
       // Si no hay más participantes que el creador, desbloquear la sesión
       if (this.participants.length === 1) {
         this.isLocked = false;
+      }
+    } else {
+      // Para sesiones existentes, asegurarse de que el creador siempre tiene estado 'accepted'
+      const creatorParticipant = this.participants.find(p => 
+        p.email.toLowerCase() === creatorEmail || 
+        (p.userId && p.userId.toString() === this.userId.toString())
+      );
+      
+      if (creatorParticipant && creatorParticipant.status !== 'accepted') {
+        console.log(`Forzando estado 'accepted' para el creador en sesión existente`);
+        creatorParticipant.status = 'accepted';
+        
+        if (!creatorParticipant.responseDate) {
+          creatorParticipant.responseDate = new Date();
+        }
+      }
+    }
+
+    // Si el totalAmount ha cambiado y tenemos allocations
+    if (this.isModified('totalAmount') && this.allocations && this.allocations.length > 0) {
+      try {
+        // Importar el servicio de asignaciones
+        const allocationService = require('../services/allocationService');
+        
+        // Calcular y distribuir montos entre participantes
+        console.log(`Pre-save: actualizando distribuciones para sesión ${this._id}`);
+        
+        // Usamos nextTick para hacer la asignación asincrónica (no bloquea el guardado)
+        process.nextTick(async () => {
+          try {
+            await allocationService.distributeAmount(this);
+            console.log(`Distribuciones actualizadas automáticamente para sesión ${this._id}`);
+          } catch (error) {
+            console.error(`Error al distribuir montos en middleware pre-save: ${error.message}`);
+          }
+        });
+      } catch (error) {
+        console.error(`Error en middleware pre-save: ${error.message}`);
+        // No interrumpimos el guardado en caso de error en las distribuciones
       }
     }
 

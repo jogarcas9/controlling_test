@@ -15,13 +15,19 @@ import {
   CircularProgress,
   Box,
   FormControlLabel,
-  Checkbox
+  Checkbox,
+  useMediaQuery,
+  useTheme,
+  IconButton,
+  Typography,
+  Divider
 } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import format from 'date-fns/format';
 import es from 'date-fns/locale/es';
+import CloseIcon from '@mui/icons-material/Close';
 
 const EXPENSE_CATEGORIES = [
   'Alimentación',
@@ -43,6 +49,10 @@ const ExpenseForm = ({
   loading = false,
   error = null
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     amount: initialData?.amount || '',
@@ -106,23 +116,57 @@ const ExpenseForm = ({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
+      fullScreen={isMobile}
       PaperProps={{
-        sx: { borderRadius: 2 }
+        sx: { 
+          borderRadius: isMobile ? 0 : 2,
+          height: isMobile ? '100%' : 'auto',
+          m: isMobile ? 0 : 2,
+        }
       }}
     >
       <form onSubmit={handleSubmit}>
-        <DialogTitle>
-          {initialData ? 'Editar Gasto' : 'Nuevo Gasto'}
+        <DialogTitle 
+          sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            pb: 1,
+            pt: { xs: 2, sm: 2.5 },
+            px: { xs: 2, sm: 3 },
+            fontSize: { xs: '1.1rem', sm: '1.25rem' },
+          }}
+        >
+          <Typography variant="h6" fontWeight="bold">
+            {initialData ? 'Editar Gasto' : 'Nuevo Gasto'}
+          </Typography>
+          <IconButton edge="end" onClick={onClose} aria-label="close">
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
+        
+        <Divider />
 
-        <DialogContent>
+        <DialogContent sx={{ px: { xs: 2, sm: 3 }, py: { xs: 2, sm: 2.5 } }}>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert 
+              severity="error" 
+              sx={{ 
+                mb: 2, 
+                borderRadius: 1,
+                fontSize: { xs: '0.8rem', sm: '0.875rem' } 
+              }}
+            >
               {error}
             </Alert>
           )}
 
-          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: { xs: 'column', sm: 'row' }, 
+            gap: { xs: 1, sm: 2 }, 
+            mb: { xs: 1, sm: 2 } 
+          }}>
             <TextField
               autoComplete="off"
               label="Nombre"
@@ -135,7 +179,13 @@ const ExpenseForm = ({
               required
               error={!!formErrors.name}
               helperText={formErrors.name}
-              sx={{ flex: 2 }}
+              sx={{ flex: 2, my: { xs: 0.5, sm: 1 } }}
+              InputProps={{
+                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
+              }}
+              InputLabelProps={{
+                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
+              }}
             />
 
             <TextField
@@ -148,29 +198,44 @@ const ExpenseForm = ({
               error={!!formErrors.amount}
               helperText={formErrors.amount}
               InputProps={{
-                inputProps: { min: 0, step: "0.01" }
+                inputProps: { min: 0, step: "0.01" },
+                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
               }}
-              sx={{ flex: 1 }}
+              InputLabelProps={{
+                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
+              }}
+              sx={{ flex: 1, my: { xs: 0.5, sm: 1 } }}
             />
           </Box>
 
-          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-            <FormControl fullWidth error={!!formErrors.category}>
-              <InputLabel>Categoría</InputLabel>
+          <Box sx={{ mb: { xs: 1, sm: 2 } }}>
+            <FormControl 
+              fullWidth 
+              error={!!formErrors.category}
+              sx={{ my: { xs: 0.5, sm: 1 } }}
+            >
+              <InputLabel sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Categoría</InputLabel>
               <Select
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
                 label="Categoría"
+                sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}
               >
                 {EXPENSE_CATEGORIES.map(category => (
-                  <MenuItem key={category} value={category}>
+                  <MenuItem 
+                    key={category} 
+                    value={category}
+                    sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}
+                  >
                     {category}
                   </MenuItem>
                 ))}
               </Select>
               {formErrors.category && (
-                <FormHelperText>{formErrors.category}</FormHelperText>
+                <FormHelperText sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' } }}>
+                  {formErrors.category}
+                </FormHelperText>
               )}
             </FormControl>
           </Box>
@@ -195,22 +260,33 @@ const ExpenseForm = ({
                   fullWidth
                   error={!!formErrors.date}
                   helperText={formErrors.date}
-                  sx={{ mb: 2 }}
+                  sx={{ 
+                    mb: { xs: 1, sm: 2 },
+                    my: { xs: 0.5, sm: 1 },
+                    '.MuiInputLabel-root': { fontSize: { xs: '0.9rem', sm: '1rem' } },
+                    '.MuiInputBase-root': { fontSize: { xs: '0.9rem', sm: '1rem' } }
+                  }}
                 />
               )}
             />
           </LocalizationProvider>
 
           <TextField
+            multiline
+            rows={3}
             margin="dense"
             name="description"
             label="Descripción (opcional)"
-            type="text"
-            fullWidth
-            multiline
-            rows={3}
             value={formData.description}
             onChange={handleChange}
+            fullWidth
+            InputProps={{
+              sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
+            }}
+            InputLabelProps={{
+              sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
+            }}
+            sx={{ my: { xs: 0.5, sm: 1 } }}
           />
 
           <FormControlLabel
@@ -218,42 +294,68 @@ const ExpenseForm = ({
               <Checkbox
                 checked={formData.isRecurring}
                 onChange={(e) => {
-                  const isRecurring = e.target.checked;
-                  setShowRecurringInfo(isRecurring);
-                  
-                  const recurringDay = isRecurring ? getDayFromDate(formData.date) : null;
-                  
-                  setFormData(prev => ({
-                    ...prev,
-                    isRecurring,
-                    recurringDay
-                  }));
+                  setFormData({
+                    ...formData,
+                    isRecurring: e.target.checked
+                  });
+                  setShowRecurringInfo(e.target.checked);
                 }}
-                name="isRecurring"
+                color="primary"
               />
             }
-            label="Gasto Recurrente (se repetirá mensualmente)"
+            label={
+              <Typography sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                Es un gasto recurrente
+              </Typography>
+            }
+            sx={{ mt: { xs: 1, sm: 2 } }}
           />
 
           {showRecurringInfo && (
-            <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
-              Este gasto se repetirá el día {getDayFromDate(formData.date)} de cada mes.
+            <Alert 
+              severity="info" 
+              sx={{ 
+                mt: 1, 
+                fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                borderRadius: 1
+              }}
+            >
+              Los gastos recurrentes se repiten automáticamente cada mes el día {getDayFromDate(formData.date)}.
             </Alert>
           )}
         </DialogContent>
 
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={onClose}>
+        <Divider />
+
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 }, justifyContent: 'space-between' }}>
+          <Button 
+            onClick={onClose} 
+            color="inherit"
+            sx={{ 
+              fontSize: { xs: '0.85rem', sm: '0.9rem' },
+              px: { xs: 2, sm: 3 }
+            }}
+          >
             Cancelar
           </Button>
           <Button
             type="submit"
             variant="contained"
+            color="primary"
             disabled={loading}
+            sx={{ 
+              fontSize: { xs: '0.85rem', sm: '0.9rem' },
+              px: { xs: 2, sm: 3 },
+              minWidth: { xs: 90, sm: 100 }
+            }}
           >
             {loading ? (
-              <CircularProgress size={24} />
-            ) : initialData ? 'Guardar Cambios' : 'Crear Gasto'}
+              <CircularProgress size={20} color="inherit" />
+            ) : initialData ? (
+              'Actualizar'
+            ) : (
+              'Guardar'
+            )}
           </Button>
         </DialogActions>
       </form>

@@ -201,451 +201,469 @@ const Dashboard = () => {
   }
 
   return (
-    <Container 
-      maxWidth={false}
-      disableGutters
-      sx={{ 
-        width: '100%',
-        ml: 0,
-        mr: 0,
-        pt: 0,
-        pb: 0,
-        px: 0,
-        overflow: 'hidden'
+    <Box
+      sx={{
+        flexGrow: 1,
+        overflow: 'hidden',
+        minHeight: '100vh',
       }}
     >
-      {/* Header con bienvenida y actualización */}
-      <Box 
+      <Container 
+        maxWidth="xl" 
         sx={{ 
-          mb: 4, 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          pl: 3, // Padding izquierdo para el contenido
-          pr: 3,  // Padding derecho para el contenido
-          pt: 1.5
+          py: { xs: 1.5, sm: 3, md: 4 },
+          px: { xs: 1, sm: 2, md: 3 },
         }}
       >
-        <Box>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            mb: { xs: 1.5, sm: 3 },
+            gap: 1,
+          }}
+        >
           <Typography 
             variant="h4" 
             component="h1" 
-            fontWeight="bold" 
+            fontWeight="bold"
             sx={{ 
-              fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' } 
+              fontSize: { xs: '1.3rem', sm: '1.75rem', md: '2rem' },
+              mb: { xs: 0.5, sm: 0 }
             }}
           >
             {t('dashboard')}
           </Typography>
-          <Typography 
-            variant="h6" 
-            sx={{ 
-              fontSize: { xs: '1.2rem', sm: '1.4rem', md: '1.6rem' },
-              mt: 0.5,
-              fontWeight: 500,
-              color: 'primary.main'
-            }}
-          >
-            {t('welcome')}
-          </Typography>
-        </Box>
-        
-        <Tooltip title={t('refresh')}>
-          <IconButton 
+          
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon fontSize="small" />}
             onClick={handleRefresh}
             disabled={refreshing}
-            size="medium"
-            sx={{ 
-              bgcolor: 'background.paper', 
-              boxShadow: 1,
-              '&:hover': {
-                bgcolor: alpha(theme.palette.primary.main, 0.1)
-              }
+            size="small"
+            sx={{ minWidth: { xs: 'auto', sm: 'auto' } }}
+          >
+            {refreshing ? t('refreshing') : t('refresh')}
+          </Button>
+        </Box>
+
+        {error && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 1.5, sm: 3 },
+              mb: { xs: 1.5, sm: 3 },
+              borderRadius: 2,
+              bgcolor: alpha(theme.palette.error.main, 0.1),
+              border: `1px solid ${theme.palette.error.main}`,
             }}
           >
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
-      </Box>
+            <Typography color="error" sx={{ fontSize: { xs: '0.85rem', sm: '1rem' } }}>{error}</Typography>
+          </Paper>
+        )}
 
-      {error && (
-        <Paper
-          elevation={0}
-          sx={{
-            p: 2,
-            mx: 3, // Margen horizontal
-            mb: 3,
-            borderRadius: 3,
-            backgroundColor: alpha(theme.palette.error.main, 0.1),
-            borderLeft: `4px solid ${theme.palette.error.main}`
+        {refreshing && (
+          <LinearProgress 
+            sx={{ 
+              mb: { xs: 1.5, sm: 3 },
+              borderRadius: 1,
+              height: { xs: 4, sm: 6 },
+            }} 
+          />
+        )}
+
+        <Typography 
+          variant="h6" 
+          sx={{ 
+            mb: { xs: 1, sm: 2 },
+            fontWeight: 500,
+            fontSize: { xs: '0.9rem', sm: '1.1rem', md: '1.25rem' },
           }}
         >
-          <Typography color="error.dark">{error}</Typography>
-        </Paper>
-      )}
-      
-      {/* Resumen financiero */}
-      <Grid container spacing={3} sx={{ mb: 4, px: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Card 
-            sx={{ 
-              borderRadius: 4,
-              height: '100%',
-              backgroundImage: 'linear-gradient(135deg, rgba(76, 110, 245, 0.1) 0%, rgba(0, 0, 0, 0) 100%)',
-              boxShadow: '0 8px 16px rgba(0, 0, 0, 0.05)'
-            }}
-          >
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6" fontWeight="bold">{t('financialSummary')}</Typography>
-                <Typography variant="subtitle2" color="text.secondary">{capitalizedMonth}</Typography>
-              </Box>
-              
-              <Box sx={{ mb: 4, mt: 3 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  {t('availableBalance')}
-                </Typography>
-                <Typography 
-                  variant="h3" 
-                  fontWeight="bold" 
-                  color={balance >= 0 ? 'success.main' : 'error.main'}
+          {t('overview')} - {capitalizedMonth}
+        </Typography>
+
+        <Grid container spacing={{ xs: 1, sm: 3 }}>
+          {/* Tarjeta de Balance */}
+          <Grid item xs={6} sm={6} md={3}>
+            <Card 
+              elevation={2} 
+              sx={{ 
+                borderRadius: { xs: 1.5, sm: 2 }, 
+                height: '100%',
+                transition: 'transform 0.3s, box-shadow 0.3s',
+                '&:hover': {
+                  transform: { xs: 'none', sm: 'translateY(-5px)' },
+                  boxShadow: { xs: 2, sm: 6 },
+                },
+              }}
+            >
+              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
+                <Box 
                   sx={{ 
-                    fontSize: { xs: '1.75rem', sm: '2.25rem' },
-                    mb: 1
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    mb: 1,
+                    gap: { xs: 1, sm: 1.5 },
+                  }}
+                >
+                  <Avatar 
+                    sx={{ 
+                      bgcolor: theme.palette.primary.main,
+                      width: { xs: 32, sm: 48 },
+                      height: { xs: 32, sm: 48 },
+                    }}
+                  >
+                    <AccountBalanceIcon fontSize={_isMobile ? 'small' : 'medium'} />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
+                    {t('balance')}
+                  </Typography>
+                </Box>
+                
+                <Typography 
+                  variant="h4" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    color: balance >= 0 ? 'success.main' : 'error.main',
+                    mb: 1,
+                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
                   }}
                 >
                   {formatAmount(balance)}
                 </Typography>
                 
-                <LinearProgress 
-                  variant="determinate" 
-                  value={Math.min(Math.max(calculatePercentage(), 0), 100)}
+                <Box sx={{ mt: { xs: 1, sm: 2 } }}>
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(Math.max(calculatePercentage(), 0), 100)}
+                    sx={{ 
+                      height: { xs: 6, sm: 8 }, 
+                      borderRadius: 4,
+                      mb: 0.5,
+                      bgcolor: alpha(getProgressColor(calculatePercentage()), 0.2),
+                      '& .MuiLinearProgress-bar': {
+                        bgcolor: getProgressColor(calculatePercentage()),
+                      }
+                    }}
+                  />
+                  <Typography 
+                    variant="caption" 
+                    display="block" 
+                    color="text.secondary"
+                    sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}
+                  >
+                    {calculatePercentage() >= 0
+                      ? t('savingsGoalProgress', { percentage: Math.round(calculatePercentage()) })
+                      : t('negativeBalanceWarning')}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Tarjeta de Ingresos */}
+          <Grid item xs={6} sm={6} md={3}>
+            <Card 
+              elevation={2} 
+              sx={{ 
+                borderRadius: { xs: 1.5, sm: 2 }, 
+                height: '100%',
+                transition: 'transform 0.3s, box-shadow 0.3s',
+                '&:hover': {
+                  transform: { xs: 'none', sm: 'translateY(-5px)' },
+                  boxShadow: { xs: 2, sm: 6 },
+                },
+              }}
+            >
+              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
+                <Box 
                   sx={{ 
-                    height: 8, 
-                    borderRadius: 2,
+                    display: 'flex', 
+                    alignItems: 'center', 
                     mb: 1,
-                    bgcolor: alpha(getProgressColor(calculatePercentage()), 0.2),
-                    '& .MuiLinearProgress-bar': {
-                      bgcolor: getProgressColor(calculatePercentage())
-                    }
+                    gap: { xs: 1, sm: 1.5 },
                   }}
-                />
+                >
+                  <Avatar 
+                    sx={{ 
+                      bgcolor: theme.palette.success.main,
+                      width: { xs: 32, sm: 48 },
+                      height: { xs: 32, sm: 48 },
+                    }}
+                  >
+                    <ArrowUpwardIcon fontSize={_isMobile ? 'small' : 'medium'} />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
+                    {t('income')}
+                  </Typography>
+                </Box>
                 
-                <Typography variant="caption" color="text.secondary">
-                  {monthlyIncome > 0 
-                    ? `${Math.round(calculatePercentage())}% de tus ingresos disponible` 
-                    : 'Sin ingresos registrados este mes'}
+                <Typography 
+                  variant="h4" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    color: 'success.main',
+                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
+                  }}
+                >
+                  {formatAmount(monthlyIncome)}
                 </Typography>
-              </Box>
-              
-              <Grid container spacing={3} sx={{ mt: 1 }}>
-                <Grid item xs={6}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center',
-                    p: 1.5,
-                    borderRadius: 2,
-                    bgcolor: alpha(theme.palette.success.main, 0.1)
-                  }}>
-                    <Avatar
-                      sx={{ 
-                        width: 40, 
-                        height: 40, 
-                        bgcolor: alpha(theme.palette.success.main, 0.2),
-                        color: theme.palette.success.main,
-                        mr: 1.5
-                      }}
-                    >
-                      <ArrowUpwardIcon fontSize="small" />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('income')}
-                      </Typography>
-                      <Typography variant="h6" fontWeight="bold" color="success.main">
-                        {formatAmount(monthlyIncome)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Grid>
                 
-                <Grid item xs={6}>
-                  <Box sx={{ 
+                <Box 
+                  sx={{ 
                     display: 'flex', 
-                    alignItems: 'center',
-                    p: 1.5,
-                    borderRadius: 2,
-                    bgcolor: alpha(theme.palette.error.main, 0.1)
-                  }}>
-                    <Avatar
-                      sx={{ 
-                        width: 40, 
-                        height: 40, 
-                        bgcolor: alpha(theme.palette.error.main, 0.2),
-                        color: theme.palette.error.main,
-                        mr: 1.5
-                      }}
-                    >
-                      <ArrowDownwardIcon fontSize="small" />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('expenses')}
-                      </Typography>
-                      <Typography variant="h6" fontWeight="bold" color="error.main">
-                        {formatAmount(monthlyExpenses)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} md={6}>
-          <Grid container spacing={3} height="100%">
-            <Grid item xs={12}>
-              <Card 
-                sx={{ 
-                  borderRadius: 4,
-                  backgroundImage: 'linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(0, 0, 0, 0) 100%)',
-                  boxShadow: '0 8px 16px rgba(0, 0, 0, 0.05)'
-                }}
-              >
-                <CardContent sx={{ p: 3 }}>
-                  <Box sx={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Avatar
-                        sx={{ 
-                          width: 44, 
-                          height: 44, 
-                          bgcolor: alpha(theme.palette.primary.main, 0.15),
-                          color: theme.palette.primary.main,
-                          mr: 2
-                        }}
-                      >
-                        <AccountBalanceIcon />
-                      </Avatar>
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          {t('activeSharedSessions')}
-                        </Typography>
-                        <Typography variant="h5" fontWeight="bold">
-                          {activeSessions}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    
-                    <Button 
-                      variant="outlined" 
-                      size="small" 
-                      color="primary"
-                      href="/shared"
-                      sx={{ 
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        fontSize: '0.75rem',
-                        px: 2
-                      }}
-                    >
-                      {t('viewAll')}
-                    </Button>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Card 
-                sx={{ 
-                  borderRadius: 4,
-                  backgroundImage: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05) 0%, rgba(0, 0, 0, 0) 100%)',
-                  boxShadow: '0 8px 16px rgba(0, 0, 0, 0.05)'
-                }}
-              >
-                <CardContent sx={{ p: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Box sx={{ width: '70%' }}>
-                      <Typography variant="h6" fontWeight="bold" gutterBottom>
-                        {t('quickActions')}
-                      </Typography>
-                      
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {t('manageYourFinances')}
-                      </Typography>
-                      
-                      <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                          <Button 
-                            variant="outlined"
-                            color="success"
-                            fullWidth
-                            size="small"
-                            href="/personal"
-                            startIcon={<AttachMoneyIcon />}
-                            sx={{ 
-                              borderRadius: 2,
-                              textTransform: 'none',
-                              fontSize: '0.75rem',
-                              justifyContent: 'flex-start',
-                              py: 1
-                            }}
-                          >
-                            {t('newIncome')}
-                          </Button>
-                        </Grid>
-                        
-                        <Grid item xs={6}>
-                          <Button 
-                            variant="outlined"
-                            color="error"
-                            fullWidth
-                            size="small"
-                            href="/personal"
-                            startIcon={<ReceiptIcon />}
-                            sx={{ 
-                              borderRadius: 2,
-                              textTransform: 'none',
-                              fontSize: '0.75rem',
-                              justifyContent: 'flex-start',
-                              py: 1
-                            }}
-                          >
-                            {t('newExpense')}
-                          </Button>
-                        </Grid>
-                      </Grid>
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Avatar
-                        sx={{ 
-                          width: 70, 
-                          height: 70, 
-                          bgcolor: alpha(theme.palette.info.main, 0.15),
-                          color: theme.palette.info.main
-                        }}
-                      >
-                        <TrendingUpIcon fontSize="large" />
-                      </Avatar>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
+                    alignItems: 'center', 
+                    mt: { xs: 1, sm: 1.5 },
+                    gap: 0.5,
+                  }}
+                >
+                  <TrendingUpIcon color="success" fontSize="small" />
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary"
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem' } }}
+                  >
+                    {t('incomeThisMonth')}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Tarjeta de Gastos */}
+          <Grid item xs={6} sm={6} md={3}>
+            <Card 
+              elevation={2} 
+              sx={{ 
+                borderRadius: { xs: 1.5, sm: 2 }, 
+                height: '100%',
+                transition: 'transform 0.3s, box-shadow 0.3s',
+                '&:hover': {
+                  transform: { xs: 'none', sm: 'translateY(-5px)' },
+                  boxShadow: { xs: 2, sm: 6 },
+                },
+              }}
+            >
+              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    mb: 1,
+                    gap: { xs: 1, sm: 1.5 },
+                  }}
+                >
+                  <Avatar 
+                    sx={{ 
+                      bgcolor: theme.palette.error.main,
+                      width: { xs: 32, sm: 48 },
+                      height: { xs: 32, sm: 48 },
+                    }}
+                  >
+                    <ArrowDownwardIcon fontSize={_isMobile ? 'small' : 'medium'} />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
+                    {t('expenses')}
+                  </Typography>
+                </Box>
+                
+                <Typography 
+                  variant="h4" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    color: 'error.main',
+                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
+                  }}
+                >
+                  {formatAmount(monthlyExpenses)}
+                </Typography>
+                
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    mt: { xs: 1, sm: 1.5 },
+                    gap: 0.5,
+                  }}
+                >
+                  <ReceiptIcon color="error" fontSize="small" />
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary"
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem' } }}
+                  >
+                    {t('expensesThisMonth')}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Tarjeta de Sesiones Activas */}
+          <Grid item xs={6} sm={6} md={3}>
+            <Card 
+              elevation={2} 
+              sx={{ 
+                borderRadius: { xs: 1.5, sm: 2 }, 
+                height: '100%',
+                transition: 'transform 0.3s, box-shadow 0.3s',
+                '&:hover': {
+                  transform: { xs: 'none', sm: 'translateY(-5px)' },
+                  boxShadow: { xs: 2, sm: 6 },
+                },
+              }}
+            >
+              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    mb: 1,
+                    gap: { xs: 1, sm: 1.5 },
+                  }}
+                >
+                  <Avatar 
+                    sx={{ 
+                      bgcolor: theme.palette.info.main,
+                      width: { xs: 32, sm: 48 },
+                      height: { xs: 32, sm: 48 },
+                    }}
+                  >
+                    <FaceIcon fontSize={_isMobile ? 'small' : 'medium'} />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
+                    {t('activeSessions')}
+                  </Typography>
+                </Box>
+                
+                <Typography 
+                  variant="h4" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    color: 'info.main',
+                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
+                  }}
+                >
+                  {activeSessions}
+                </Typography>
+                
+                <Box sx={{ mt: { xs: 1, sm: 2 } }}>
+                  <Button 
+                    variant="text" 
+                    color="primary" 
+                    onClick={() => navigate('/shared')}
+                    size="small"
+                    sx={{ 
+                      px: 0,
+                      fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                    }}
+                  >
+                    {t('viewAllSessions')}
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
           </Grid>
         </Grid>
-      </Grid>
-      
-      {/* Sección de estadísticas anuales (opcional) */}
-      <Card 
-        sx={{ 
-          borderRadius: 4,
-          backgroundImage: 'linear-gradient(135deg, rgba(255, 152, 0, 0.05) 0%, rgba(0, 0, 0, 0) 100%)',
-          boxShadow: '0 8px 16px rgba(0, 0, 0, 0.05)',
-          mb: 3,
-          mx: 3
-        }}
-      >
-        <CardContent sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h6" fontWeight="bold">{t('yearToDate')}</Typography>
-            <Typography variant="subtitle2" color="text.secondary">{new Date().getFullYear()}</Typography>
-          </Box>
-          
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            {t('summaryYearToDate')}
-          </Typography>
-          
-          <Box 
+
+        {/* Acciones Rápidas */}
+        <Box sx={{ mt: { xs: 2, sm: 4 } }}>
+          <Typography 
+            variant="h6" 
             sx={{ 
-              p: 2.5, 
-              borderRadius: 3, 
-              bgcolor: 'background.paper',
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              justifyContent: 'space-around',
-              gap: 2
+              mb: { xs: 1, sm: 2 }, 
+              fontWeight: 500,
+              fontSize: { xs: '0.9rem', sm: '1.1rem', md: '1.25rem' },
             }}
           >
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                {t('savingsGoalProgress')}
-              </Typography>
-              <Typography variant="h5" color="primary.main" fontWeight="bold">
-                {monthlyIncome > monthlyExpenses ? 'En camino' : 'Necesita atención'}
-              </Typography>
-            </Box>
-            
-            <Divider orientation={isTablet ? 'horizontal' : 'vertical'} flexItem />
-            
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                {t('targetSavings')}
-              </Typography>
-              <Typography variant="h5" color="primary.main" fontWeight="bold">
-                {formatAmount(monthlyIncome * 0.2)}
-              </Typography>
-            </Box>
-            
-            <Divider orientation={isTablet ? 'horizontal' : 'vertical'} flexItem />
-            
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                {t('monthsToContinue')}
-              </Typography>
-              <Typography variant="h5" color="primary.main" fontWeight="bold">
-                {balance > 0 ? Math.ceil(12 * (1 - (monthlyExpenses / monthlyIncome))) : 0}
-              </Typography>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-      
-      {/* Panel de consejos financieros */}
-      <Paper
-        elevation={0}
-        sx={{
-          p: 3,
-          mx: 3,
-          borderRadius: 4,
-          backgroundColor: alpha(theme.palette.info.main, 0.05),
-          border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2
-        }}
-      >
-        <Avatar
-          sx={{ 
-            width: 50, 
-            height: 50, 
-            bgcolor: alpha(theme.palette.info.main, 0.2),
-            color: theme.palette.info.main
-          }}
-        >
-          <FaceIcon />
-        </Avatar>
-        
-        <Box>
-          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-            {t('financialTip')}
+            {t('quickActions')}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {balance < 0 
-              ? t('tipNegativeBalance') 
-              : monthlyExpenses > (monthlyIncome * 0.8)
-                ? t('tipHighExpenses')
-                : t('tipGoodFinances')}
-          </Typography>
+          
+          <Grid container spacing={{ xs: 1, sm: 3 }}>
+            <Grid item xs={6} sm={6} md={3}>
+              <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                onClick={() => navigate('/personal/add')}
+                startIcon={<ReceiptIcon fontSize={_isMobile ? 'small' : 'medium'} />}
+                sx={{ 
+                  py: { xs: 1, sm: 2 },
+                  borderRadius: { xs: 1.5, sm: 2 },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  boxShadow: { xs: 1, sm: 2 },
+                  fontSize: { xs: '0.75rem', sm: '1rem' },
+                }}
+              >
+                {t('addExpense')}
+              </Button>
+            </Grid>
+            
+            <Grid item xs={6} sm={6} md={3}>
+              <Button
+                variant="contained"
+                color="success"
+                fullWidth
+                onClick={() => navigate('/personal/income/add')}
+                startIcon={<AttachMoneyIcon fontSize={_isMobile ? 'small' : 'medium'} />}
+                sx={{ 
+                  py: { xs: 1, sm: 2 },
+                  borderRadius: { xs: 1.5, sm: 2 },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  boxShadow: { xs: 1, sm: 2 },
+                  fontSize: { xs: '0.75rem', sm: '1rem' },
+                }}
+              >
+                {t('addIncome')}
+              </Button>
+            </Grid>
+            
+            <Grid item xs={6} sm={6} md={3}>
+              <Button
+                variant="contained"
+                color="info"
+                fullWidth
+                onClick={() => navigate('/shared/create')}
+                startIcon={<FaceIcon fontSize={_isMobile ? 'small' : 'medium'} />}
+                sx={{ 
+                  py: { xs: 1, sm: 2 },
+                  borderRadius: { xs: 1.5, sm: 2 },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  boxShadow: { xs: 1, sm: 2 },
+                  fontSize: { xs: '0.75rem', sm: '1rem' },
+                }}
+              >
+                {t('createSession')}
+              </Button>
+            </Grid>
+            
+            <Grid item xs={6} sm={6} md={3}>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => navigate('/reports')}
+                startIcon={<TrendingUpIcon fontSize={_isMobile ? 'small' : 'medium'} />}
+                sx={{ 
+                  py: { xs: 1, sm: 2 },
+                  borderRadius: { xs: 1.5, sm: 2 },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: { xs: '0.75rem', sm: '1rem' },
+                }}
+              >
+                {t('viewReports')}
+              </Button>
+            </Grid>
+          </Grid>
         </Box>
-      </Paper>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 
