@@ -7,7 +7,7 @@
       "config": {
         "distDir": "build",
         "buildCommand": "CI=false npm run build",
-        "installCommand": "npm install --legacy-peer-deps && npm install recharts@2.15.3 --save --force"
+        "installCommand": "CI=false npm install --legacy-peer-deps && CI=false npm install recharts@2.15.3 --save --force"
       }
     },
     {

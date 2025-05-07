@@ -42,7 +42,7 @@
   },
   "scripts": {
     "start": "set PORT=3000 && react-scripts start",
-    "build": "CI=false npm install recharts --force && cross-env CI=false react-scripts build",
+    "build": "CI=false npm install recharts --force && CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "postinstall": "node postinstall.js"
