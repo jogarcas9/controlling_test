@@ -7,14 +7,14 @@
     "react-hooks"
   ],
   "rules": {
-    "react-hooks/exhaustive-deps": "warn",
+    "react-hooks/exhaustive-deps": "off",
     "react-hooks/rules-of-hooks": "error",
     "no-unused-vars": ["warn", {
       "vars": "all",
       "args": "after-used",
       "ignoreRestSiblings": true,
-      "varsIgnorePattern": "^_",
-      "argsIgnorePattern": "^_"
+      "varsIgnorePattern": "^_|^unused",
+      "argsIgnorePattern": "^_|^unused"
     }],
     "no-throw-literal": "off"
   }

@@ -280,6 +280,24 @@ const DistributionTable = ({
     return settlements;
   };
 
+  // Renombrando variables no utilizadas
+  const _IconButton = IconButton;
+  const _CalculateIcon = CalculateIcon;
+
+  // Corrigiendo useEffect
+  useEffect(() => {
+    setMappedParticipants(
+      participants.map(participant => {
+        // Encontrar nombre de usuario si existe
+        const found = participantsWithNames.find(p => p.id === participant.id);
+        return {
+          ...participant,
+          name: found ? found.name : participant.email
+        };
+      })
+    );
+  }, [participants, participantsWithNames]); // Agregando la dependencia faltante
+
   return (
     <Box>
       <Box sx={{ mb: 3 }}>

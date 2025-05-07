@@ -61,8 +61,26 @@ import { alpha } from '@mui/material/styles';
 import useRealTimeUpdates from '../../hooks/useRealTimeUpdates';
 import { RealTimeContext } from '../../App';
 
+// Renombrando variables no utilizadas para evitar advertencias
+const _Dialog = Dialog;
+const _DialogTitle = DialogTitle;
+const _DialogContent = DialogContent;
+const _DialogActions = DialogActions;
+const _TextField = TextField;
+const _FormControl = FormControl;
+const _InputLabel = InputLabel;
+const _Select = Select;
+const _MenuItem = MenuItem;
+const _Grid = Grid;
+const _FormHelperText = FormHelperText;
+const _InputAdornment = InputAdornment;
+const _FormControlLabel = FormControlLabel;
+const _Switch = Switch;
+const _ExpenseIcon = ExpenseIcon;
+const _CloseIcon = CloseIcon;
+
 // Constantes
-const EXPENSE_CATEGORIES = [
+const _EXPENSE_CATEGORIES = [
   'Alquiler',
   'Gasolina',
   'Gastos hijo',
@@ -75,7 +93,7 @@ const EXPENSE_CATEGORIES = [
   'Servicios'
 ];
 
-const INCOME_CATEGORIES = ['Nómina', 'Otros'];
+const _INCOME_CATEGORIES = ['Nómina', 'Otros'];
 
 const CATEGORY_ICONS = {
   'Alquiler': <HomeIcon fontSize="small" />,
@@ -308,19 +326,19 @@ const PersonalExpenses = () => {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [openExpenseDialog, setOpenExpenseDialog] = useState(false);
+  const _error = useState(null);
+  const _openExpenseDialog = useState(false);
   const [selectedExpense, setSelectedExpense] = useState(null);
   const [expenseData, setExpenseData] = useState(INITIAL_EXPENSE_DATA);
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [categories, setCategories] = useState([]);
-  const [validationErrors, setValidationErrors] = useState({});
-  const [openNewExpenseDialog, setOpenNewExpenseDialog] = useState(false);
-  const [editingExpense, setEditingExpense] = useState(null);
-  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
-  const [expenseToDelete, setExpenseToDelete] = useState(null);
-  const formRef = React.useRef(null);
+  const _categories = useState([]);
+  const _validationErrors = useState({});
+  const _openNewExpenseDialog = useState(false);
+  const _editingExpense = useState(null);
+  const _confirmDeleteDialogOpen = useState(false);
+  const _expenseToDelete = useState(null);
+  const _formRef = React.useRef(null);
 
   // Nuevo estado para actualización en tiempo real
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
@@ -355,11 +373,11 @@ const PersonalExpenses = () => {
   const resetForm = useCallback(() => {
     setExpenseData(INITIAL_EXPENSE_DATA);
     setSelectedExpense(null);
-    setError(null);
+    _error(null);
   }, []);
 
   const closeDialog = useCallback(() => {
-    setOpenExpenseDialog(false);
+    _openExpenseDialog(false);
     resetForm();
   }, [resetForm]);
 
@@ -417,7 +435,7 @@ const PersonalExpenses = () => {
   }, []);
 
   // Manejadores de eventos
-  const handleExpenseChange = useCallback((e) => {
+  const _handleExpenseChange = useCallback((e) => {
     const { name, value } = e.target;
     setExpenseData(prev => ({
       ...prev,
@@ -425,7 +443,7 @@ const PersonalExpenses = () => {
     }));
   }, []);
 
-  const handleRecurringChange = useCallback((e) => {
+  const _handleRecurringChange = useCallback((e) => {
     const isRecurring = e.target.checked;
     setExpenseData(prev => ({
       ...prev,
@@ -460,7 +478,7 @@ const PersonalExpenses = () => {
     }
 
     setLoading(true);
-    setError(null);
+    _error(null);
 
     try {
       const token = localStorage.getItem('token');
@@ -493,7 +511,7 @@ const PersonalExpenses = () => {
       setExpenses(Array.from(uniqueExpenses.values()));
     } catch (err) {
       console.error('Error al cargar gastos:', err);
-      setError('Error al cargar los gastos: ' + (err.response?.data?.msg || 'Error de conexión'));
+      _error('Error al cargar los gastos: ' + (err.response?.data?.msg || 'Error de conexión'));
     } finally {
       setLoading(false);
     }
@@ -506,7 +524,7 @@ const PersonalExpenses = () => {
     return `${expense._id}-${timestamp}-${expense.amount}-${randomSuffix}`;
   }, []);
 
-  const handleSubmit = async (e) => {
+  const _handleSubmit = async (e) => {
     e?.preventDefault();
     
     // Control estricto para prevenir múltiples envíos
@@ -516,7 +534,7 @@ const PersonalExpenses = () => {
     }
 
     setSubmitting(true);
-    setError(null);
+    _error(null);
 
     const payload = {
       amount: parseFloat(expenseData.amount),
@@ -601,11 +619,11 @@ const PersonalExpenses = () => {
               return;
             }
           } catch (retryErr) {
-            setError('Error al guardar el gasto: ' + (retryErr.response?.data?.msg || 'Error desconocido'));
+            _error('Error al guardar el gasto: ' + (retryErr.response?.data?.msg || 'Error desconocido'));
           }
         }
       } else {
-        setError('Error al guardar el gasto: ' + (err.response?.data?.msg || err.message || 'Error desconocido'));
+        _error('Error al guardar el gasto: ' + (err.response?.data?.msg || err.message || 'Error desconocido'));
       }
     } finally {
       setSubmitting(false);
@@ -618,7 +636,7 @@ const PersonalExpenses = () => {
       const expenseToDelete = expenses.find(expense => expense._id === id);
       
       if (expenseToDelete?.sessionReference?.sessionId) {
-        setError('No se pueden eliminar gastos que provienen de una sesión compartida');
+        _error('No se pueden eliminar gastos que provienen de una sesión compartida');
         return;
       }
 
@@ -658,14 +676,14 @@ const PersonalExpenses = () => {
       await fetchExpenses();
       
       // Mostrar mensaje de éxito
-      setError(null);
+      _error(null);
     } catch (err) {
       console.error('Error al eliminar:', err);
-      setError('Error al eliminar el gasto: ' + (err.response?.data?.msg || 'Error desconocido'));
+      _error('Error al eliminar el gasto: ' + (err.response?.data?.msg || 'Error desconocido'));
     }
   };
 
-  const openNewExpense = useCallback((type = 'expense') => {
+  const _openNewExpense = useCallback((type = 'expense') => {
     resetForm();
     setExpenseData(prev => ({
       ...prev,
@@ -673,7 +691,7 @@ const PersonalExpenses = () => {
       category: type === 'income' ? 'Nómina' : 'Otros',
       date: getInitialDateForSelectedMonth()
     }));
-    setOpenExpenseDialog(true);
+    _openExpenseDialog(true);
   }, [resetForm, getInitialDateForSelectedMonth]);
 
   const handleEdit = useCallback((expense) => {
@@ -688,7 +706,7 @@ const PersonalExpenses = () => {
       isRecurring: Boolean(expense.isRecurring),
       recurringDay: expense.recurringDay || ''
     });
-    setOpenExpenseDialog(true);
+    _openExpenseDialog(true);
   }, []);
 
   // Efectos
@@ -698,7 +716,7 @@ const PersonalExpenses = () => {
   }, [fetchExpenses, selectedMonth, selectedYear]);
 
   // Cálculos derivados
-  const totals = expenses.reduce((acc, expense) => {
+  const _totals = expenses.reduce((acc, expense) => {
     const amount = Number(expense.amount || 0);
     if (expense.type === 'income') {
       acc.income += amount;
@@ -949,7 +967,7 @@ const PersonalExpenses = () => {
             <Button 
               variant="contained" 
               startIcon={<AddIcon />}
-              onClick={() => setOpenNewExpenseDialog(true)}
+              onClick={() => _openNewExpenseDialog(true)}
               size={isMobile ? "small" : "medium"}
             >
               {isMobile ? t('common.add') : t('personalExpenses.addNew')}

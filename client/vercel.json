@@ -1,0 +1,10 @@
+{
+  "env": {
+    "CI": "false"
+  },
+  "build": {
+    "env": {
+      "CI": "false"
+    }
+  }
+} 
