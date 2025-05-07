@@ -33,6 +33,7 @@ import Register from './components/auth/Register';
 import Sidebar from './components/layout/Sidebar';
 import MobileBottomNav from './components/layout/MobileBottomNav';
 import ReportsDashboard from './components/reports/ReportsDashboard';
+import PWAInstallPrompt from './components/shared/PWAInstallPrompt';
 import { AuthProvider } from './context/AuthContext';
 import authService from './services/authService';
 import { checkServiceWorkers } from './utils/checkServiceWorkers';
@@ -662,44 +663,115 @@ const App = () => {
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <AuthProvider>
-        <CurrencyProvider>
-          <RealTimeContext.Provider value={realTimeContextValue}>
+    <AuthProvider value={{ isAuthenticated, setIsAuthenticated }}>
+      <CurrencyProvider>
+        <ThemeProvider theme={theme}>
+          <RealTimeContext.Provider value={{
+            isConnected: socketConnected,
+            lastUpdate,
+            reconnect: reconnectSocket,
+            showNotification
+          }}>
             <Router>
-              <Routes>
-                <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} />
-                <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-                <Route path="/personal" element={<PrivateRoute><PersonalExpenses /></PrivateRoute>} />
-                <Route path="/shared" element={<PrivateRoute><SharedSessions /></PrivateRoute>} />
-                <Route path="/reports" element={<PrivateRoute><ReportsDashboard /></PrivateRoute>} />
-                <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
-                <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              {isAuthenticated ? (
+                <ThemeAwareAppLayout
+                  drawerWidth={drawerWidth}
+                  minimizedDrawerWidth={minimizedDrawerWidth}
+                  mobileOpen={mobileOpen}
+                  isDrawerMinimized={isDrawerMinimized}
+                  handleDrawerToggle={handleDrawerToggle}
+                  handleDrawerMinimize={handleDrawerMinimize}
+                  handleLogout={handleLogout}
+                  _darkMode={darkMode}
+                  _t={t}
+                >
+                  <Routes>
+                    <Route 
+                      path="/" 
+                      element={<Navigate to="/dashboard" replace />} 
+                    />
+                    <Route 
+                      path="/dashboard" 
+                      element={
+                        <PrivateRoute>
+                          <Dashboard />
+                        </PrivateRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/personal" 
+                      element={
+                        <PrivateRoute>
+                          <PersonalExpenses />
+                        </PrivateRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/shared" 
+                      element={
+                        <PrivateRoute>
+                          <SharedSessions />
+                        </PrivateRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/reports" 
+                      element={
+                        <PrivateRoute>
+                          <ReportsDashboard />
+                        </PrivateRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/settings" 
+                      element={
+                        <PrivateRoute>
+                          <Settings 
+                            darkMode={darkMode} 
+                            language={language}
+                            currency={currency}
+                            onSettingsChanged={handleSettingsChanged}
+                          />
+                        </PrivateRoute>
+                      } 
+                    />
+                    <Route 
+                      path="*" 
+                      element={<Navigate to="/dashboard" replace />} 
+                    />
+                  </Routes>
+                </ThemeAwareAppLayout>
+              ) : (
+                <Routes>
+                  <Route path="/login" element={<Login onLoginSuccess={() => setIsAuthenticated(true)} />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="*" element={<Navigate to="/login" replace />} />
+                </Routes>
+              )}
+
+              {/* Componente de PWA Install Prompt */}
+              <PWAInstallPrompt />
+
+              <Snackbar
+                open={notification.open}
+                autoHideDuration={6000}
+                onClose={handleCloseNotification}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              >
+                <Alert 
+                  onClose={handleCloseNotification} 
+                  severity={notification.severity} 
+                  variant="filled" 
+                  sx={{ width: '100%' }}
+                >
+                  {notification.message}
+                </Alert>
+              </Snackbar>
             </Router>
           </RealTimeContext.Provider>
-        </CurrencyProvider>
-      </AuthProvider>
-      
-      {/* Snackbar para notificaciones */}
-      <Snackbar
-        open={notification.open}
-        autoHideDuration={6000}
-        onClose={handleCloseNotification}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={handleCloseNotification} 
-          severity={notification.severity}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {notification.message}
-        </Alert>
-      </Snackbar>
-    </ThemeProvider>
+        </ThemeProvider>
+      </CurrencyProvider>
+    </AuthProvider>
   );
 };
 
