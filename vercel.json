@@ -6,7 +6,7 @@
       "use": "@vercel/static-build",
       "config": {
         "distDir": "build",
-        "buildCommand": "npm run build",
+        "buildCommand": "CI=false npm run build",
         "installCommand": "npm install --legacy-peer-deps && npm install recharts@2.15.3 --save --force"
       }
     },
@@ -30,6 +30,7 @@
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "CI": "false"
   }
 } 

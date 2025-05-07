@@ -35,13 +35,14 @@
     "@types/react-dom": "^18.2.19",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
+    "cross-env": "7.0.3",
     "eslint": "^8.56.0",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0"
   },
   "scripts": {
     "start": "set PORT=3000 && react-scripts start",
-    "build": "CI=false npm install recharts --force && CI=false react-scripts build",
+    "build": "CI=false npm install recharts --force && cross-env CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "postinstall": "node postinstall.js"
