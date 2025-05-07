@@ -14,8 +14,36 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { connectDB, retryConnection } = require('./config/mongodb');
+const http = require('http');
+const socketIo = require('socket.io');
 
+// Determinar si estamos en producción
+const isProduction = process.env.NODE_ENV === 'production';
+const isVercel = process.env.VERCEL === '1';
+
+// Crear la aplicación Express
 const app = express();
+
+// Configurar servidor HTTP
+const server = http.createServer(app);
+
+// Configurar Socket.IO
+const io = socketIo(server, {
+  cors: {
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:5000',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5000',
+      'https://controling.vercel.app',
+      'https://controling-jogarcas9.vercel.app'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    credentials: true
+  },
+  // En Vercel, asegurar que el path es el correcto
+  ...(isVercel ? { path: '/socket.io' } : {})
+});
 
 // Logging en todos los ambientes
 app.use(morgan('combined'));
@@ -32,11 +60,17 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function(origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
+    // En entorno de producción, aplicar restricciones de origen
+    if (isProduction) {
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.log('Origin bloqueado por CORS:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
     } else {
-      console.log('Origin bloqueado por CORS:', origin);
-      callback(new Error('Not allowed by CORS'));
+      // En desarrollo, permitir cualquier origen
+      callback(null, true);
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -59,7 +93,9 @@ app.use((req, res, next) => {
 });
 
 // Middlewares
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false // Desactivar CSP para permitir WebSockets
+}));
 app.use(compression());
 
 // Inicializar base de datos con reintentos
@@ -77,7 +113,7 @@ const initializeDatabase = async () => {
     console.log('Base de datos inicializada correctamente');
   } catch (error) {
     console.error('Error al inicializar la base de datos:', error);
-    if (!process.env.VERCEL) {
+    if (!isVercel) {
       process.exit(1);
     }
   }
@@ -86,6 +122,35 @@ const initializeDatabase = async () => {
 // Inicializar base de datos
 initializeDatabase();
 
+// Configurar Socket.IO para manejar las conexiones
+io.on('connection', (socket) => {
+  console.log('Nuevo cliente conectado', socket.id);
+  
+  // Autenticar usuario
+  socket.on('authenticate', (token) => {
+    try {
+      // Aquí podrías verificar el token si es necesario
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      if (decoded && decoded.user && decoded.user.id) {
+        socket.userId = decoded.user.id;
+        console.log('Cliente autenticado', socket.id, 'User ID:', socket.userId);
+        
+        // Unir al usuario a una sala basada en su ID
+        socket.join(`user-${socket.userId}`);
+      }
+    } catch (error) {
+      console.error('Error de autenticación de Socket.IO:', error.message);
+    }
+  });
+  
+  // Manejar desconexiones
+  socket.on('disconnect', () => {
+    console.log('Cliente desconectado', socket.id);
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   const dbStatus = await connectDB();
@@ -93,7 +158,8 @@ app.get('/api/health', async (req, res) => {
     status: 'ok', 
     environment: process.env.NODE_ENV,
     database: dbStatus ? 'connected' : 'disconnected',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    socketio: io ? 'available' : 'unavailable'
   });
 });
 
@@ -141,11 +207,16 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Exportar io para que pueda ser utilizado en otros lugares
+app.set('io', io);
+
 // Si estamos en el entorno de Vercel, exportamos la app
 // Si no, iniciamos el servidor
-if (process.env.VERCEL) {
+if (isVercel) {
+  // Para Vercel Serverless Functions
   module.exports = app;
 } else {
+  // Para desarrollo local o servidor convencional
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  server.listen(PORT, () => console.log(`Servidor ejecutándose en el puerto ${PORT} (${isProduction ? 'producción' : 'desarrollo'})`));
 }

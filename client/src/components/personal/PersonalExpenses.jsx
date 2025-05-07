@@ -49,13 +49,17 @@ import {
   Today as TodayIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Refresh as RefreshIcon,
+  FiberManualRecord as FiberManualRecordIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import format from 'date-fns/format';
 import es from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { alpha } from '@mui/material/styles';
+import useRealTimeUpdates from '../../hooks/useRealTimeUpdates';
+import { RealTimeContext } from '../../App';
 
 // Constantes
 const EXPENSE_CATEGORIES = [
@@ -278,6 +282,9 @@ const PersonalExpenses = () => {
   const { t } = useTranslation();
   const currentDate = new Date();
   
+  // Añadir el contexto de tiempo real
+  const { showNotification } = React.useContext(RealTimeContext);
+  
   // Mejorar la detección de móvil usando useMediaQuery en lugar de window.matchMedia
   const [isMobile, setIsMobile] = useState(false);
   
@@ -307,6 +314,42 @@ const PersonalExpenses = () => {
   const [expenseData, setExpenseData] = useState(INITIAL_EXPENSE_DATA);
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [categories, setCategories] = useState([]);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [openNewExpenseDialog, setOpenNewExpenseDialog] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState(null);
+  const formRef = React.useRef(null);
+
+  // Nuevo estado para actualización en tiempo real
+  const [lastRefreshTime, setLastRefreshTime] = useState(null);
+
+  // Configurar actualizaciones en tiempo real
+  const { isConnected, lastUpdate } = useRealTimeUpdates({
+    onExpenseAdded: (data) => {
+      console.log('Nuevo gasto detectado:', data);
+      // Refrescar los datos automáticamente
+      fetchExpenses();
+    },
+    onExpenseUpdated: (data) => {
+      console.log('Gasto actualizado detectado:', data);
+      // Refrescar los datos automáticamente
+      fetchExpenses();
+    },
+    onExpenseDeleted: (data) => {
+      console.log('Eliminación de gasto detectada:', data);
+      // Refrescar los datos automáticamente
+      fetchExpenses();
+    }
+  });
+
+  // Actualizar la marca de tiempo cuando se refresca
+  useEffect(() => {
+    if (lastUpdate) {
+      setLastRefreshTime(lastUpdate);
+    }
+  }, [lastUpdate]);
 
   // Funciones de utilidad
   const resetForm = useCallback(() => {
@@ -853,585 +896,96 @@ const PersonalExpenses = () => {
     );
   };
 
+  // Función para refrescar manualmente
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      await fetchExpenses();
+      setLastRefreshTime(new Date());
+      showNotification('Datos actualizados correctamente', 'success');
+    } catch (error) {
+      console.error('Error al refrescar datos:', error);
+      showNotification('Error al refrescar datos', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 1.5, sm: 3 }, px: { xs: 1, sm: 3 } }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: { xs: 1.5, sm: 2 } }}>
-        <Typography 
-          variant="h4" 
-          component="h1" 
-          sx={{ 
-            fontSize: { xs: '1.3rem', sm: '1.75rem' }, 
-            fontWeight: 'bold' 
-          }}
-        >
-          {t('personalExpenses')}
-        </Typography>
-        
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          {/* Botón GASTO simple y directo */}
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={openNewExpense.bind(null, 'expense')}
-            startIcon={<AddIcon />}
-            sx={{ height: 40, fontSize: '0.85rem' }}
-          >
-            {isMobile ? 'Gasto' : 'Nuevo Gasto'}
-          </Button>
+      <Box sx={{ width: '100%', p: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h4" component="h1">
+            {t('personalExpenses.title')}
+          </Typography>
           
-          {/* Botón INGRESO simple y directo */}
-          <Button
-            variant="outlined"
-            color="success"
-            onClick={openNewExpense.bind(null, 'income')}
-            startIcon={<AddIcon />}
-            sx={{ height: 40, fontSize: '0.85rem' }}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {/* Indicador de conexión en tiempo real */}
+            <Tooltip title={isConnected ? 'Actualización automática activada' : 'Sin conexión en tiempo real'}>
+              <FiberManualRecordIcon 
+                sx={{ 
+                  color: isConnected ? 'success.main' : 'error.main',
+                  mr: 1,
+                  fontSize: '0.8rem'
+                }} 
+              />
+            </Tooltip>
+            
+            {/* Tiempo desde la última actualización */}
+            {lastRefreshTime && (
+              <Typography variant="caption" sx={{ mr: 2, color: 'text.secondary' }}>
+                Actualizado: {new Date(lastRefreshTime).toLocaleTimeString()}
+              </Typography>
+            )}
+            
+            {/* Botón de refresco manual */}
+            <Tooltip title="Refrescar datos">
+              <IconButton onClick={handleRefresh} disabled={loading} size="small" sx={{ mr: 1 }}>
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+            
+            {/* Botón para agregar nuevo gasto */}
+            <Button 
+              variant="contained" 
+              startIcon={<AddIcon />}
+              onClick={() => setOpenNewExpenseDialog(true)}
+              size={isMobile ? "small" : "medium"}
+            >
+              {isMobile ? t('common.add') : t('personalExpenses.addNew')}
+            </Button>
+          </Box>
+        </Box>
+        
+        {/* Controles de filtro y navegación */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Tooltip title="Mes anterior">
+              <IconButton onClick={handlePreviousMonth} disabled={loading} size="small" sx={{ mr: 1 }}>
+                <ChevronLeftIcon />
+              </IconButton>
+            </Tooltip>
+            <Typography variant="h6" component="span" sx={{ mr: 2 }}>
+              {getShortMonthName(selectedMonth)} {selectedYear}
+            </Typography>
+            <Tooltip title="Mes siguiente">
+              <IconButton onClick={handleNextMonth} disabled={loading} size="small" sx={{ ml: 1 }}>
+                <ChevronRightIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Button 
+            variant="outlined" 
+            startIcon={<TodayIcon />}
+            onClick={goToCurrentMonth}
+            size={isMobile ? "small" : "medium"}
           >
-            {isMobile ? 'Ingreso' : 'Nuevo Ingreso'}
+            {isMobile ? t('common.today') : t('personalExpenses.today')}
           </Button>
         </Box>
       </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 2, mb: 2 }}>
-        <Grid container spacing={1} alignItems="center">
-          <Grid item xs={12} sm={6} md={3}>
-            {/* Navegación de mes mejorada para móviles */}
-            <Box sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 1,
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'divider',
-              p: 0.5,
-              backgroundColor: 'background.paper'
-            }}>
-              {/* Botón MES ANTERIOR - Implementación mejorada para móviles */}
-              <Box
-                component="div"
-                role="button"
-                aria-label="Mes anterior"
-                onClick={handlePreviousMonth}
-                onTouchEnd={handlePreviousMonth}
-                sx={{ 
-                  minWidth: 40, 
-                  width: 40, 
-                  height: 38, 
-                  borderRadius: 1.5,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  backgroundColor: 'rgba(0, 0, 0, 0.03)',
-                  transition: 'background-color 0.2s',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  '&:hover': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.08)'
-                  },
-                  '&:active': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.12)'
-                  }
-                }}
-              >
-                <ChevronLeftIcon />
-              </Box>
-              
-              {/* Selector de MES */}
-              <Box
-                component="div"
-                role="button"
-                aria-label="Mes actual"
-                onClick={goToCurrentMonth}
-                sx={{ 
-                  flex: 1, 
-                  height: 38, 
-                  maxWidth: 200,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.9rem',
-                  fontWeight: 'medium',
-                  borderRadius: 1.5,
-                  mx: 0.5,
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  '&:hover': {
-                    backgroundColor: 'action.hover'
-                  },
-                  '&:active': {
-                    backgroundColor: 'action.selected'
-                  }
-                }}
-              >
-                {isMobile ? getShortMonthName(selectedMonth) : MONTH_NAMES[selectedMonth]} {selectedYear}
-              </Box>
-              
-              {/* Botón MES SIGUIENTE */}
-              <Box
-                component="div"
-                role="button"
-                aria-label="Mes siguiente"
-                onClick={handleNextMonth}
-                onTouchEnd={handleNextMonth}
-                sx={{ 
-                  minWidth: 40, 
-                  width: 40, 
-                  height: 38, 
-                  borderRadius: 1.5,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  backgroundColor: 'rgba(0, 0, 0, 0.03)',
-                  transition: 'background-color 0.2s',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  '&:hover': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.08)'
-                  },
-                  '&:active': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.12)'
-                  }
-                }}
-              >
-                <ChevronRightIcon />
-              </Box>
-              
-              {/* Botón HOY (sólo en desktop) */}
-              <Box
-                component="div"
-                role="button"
-                aria-label="Ir a hoy"
-                onClick={goToCurrentMonth}
-                sx={{ 
-                  minWidth: 40, 
-                  width: 40, 
-                  height: 38, 
-                  borderRadius: 1.5,
-                  display: { xs: 'none', sm: 'flex' },
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  ml: 0.5,
-                  cursor: 'pointer',
-                  '&:hover': {
-                    backgroundColor: 'action.hover'
-                  }
-                }}
-              >
-                <TodayIcon />
-              </Box>
-            </Box>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={9}>
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: { xs: 'space-between', md: 'flex-end' }, 
-              alignItems: 'center', 
-              mt: { xs: 1, sm: 0 },
-              gap: { xs: 1, md: 4 }
-            }}>
-              <Typography 
-                variant="body1" 
-                sx={{ 
-                  fontWeight: 'bold', 
-                  color: 'success.main',
-                  fontSize: { xs: '0.8rem', sm: '0.9rem' }
-                }}
-              >
-                {t('incomes')}: {formatAmount(
-                  expenses
-                    .filter(exp => exp.type === 'income')
-                    .reduce((sum, exp) => sum + exp.amount, 0)
-                )}
-              </Typography>
-              
-              <Typography 
-                variant="body1" 
-                sx={{ 
-                  fontWeight: 'bold', 
-                  color: 'error.main',
-                  fontSize: { xs: '0.8rem', sm: '0.9rem' }
-                }}
-              >
-                {t('expenses')}: {formatAmount(
-                  expenses
-                    .filter(exp => exp.type === 'expense')
-                    .reduce((sum, exp) => sum + exp.amount, 0)
-                )}
-              </Typography>
-              
-              <Typography 
-                variant="h6" 
-                sx={{ 
-                  fontWeight: 'bold', 
-                  color: totals.balance >= 0 ? 'success.main' : 'error.main',
-                  fontSize: { xs: '0.9rem', sm: '1rem' }
-                }}
-              >
-                {t('balance')}: {formatAmount(totals.balance)}
-              </Typography>
-            </Box>
-          </Grid>
-        </Grid>
-      </Paper>
-
+      
       {renderExpensesList()}
-
-      {/* Formulario de gastos/ingresos - NUEVA IMPLEMENTACIÓN */}
-      <Dialog
-        open={openExpenseDialog}
-        onClose={closeDialog}
-        fullWidth
-        maxWidth="sm"
-        fullScreen={isMobile}
-        PaperProps={{
-          elevation: 3,
-          sx: { 
-            borderRadius: isMobile ? 0 : 2,
-            height: isMobile ? '100%' : 'auto',
-            m: isMobile ? 0 : 2,
-            maxHeight: isMobile ? '100vh' : '95vh',
-            overflow: 'auto'
-          }
-        }}
-      >
-        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          {/* Cabecera del formulario */}
-          <Box 
-            sx={{ 
-              px: 3, 
-              py: 2.5, 
-              borderBottom: 1, 
-              borderColor: 'divider',
-              backgroundColor: theme => expenseData.type === 'income' 
-                ? alpha(theme.palette.success.main, 0.05)
-                : alpha(theme.palette.primary.main, 0.05),
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              position: 'relative',
-              zIndex: 1
-            }}
-          >
-            <Typography variant="h6" fontWeight="medium">
-              {selectedExpense ? 'Editar' : 'Nuevo'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}
-            </Typography>
-            <IconButton edge="end" onClick={closeDialog} aria-label="close">
-              <CloseIcon />
-            </IconButton>
-          </Box>
-          
-          {/* Contenido del formulario */}
-          <Box sx={{ 
-            p: 3, 
-            flexGrow: 1, 
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            {/* Mensaje de error si existe */}
-            {error && (
-              <Alert severity="error" sx={{ mb: 3, borderRadius: 1 }}>
-                {error}
-              </Alert>
-            )}
-            
-            {/* Importe */}
-            <Box sx={{ mb: 3 }}>
-              <Typography 
-                variant="subtitle2" 
-                component="label" 
-                htmlFor="amount" 
-                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-              >
-                Importe
-              </Typography>
-              <TextField
-                id="amount"
-                name="amount"
-                value={expenseData.amount}
-                onChange={handleExpenseChange}
-                type="number"
-                fullWidth
-                required
-                placeholder="0.00"
-                variant="outlined"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Typography color="text.secondary">€</Typography>
-                    </InputAdornment>
-                  ),
-                  sx: { py: 1.5, backgroundColor: 'background.paper' }
-                }}
-              />
-            </Box>
-            
-            {/* Nombre */}
-            <Box sx={{ mb: 3 }}>
-              <Typography 
-                variant="subtitle2" 
-                component="label" 
-                htmlFor="name" 
-                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-              >
-                Nombre
-              </Typography>
-              <TextField
-                id="name"
-                name="name"
-                value={expenseData.name}
-                onChange={handleExpenseChange}
-                fullWidth
-                required
-                placeholder="Nombre del gasto"
-                variant="outlined"
-                InputProps={{
-                  sx: { py: 1.5, backgroundColor: 'background.paper' }
-                }}
-              />
-            </Box>
-            
-            {/* Categoría */}
-            <Box sx={{ mb: 3 }}>
-              <Typography 
-                variant="subtitle2" 
-                component="label" 
-                htmlFor="category" 
-                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-              >
-                Categoría
-              </Typography>
-              <FormControl
-                fullWidth
-                variant="outlined"
-                required
-              >
-                <Select
-                  id="category"
-                  name="category"
-                  value={expenseData.category}
-                  onChange={handleExpenseChange}
-                  displayEmpty
-                  sx={{
-                    backgroundColor: 'background.paper',
-                    '& .MuiSelect-select': { py: 1.5 }
-                  }}
-                  MenuProps={{
-                    PaperProps: {
-                      sx: { maxHeight: 300, borderRadius: 1 }
-                    },
-                    anchorOrigin: {
-                      vertical: 'bottom',
-                      horizontal: 'left',
-                    },
-                    transformOrigin: {
-                      vertical: 'top',
-                      horizontal: 'left',
-                    },
-                    sx: { zIndex: 9999 }
-                  }}
-                  renderValue={(selected) => {
-                    if (!selected) {
-                      return <Typography color="text.secondary">Seleccionar categoría</Typography>;
-                    }
-                    return (
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {CATEGORY_ICONS[selected] && (
-                          <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
-                            {CATEGORY_ICONS[selected]}
-                          </Box>
-                        )}
-                        {selected}
-                      </Box>
-                    );
-                  }}
-                >
-                  {(expenseData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((category) => (
-                    <MenuItem key={category} value={category}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {CATEGORY_ICONS[category] && (
-                          <Box sx={{ mr: 1.5, display: 'flex', alignItems: 'center' }}>
-                            {CATEGORY_ICONS[category]}
-                          </Box>
-                        )}
-                        {category}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-            
-            {/* Descripción */}
-            <Box sx={{ mb: 3 }}>
-              <Typography 
-                variant="subtitle2" 
-                component="label" 
-                htmlFor="description" 
-                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-              >
-                Descripción
-              </Typography>
-              <TextField
-                id="description"
-                name="description"
-                value={expenseData.description}
-                onChange={handleExpenseChange}
-                fullWidth
-                placeholder="Descripción del gasto (opcional)"
-                variant="outlined"
-                InputProps={{
-                  sx: { py: 1.5, backgroundColor: 'background.paper' }
-                }}
-              />
-            </Box>
-            
-            {/* Fecha */}
-            <Box sx={{ mb: 3 }}>
-              <Typography 
-                variant="subtitle2" 
-                component="label" 
-                htmlFor="date" 
-                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-              >
-                Fecha
-              </Typography>
-              <TextField
-                id="date"
-                name="date"
-                type="date"
-                value={expenseData.date}
-                onChange={handleExpenseChange}
-                fullWidth
-                required
-                variant="outlined"
-                InputProps={{
-                  sx: { py: 1.5, backgroundColor: 'background.paper' }
-                }}
-              />
-              <Typography variant="caption" sx={{ display: 'block', mt: 1, ml: 1, color: 'text.secondary' }}>
-                Se guardará como {expenseData.type === 'income' ? 'ingreso' : 'gasto'} del mes{' '}
-                {new Date(expenseData.date).toLocaleDateString('es-ES', { month: 'long' })}
-              </Typography>
-            </Box>
-            
-            {/* Es recurrente */}
-            <Box sx={{ mb: 2 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={expenseData.isRecurring}
-                    onChange={handleRecurringChange}
-                    name="isRecurring"
-                    color={expenseData.type === 'income' ? 'success' : 'primary'}
-                  />
-                }
-                label={
-                  <Typography variant="body2">
-                    Es {expenseData.type === 'income' ? 'ingreso' : 'gasto'} recurrente (se repite cada mes)
-                  </Typography>
-                }
-              />
-            </Box>
-            
-            {/* Día del mes (condicional) */}
-            {expenseData.isRecurring && (
-              <Box sx={{ mb: 2 }}>
-                <Typography 
-                  variant="subtitle2" 
-                  component="label" 
-                  htmlFor="recurringDay" 
-                  sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-                >
-                  Día del mes
-                </Typography>
-                <TextField
-                  id="recurringDay"
-                  name="recurringDay"
-                  type="number"
-                  value={expenseData.recurringDay}
-                  onChange={handleExpenseChange}
-                  InputProps={{
-                    inputProps: { min: 1, max: 31 },
-                    sx: { 
-                      py: 1.5, 
-                      backgroundColor: 'background.paper',
-                      width: { xs: '100%', sm: '50%' }
-                    }
-                  }}
-                />
-                <Typography variant="caption" sx={{ display: 'block', mt: 1, ml: 1, color: 'text.secondary' }}>
-                  Día del mes en que se repite este {expenseData.type === 'income' ? 'ingreso' : 'gasto'}
-                </Typography>
-              </Box>
-            )}
-          </Box>
-          
-          {/* Botones de acción */}
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              p: 3, 
-              borderTop: 1, 
-              borderColor: 'divider',
-              backgroundColor: theme => alpha(theme.palette.background.default, 0.5),
-              position: 'sticky',
-              bottom: 0,
-              zIndex: 10
-            }}
-          >
-            <Button
-              onClick={closeDialog}
-              sx={{ 
-                py: 1.5, 
-                px: 3, 
-                borderRadius: 2,
-                textTransform: 'none',
-                fontSize: '0.95rem'
-              }}
-              disabled={submitting}
-            >
-              Cancelar
-            </Button>
-            
-            <Button
-              type="submit"
-              variant="contained"
-              color={expenseData.type === 'income' ? 'success' : 'primary'}
-              disabled={submitting}
-              sx={{ 
-                py: 1.5, 
-                px: 4, 
-                borderRadius: 2,
-                textTransform: 'none',
-                fontSize: '0.95rem',
-                fontWeight: 'medium'
-              }}
-            >
-              {submitting ? 'Guardando...' : (selectedExpense ? 'Actualizar' : 'Guardar')}
-            </Button>
-          </Box>
-        </Box>
-      </Dialog>
     </Container>
   );
 };

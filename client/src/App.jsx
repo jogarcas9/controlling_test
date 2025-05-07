@@ -18,6 +18,8 @@ import {
   Drawer,
   useMediaQuery,
   useTheme,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import i18n from './i18n';
@@ -34,6 +36,15 @@ import ReportsDashboard from './components/reports/ReportsDashboard';
 import { AuthProvider } from './context/AuthContext';
 import authService from './services/authService';
 import { checkServiceWorkers } from './utils/checkServiceWorkers';
+import socketService from './services/socketService';
+
+// Crear un contexto para el estado de la conexión en tiempo real
+export const RealTimeContext = React.createContext({
+  isConnected: false,
+  lastUpdate: null,
+  reconnect: () => {},
+  showNotification: () => {},
+});
 
 // Componente de Layout principal que contiene el sidebar y el área de contenido
 const AppLayout = ({ 
@@ -208,6 +219,11 @@ const App = () => {
   const [language, setLanguage] = useState('es');
   // eslint-disable-next-line no-unused-vars
   const [currency, setCurrency] = useState('EUR');
+
+  // Estados para Socket.IO y notificaciones en tiempo real
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
 
   // Obtener funciones de traducción incondicionalmente
   const { t = key => key } = useTranslation();
@@ -547,6 +563,82 @@ const App = () => {
     }
   }, []);
 
+  // Efecto para inicializar la conexión Socket.IO
+  useEffect(() => {
+    if (isAuthenticated) {
+      const initSocket = async () => {
+        try {
+          const socket = await socketService.connect();
+          if (socket) {
+            setSocketConnected(true);
+            
+            // Configurar eventos
+            socket.on('connect', () => setSocketConnected(true));
+            socket.on('disconnect', () => setSocketConnected(false));
+            
+            // Evento de notificación
+            socket.on('notification', (data) => {
+              showNotification(data.message, data.severity || 'info');
+              if (data.updateTime) {
+                setLastUpdate(new Date());
+              }
+            });
+          }
+        } catch (error) {
+          console.error('Error al inicializar Socket.IO:', error);
+        }
+      };
+      
+      initSocket();
+    }
+    
+    return () => {
+      // No desconectamos al salir para evitar reconexiones constantes
+      // socketService.disconnect();
+    };
+  }, [isAuthenticated]);
+
+  // Función para mostrar notificaciones
+  const showNotification = (message, severity = 'info') => {
+    setNotification({ 
+      open: true, 
+      message, 
+      severity
+    });
+  };
+
+  // Función para reconectar Socket.IO
+  const reconnectSocket = async () => {
+    try {
+      await socketService.disconnect();
+      const socket = await socketService.connect();
+      if (socket) {
+        setSocketConnected(true);
+        showNotification('Conexión reestablecida', 'success');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error al reconectar:', error);
+      setSocketConnected(false);
+      showNotification('Error al reconectar', 'error');
+      return false;
+    }
+  };
+
+  // Cerrar notificación
+  const handleCloseNotification = () => {
+    setNotification(prev => ({ ...prev, open: false }));
+  };
+
+  // Valor del contexto de tiempo real
+  const realTimeContextValue = {
+    isConnected: socketConnected,
+    lastUpdate,
+    reconnect: reconnectSocket,
+    showNotification,
+  };
+
   // Componente para rutas privadas
   const PrivateRoute = ({ children }) => {
     if (!isAuthenticated) {
@@ -573,21 +665,40 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <AuthProvider>
         <CurrencyProvider>
-          <Router>
-            <Routes>
-              <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} />
-              <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-              <Route path="/personal" element={<PrivateRoute><PersonalExpenses /></PrivateRoute>} />
-              <Route path="/shared" element={<PrivateRoute><SharedSessions /></PrivateRoute>} />
-              <Route path="/reports" element={<PrivateRoute><ReportsDashboard /></PrivateRoute>} />
-              <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
-              <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Router>
+          <RealTimeContext.Provider value={realTimeContextValue}>
+            <Router>
+              <Routes>
+                <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} />
+                <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+                <Route path="/personal" element={<PrivateRoute><PersonalExpenses /></PrivateRoute>} />
+                <Route path="/shared" element={<PrivateRoute><SharedSessions /></PrivateRoute>} />
+                <Route path="/reports" element={<PrivateRoute><ReportsDashboard /></PrivateRoute>} />
+                <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+                <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Router>
+          </RealTimeContext.Provider>
         </CurrencyProvider>
       </AuthProvider>
+      
+      {/* Snackbar para notificaciones */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseNotification} 
+          severity={notification.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 };

@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { check, validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 const auth = require('../../middleware/auth');
-const { PersonalExpense } = require('../../models');
+const { PersonalExpense, Category } = require('../../models');
 
 // @route   GET api/personal-expenses/monthly
 // @desc    Obtener gastos personales del mes actual
@@ -138,87 +140,127 @@ router.get('/', auth, async (req, res) => {
 // @route   POST api/personal-expenses
 // @desc    Crear un nuevo gasto personal
 // @access  Private
-router.post('/', auth, async (req, res) => {
-  try {
-    const { name, description, amount, category, date, type, isRecurring, recurringDay, tags, recurringMonths = 12 } = req.body;
-
-    // Validar datos requeridos
-    if (!name || !amount || !category) {
-      return res.status(400).json({ msg: 'Se requieren nombre, monto y categoría' });
+router.post('/',
+  auth,
+  [
+    check('name', 'El nombre es obligatorio').not().isEmpty(),
+    check('amount', 'El monto es obligatorio').not().isEmpty(),
+    check('type', 'El tipo es obligatorio').isIn(['expense', 'income']),
+    check('date', 'La fecha es obligatoria').not().isEmpty()
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    // Fecha base para el gasto
-    const baseDate = date ? new Date(date) : new Date();
-    
-    // Crear el gasto actual
-    const newExpense = new PersonalExpense({
-      user: req.user.id,
-      name,
-      description,
-      amount,
-      category,
-      date: baseDate,
-      type: type || 'expense',
-      isRecurring: isRecurring || false,
-      recurringDay: recurringDay || (baseDate.getDate()),
-      tags
-    });
+    try {
+      const { name, description, amount, category, date, type, isRecurring, recurringDay, tags, recurringMonths = 12 } = req.body;
 
-    // Guardar el gasto inicial
-    const createdExpense = await newExpense.save();
-    console.log(`Gasto creado: ${createdExpense._id}, recurrente: ${isRecurring}`);
-    
-    // Si es recurrente, crear instancias para meses futuros
-    if (isRecurring) {
-      console.log(`Creando ${recurringMonths} instancias recurrentes para el gasto ${createdExpense._id}`);
-      const recurringExpenses = [];
+      // Validar datos requeridos
+      if (!name || !amount || !category) {
+        return res.status(400).json({ msg: 'Se requieren nombre, monto y categoría' });
+      }
+
+      // Fecha base para el gasto
+      const baseDate = date ? new Date(date) : new Date();
       
-      // Determinar el día de recurrencia (usar el día especificado o el día del mes de la fecha original)
-      const effectiveRecurringDay = recurringDay || baseDate.getDate();
+      // Crear el gasto actual
+      const newExpense = new PersonalExpense({
+        user: req.user.id,
+        name,
+        description,
+        amount,
+        category,
+        date: baseDate,
+        type: type || 'expense',
+        isRecurring: isRecurring || false,
+        recurringDay: recurringDay || (baseDate.getDate()),
+        tags
+      });
+
+      // Guardar el gasto inicial
+      const createdExpense = await newExpense.save();
+      console.log(`Gasto creado: ${createdExpense._id}, recurrente: ${isRecurring}`);
       
-      // Crear instancias para los meses futuros (hasta 12 meses por defecto)
-      for (let i = 1; i <= recurringMonths; i++) {
-        // Calcular la fecha para el mes futuro
-        const futureDate = new Date(baseDate);
-        futureDate.setMonth(futureDate.getMonth() + i);
+      // Si es recurrente, crear instancias para meses futuros
+      if (isRecurring) {
+        console.log(`Creando ${recurringMonths} instancias recurrentes para el gasto ${createdExpense._id}`);
+        const recurringExpenses = [];
         
-        // Ajustar al día de recurrencia, manejando meses con menos días
-        const maxDayInMonth = new Date(futureDate.getFullYear(), futureDate.getMonth() + 1, 0).getDate();
-        futureDate.setDate(Math.min(effectiveRecurringDay, maxDayInMonth));
+        // Determinar el día de recurrencia (usar el día especificado o el día del mes de la fecha original)
+        const effectiveRecurringDay = recurringDay || baseDate.getDate();
         
-        // Crear la instancia recurrente
-        const recurringExpense = new PersonalExpense({
-          user: req.user.id,
-          name,
-          description,
-          amount,
-          category,
-          date: futureDate,
-          type: type || 'expense',
-          isRecurring: true,
-          recurringDay: effectiveRecurringDay,
-          tags,
-          // Vincular con el gasto original para facilitar actualizaciones futuras
-          originalExpenseId: createdExpense._id
+        // Crear instancias para los meses futuros (hasta 12 meses por defecto)
+        for (let i = 1; i <= recurringMonths; i++) {
+          // Calcular la fecha para el mes futuro
+          const futureDate = new Date(baseDate);
+          futureDate.setMonth(futureDate.getMonth() + i);
+          
+          // Ajustar al día de recurrencia, manejando meses con menos días
+          const maxDayInMonth = new Date(futureDate.getFullYear(), futureDate.getMonth() + 1, 0).getDate();
+          futureDate.setDate(Math.min(effectiveRecurringDay, maxDayInMonth));
+          
+          // Crear la instancia recurrente
+          const recurringExpense = new PersonalExpense({
+            user: req.user.id,
+            name,
+            description,
+            amount,
+            category,
+            date: futureDate,
+            type: type || 'expense',
+            isRecurring: true,
+            recurringDay: effectiveRecurringDay,
+            tags,
+            // Vincular con el gasto original para facilitar actualizaciones futuras
+            originalExpenseId: createdExpense._id
+          });
+          
+          recurringExpenses.push(recurringExpense);
+        }
+        
+        // Guardar todas las instancias recurrentes
+        if (recurringExpenses.length > 0) {
+          await PersonalExpense.insertMany(recurringExpenses);
+          console.log(`${recurringExpenses.length} instancias recurrentes creadas`);
+        }
+      }
+      
+      // Notificar a los clientes del cambio
+      const io = req.app.get('io');
+      if (io) {
+        // Notificar al usuario específico
+        io.to(`user-${req.user.id}`).emit('expense-added', { 
+          _id: createdExpense._id,
+          name: createdExpense.name,
+          amount: createdExpense.amount,
+          date: createdExpense.date
         });
         
-        recurringExpenses.push(recurringExpense);
+        // Notificación general para todos
+        io.emit('data-update', { 
+          type: 'personal-expense', 
+          action: 'create',
+          userId: req.user.id
+        });
+        
+        // Enviar notificación
+        io.to(`user-${req.user.id}`).emit('notification', {
+          message: `Gasto "${createdExpense.name}" añadido correctamente`,
+          severity: 'success',
+          updateTime: true
+        });
       }
       
-      // Guardar todas las instancias recurrentes
-      if (recurringExpenses.length > 0) {
-        await PersonalExpense.insertMany(recurringExpenses);
-        console.log(`${recurringExpenses.length} instancias recurrentes creadas`);
-      }
+      // Devolver el gasto creado inicialmente
+      res.status(201).json(createdExpense);
+    } catch (err) {
+      console.error('Error al crear gasto personal:', err.message);
+      res.status(500).json({ msg: 'Error del servidor', error: err.message });
     }
-    
-    // Devolver el gasto creado inicialmente
-    res.json(createdExpense);
-  } catch (err) {
-    console.error('Error al crear gasto personal:', err.message);
-    res.status(500).json({ msg: 'Error del servidor', error: err.message });
   }
-});
+);
 
 // @route   PUT api/personal-expenses/:id
 // @desc    Actualizar un gasto personal
@@ -324,6 +366,32 @@ router.put('/:id', auth, async (req, res) => {
       }
     }
     
+    // Notificar a los clientes del cambio
+    const io = req.app.get('io');
+    if (io) {
+      // Notificar al usuario específico
+      io.to(`user-${req.user.id}`).emit('expense-updated', { 
+        _id: updatedExpense._id,
+        name: updatedExpense.name,
+        amount: updatedExpense.amount,
+        date: updatedExpense.date
+      });
+      
+      // Notificación general
+      io.emit('data-update', { 
+        type: 'personal-expense', 
+        action: 'update',
+        userId: req.user.id
+      });
+      
+      // Enviar notificación
+      io.to(`user-${req.user.id}`).emit('notification', {
+        message: `Gasto "${updatedExpense.name}" actualizado correctamente`,
+        severity: 'success',
+        updateTime: true
+      });
+    }
+    
     res.json(updatedExpense);
   } catch (err) {
     console.error('Error al actualizar gasto personal:', err.message);
@@ -401,6 +469,29 @@ router.delete('/:id', auth, async (req, res) => {
       console.log(`Gasto eliminado: ${expense._id}`);
       
       res.json({ msg: 'Gasto eliminado' });
+    }
+
+    // Notificar a los clientes del cambio
+    const io = req.app.get('io');
+    if (io) {
+      // Notificar al usuario específico
+      io.to(`user-${req.user.id}`).emit('expense-deleted', { 
+        _id: expense._id
+      });
+      
+      // Notificación general
+      io.emit('data-update', { 
+        type: 'personal-expense', 
+        action: 'delete',
+        userId: req.user.id
+      });
+      
+      // Enviar notificación
+      io.to(`user-${req.user.id}`).emit('notification', {
+        message: `Gasto "${expense.name}" eliminado correctamente`,
+        severity: 'info',
+        updateTime: true
+      });
     }
   } catch (err) {
     console.error('Error al eliminar gasto personal:', err.message);
