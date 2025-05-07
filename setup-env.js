@@ -6,6 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Determinar si estamos en Vercel
 const isVercel = process.env.VERCEL === '1';
@@ -43,6 +44,15 @@ VERCEL=1
   `.trim();
   
   createEnvFile(serverEnvPath, serverEnvContent);
+  
+  // Asegurarse de que recharts esté instalado correctamente
+  try {
+    console.log('📦 Instalando recharts específicamente...');
+    execSync('cd client && npm install recharts --save', { stdio: 'inherit' });
+    console.log('✅ Recharts instalado correctamente');
+  } catch (error) {
+    console.error('❌ Error al instalar recharts:', error);
+  }
   
   console.log('✅ Configuración de variables de entorno completada');
 } else {
