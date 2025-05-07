@@ -815,6 +815,22 @@ exports.addExpense = async (req, res) => {
         // Usar el método del modelo para añadir el gasto correctamente
         await session.addExpense(newExpense);
 
+        // Generar asignaciones para el mes actual
+        const expenseDate = newExpense.date;
+        const year = expenseDate.getFullYear();
+        const month = expenseDate.getMonth(); // 0-11
+
+        try {
+            // Verificar que el servicio de asignaciones está disponible
+            if (typeof allocationService.generateMonthlyAllocations === 'function') {
+                console.log(`Generando asignaciones automáticamente para año=${year}, mes=${month} después de añadir gasto`);
+                await allocationService.generateMonthlyAllocations(session, year, month);
+            }
+        } catch (allocError) {
+            console.error(`Error al generar asignaciones para año=${year}, mes=${month}:`, allocError);
+            // No interrumpir el proceso principal si falla la generación de asignaciones
+        }
+
         // Devolver la sesión actualizada
         res.json(session);
     } catch (error) {
@@ -1210,12 +1226,21 @@ exports.deleteExpense = async (req, res) => {
             }).session(dbSession);
             console.log(`Eliminados ${deletePersonalExpensesResult.deletedCount} gastos personales previos`);
 
-            // Redistribuir montos entre participantes
-            if (typeof allocationService !== 'undefined' && allocationService && typeof allocationService.distributeAmount === 'function') {
-                await allocationService.distributeAmount(updatedSession);
-                console.log(`Distribución de montos actualizada para sesión ${sessionId}`);
+            // Regenerar asignaciones para el mes del gasto eliminado
+            const originalMonth = expenseDate.getMonth();
+            const originalYear = expenseDate.getFullYear();
+            
+            console.log(`Regenerando asignaciones para año=${originalYear}, mes=${originalMonth} después de eliminar gasto`);
+            
+            if (typeof allocationService.generateMonthlyAllocations === 'function') {
+                try {
+                    await allocationService.generateMonthlyAllocations(updatedSession, originalYear, originalMonth);
+                    console.log(`✅ Asignaciones regeneradas correctamente para ${originalYear}-${originalMonth+1}`);
+                } catch (allocError) {
+                    console.error(`❌ Error al regenerar asignaciones: ${allocError.message}`);
+                }
             } else {
-                console.warn('Servicio de asignación no disponible, se omite la distribución de montos');
+                console.warn('Servicio de asignación no disponible, se omite la regeneración de asignaciones');
             }
         } catch (allocError) {
             console.error('Error al redistribuir montos:', allocError);
@@ -1596,6 +1621,9 @@ exports.updateExpense = async (req, res) => {
         
         // Guardar el monto anterior para ajustar el total
         const oldAmount = expense.amount;
+        const oldDate = expense.date ? new Date(expense.date) : new Date();
+        const oldYear = oldDate.getFullYear();
+        const oldMonth = oldDate.getMonth();
         
         // Actualizar campos del gasto
         if (name) expense.name = name;
@@ -1604,6 +1632,11 @@ exports.updateExpense = async (req, res) => {
         if (date) expense.date = new Date(date);
         if (category) expense.category = category;
         if (paidBy) expense.paidBy = paidBy;
+        
+        // Obtener la nueva fecha para determinar si cambió el mes/año
+        const newDate = expense.date ? new Date(expense.date) : new Date();
+        const newYear = newDate.getFullYear();
+        const newMonth = newDate.getMonth();
         
         // Ajustar el monto total de la sesión
         if (amount && parseFloat(amount) !== oldAmount) {
@@ -1635,20 +1668,23 @@ exports.updateExpense = async (req, res) => {
 
         // Recalcular y aplicar nuevas asignaciones basadas en los cambios
         try {
-            const newAllocations = await allocationService.distributeAmount(updatedSession);
-            console.log(`Se actualizaron ${newAllocations.length} asignaciones con nuevos montos`);
+            // Si cambió el mes o el año, necesitamos regenerar asignaciones para ambos meses
+            const monthChanged = (oldYear !== newYear || oldMonth !== newMonth);
             
-            // La función distributeAmount ya debería sincronizar con gastos personales,
-            // pero verificamos y forzamos la actualización si es necesario
-            if (allocationsToUpdate.length > 0) {
-                for (const allocation of newAllocations) {
-                    try {
-                        await syncService.processUpdatedAllocation(allocation);
-                    } catch (syncError) {
-                        console.error(`Error al sincronizar asignación ${allocation._id}:`, syncError.message);
-                        // No interrumpimos el flujo principal
-                    }
-                }
+            if (monthChanged) {
+                console.log(`La fecha del gasto cambió de ${oldYear}-${oldMonth+1} a ${newYear}-${newMonth+1}, regenerando asignaciones para ambos meses`);
+                
+                // Regenerar asignaciones para el mes anterior
+                await allocationService.generateMonthlyAllocations(updatedSession, oldYear, oldMonth);
+                console.log(`Regeneradas asignaciones para el mes anterior ${oldYear}-${oldMonth+1}`);
+                
+                // Regenerar asignaciones para el nuevo mes
+                await allocationService.generateMonthlyAllocations(updatedSession, newYear, newMonth);
+                console.log(`Regeneradas asignaciones para el nuevo mes ${newYear}-${newMonth+1}`);
+            } else {
+                // Si no cambió el mes, solo regeneramos las asignaciones del mes actual
+                console.log(`Regenerando asignaciones para ${newYear}-${newMonth+1}`);
+                await allocationService.generateMonthlyAllocations(updatedSession, newYear, newMonth);
             }
         } catch (allocError) {
             console.error('Error al redistribuir montos:', allocError.message);
@@ -2191,5 +2227,188 @@ exports.repairSessionStructure = async (req, res) => {
       msg: 'Error al reparar estructura de sesión',
       error: error.message
     });
+  }
+};
+
+// Actualizar nombres de usuarios en asignaciones
+exports.updateAllocationUsernames = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Solo permitir a administradores
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ msg: 'No tiene permiso para realizar esta operación' });
+    }
+    
+    console.log('Iniciando actualización de nombres de usuario en asignaciones...');
+    
+    // Buscar todas las sesiones
+    const sessions = await SharedSession.find({});
+    let updatedCount = 0;
+    
+    // Para cada sesión, actualizar los nombres de usuario en las asignaciones
+    for (const session of sessions) {
+      let sessionUpdated = false;
+      
+      // Revisar cada asignación
+      if (session.allocations && Array.isArray(session.allocations)) {
+        for (const allocation of session.allocations) {
+          if (allocation.name === 'Usuario' && allocation.userId) {
+            try {
+              // Buscar el nombre real del usuario
+              const user = await User.findById(allocation.userId);
+              if (user) {
+                allocation.name = user.nombre || user.email;
+                sessionUpdated = true;
+                console.log(`Actualizado nombre de usuario ${allocation.userId} a "${allocation.name}" en sesión ${session._id}`);
+              }
+            } catch (userError) {
+              console.error(`Error al buscar usuario ${allocation.userId}:`, userError);
+            }
+          }
+        }
+      }
+      
+      // Si se actualizó alguna asignación, guardar la sesión
+      if (sessionUpdated) {
+        await session.save();
+        updatedCount++;
+      }
+    }
+    
+    res.json({ 
+      success: true,
+      message: `Se actualizaron nombres en ${updatedCount} sesiones`
+    });
+  } catch (error) {
+    console.error('Error al actualizar nombres de usuario:', error);
+    res.status(500).json({ msg: 'Error del servidor al actualizar nombres' });
+  }
+};
+
+// Generar asignaciones mensuales para una sesión
+exports.generateMonthlyAllocations = async (req, res) => {
+  try {
+    const { id: sessionId } = req.params;
+    const { year, month } = req.body;
+    const userId = req.user.id;
+    
+    // Validar parámetros
+    if (!year || !month && month !== 0) {
+      return res.status(400).json({ msg: 'Año y mes son obligatorios' });
+    }
+    
+    const yearNum = parseInt(year);
+    const monthNum = parseInt(month);
+    
+    if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 0 || monthNum > 11) {
+      return res.status(400).json({ msg: 'Año o mes no válido' });
+    }
+    
+    // Verificar que la sesión existe y que el usuario tiene acceso
+    const session = await SharedSession.findOne({
+      _id: sessionId,
+      $or: [
+        { userId }, // Es el creador
+        { 'participants.userId': userId, 'participants.status': 'accepted', 'participants.canEdit': true } // Es participante con permisos
+      ]
+    });
+    
+    if (!session) {
+      return res.status(403).json({ msg: 'No tiene permiso para modificar esta sesión' });
+    }
+    
+    // Generar asignaciones mensuales
+    const allocations = await allocationService.generateMonthlyAllocations(session, yearNum, monthNum);
+    
+    res.json({
+      success: true,
+      message: `Se generaron ${allocations.length} asignaciones para ${yearNum}-${monthNum+1}`,
+      allocations
+    });
+  } catch (error) {
+    console.error('Error al generar asignaciones mensuales:', error);
+    res.status(500).json({ msg: 'Error del servidor: ' + error.message });
+  }
+};
+
+// Generar asignaciones mensuales para todas las sesiones
+exports.generateAllMonthlyAllocations = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Solo permitir a administradores
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ msg: 'No tiene permiso para realizar esta operación' });
+    }
+    
+    console.log('Iniciando generación de asignaciones mensuales para todas las sesiones...');
+    
+    // Buscar todas las sesiones
+    const sessions = await SharedSession.find({});
+    let totalAllocationsCreated = 0;
+    let sessionsProcessed = 0;
+    
+    // Para cada sesión, generar asignaciones para cada año/mes
+    for (const session of sessions) {
+      console.log(`Procesando sesión: ${session.name} (${session._id})`);
+      let allocationsForSession = 0;
+      
+      // Verificar si la sesión tiene gastos por año/mes
+      if (!session.yearlyExpenses || !Array.isArray(session.yearlyExpenses) || session.yearlyExpenses.length === 0) {
+        console.log(`  La sesión no tiene gastos registrados, saltando...`);
+        continue;
+      }
+      
+      // Verificar si la sesión tiene asignaciones
+      if (!session.allocations || !Array.isArray(session.allocations) || session.allocations.length === 0) {
+        console.log(`  La sesión no tiene asignaciones de porcentajes, saltando...`);
+        continue;
+      }
+      
+      // Procesar cada año y mes en la sesión
+      for (const yearData of session.yearlyExpenses) {
+        const year = yearData.year;
+        
+        for (const monthData of yearData.months) {
+          const month = monthData.month;
+          
+          try {
+            // Verificar si ya existen asignaciones para esta combinación
+            const existingAllocations = await ParticipantAllocation.find({
+              sessionId: session._id,
+              year,
+              month
+            });
+            
+            if (existingAllocations.length > 0) {
+              console.log(`  Ya existen ${existingAllocations.length} asignaciones para ${year}-${month+1}, saltando...`);
+              continue;
+            }
+            
+            // Generar asignaciones para este mes
+            const allocations = await allocationService.generateMonthlyAllocations(session, year, month);
+            allocationsForSession += allocations.length;
+            totalAllocationsCreated += allocations.length;
+            console.log(`  Generadas ${allocations.length} asignaciones para ${year}-${month+1}`);
+          } catch (monthError) {
+            console.error(`  Error al procesar ${year}-${month+1}:`, monthError.message);
+          }
+        }
+      }
+      
+      console.log(`  Total para sesión ${session.name}: ${allocationsForSession} asignaciones`);
+      if (allocationsForSession > 0) {
+        sessionsProcessed++;
+      }
+    }
+    
+    res.json({ 
+      success: true,
+      message: `Se generaron ${totalAllocationsCreated} asignaciones en ${sessionsProcessed} sesiones`
+    });
+  } catch (error) {
+    console.error('Error al generar asignaciones mensuales:', error);
+    res.status(500).json({ msg: 'Error del servidor: ' + error.message });
   }
 };

@@ -104,6 +104,7 @@ app.use('/api/personal-expenses', require('./routes/api/personal-expenses'));
 app.use('/api/income', require('./routes/api/income'));
 app.use('/api/reports', require('./routes/api/reports'));
 app.use('/api/shared-sessions', require('./routes/api/shared-sessions'));
+app.use('/api/participant-allocations', require('./routes/api/participant-allocations'));
 
 // Middleware para manejo de errores mejorado
 app.use((err, req, res, next) => {

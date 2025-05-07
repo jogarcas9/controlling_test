@@ -3,7 +3,7 @@
  * Este archivo define todas las rutas de la API utilizadas en la aplicación
  */
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = '/api';
 
 const config = {
   API: {
@@ -13,10 +13,10 @@ const config = {
   },
   
   AUTH: {
-    LOGIN: '/api/auth/login',
-    REGISTER: '/api/auth/register',
+    LOGIN: `${API_BASE_URL}/auth/login`,
+    REGISTER: `${API_BASE_URL}/auth/register`,
     VERIFY: '/api/auth/verify',
-    USER: '/api/auth/user'
+    USER: `${API_BASE_URL}/auth/user`
   },
   
   EXPENSES: {
@@ -27,8 +27,10 @@ const config = {
   },
   
   PERSONAL_EXPENSES: {
-    MONTHLY: '/api/personal-expenses/monthly',
-    FILTERED: (month, year) => `/api/personal-expenses?month=${month}&year=${year}`,
+    BASE: `${API_BASE_URL}/personal-expenses`,
+    MONTHLY: `${API_BASE_URL}/personal-expenses/monthly`,
+    FILTERED: (month, year) => `${API_BASE_URL}/personal-expenses?month=${month}&year=${year}`,
+    GENERATE_SHARED: `${API_BASE_URL}/personal-expenses/generate-shared-month`,
     CREATE: '/api/personal-expenses',
     UPDATE: (id) => `/api/personal-expenses/${id}`,
     DELETE: (id) => `/api/personal-expenses/${id}`,
@@ -55,9 +57,7 @@ const config = {
     YEARLY: '/api/reports/yearly'
   },
   
-  HEALTH: {
-    CHECK: '/api/health'
-  }
+  HEALTH: `${API_BASE_URL}/health`
 };
 
 export default config; 

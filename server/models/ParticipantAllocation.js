@@ -11,13 +11,30 @@ const participantAllocationSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  name: {
+  username: {
     type: String,
     required: true
+  },
+  name: {
+    type: String
   },
   amount: {
     type: Number,
     required: true
+  },
+  totalAmount: {
+    type: Number,
+    required: true
+  },
+  year: {
+    type: Number,
+    required: true
+  },
+  month: {
+    type: Number,
+    required: true,
+    min: 0,
+    max: 11
   },
   currency: {
     type: String,
@@ -38,6 +55,14 @@ const participantAllocationSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'PersonalExpense',
     default: null
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
@@ -46,56 +71,203 @@ const participantAllocationSchema = new mongoose.Schema({
 // Índices para mejorar la eficiencia de las consultas
 participantAllocationSchema.index({ sessionId: 1, userId: 1 });
 participantAllocationSchema.index({ userId: 1, status: 1 });
+participantAllocationSchema.index({ year: 1, month: 1 });
+participantAllocationSchema.index({ sessionId: 1, year: 1, month: 1 });
 participantAllocationSchema.index({ personalExpenseId: 1 });
 
-// Hook previo al guardado para registro
+// Map of allocations currently being synchronized to prevent infinite loops
+const syncInProgress = new Map();
+
+// Pre-save hook: Log allocation data before saving
 participantAllocationSchema.pre('save', function(next) {
-  console.log(`Pre-guardado de asignación: ${this._id || 'nueva'}`);
-  console.log(`Datos: userId=${this.userId}, sessionId=${this.sessionId}, amount=${this.amount}`);
+  // Log basic info for debugging
+  console.log(`Pre-guardado de asignación: ${this._id}`);
+  console.log(`Datos: userId=${this.userId}, sessionId=${this.sessionId}, amount=${this.amount}, año=${this.year}, mes=${this.month}`);
   next();
 });
 
-// Hook para manejar la sincronización con gastos personales
-// Este hook asegura que cuando se actualice o guarde una asignación,
-// se actualice o cree el gasto personal correspondiente
-participantAllocationSchema.post('save', async function(doc) {
-  // No realizar sincronización si es una asignación recién creada por insertMany
-  // ya que eso lo manejamos directamente en el servicio de asignaciones
-  if (doc.isNew) {
-    console.log(`Asignación nueva creada: ${doc._id}`);
-    return;
-  }
-
-  console.log(`Post-guardado hook ejecutándose para asignación: ${doc._id}`);
-  
-  // Importamos el servicio de sincronización aquí para evitar dependencias circulares
+// Post-save hook: Sync allocation with personal expense
+participantAllocationSchema.post('save', async function() {
   try {
-    const syncService = require('../services/syncService');
-    await syncService.syncAllocationToPersonalExpense(doc);
-    console.log(`Sincronización post-guardado completada para asignación: ${doc._id}`);
+    console.log(`Post-guardado hook ejecutándose para asignación: ${this._id}`);
+    await syncAllocationWithPersonalExpense(this);
+    console.log(`\nSincronización post-guardado completada para asignación: ${this._id}`);
   } catch (error) {
-    console.error(`Error en hook post-save para asignación ${doc._id}:`, error);
-    // No interrumpimos el flujo principal si hay un error en la sincronización
+    console.error(`Error en post-save hook para asignación ${this._id}:`, error);
   }
 });
 
-// Hook para actualizar en cascada el gasto personal cuando se actualiza la asignación
+// Post-update hook: Sync allocation with personal expense after update
 participantAllocationSchema.post('findOneAndUpdate', async function(doc) {
-  if (!doc) {
-    console.log('No se encontró el documento en el hook post-update');
-    return;
-  }
-  
-  console.log(`Post-actualización hook ejecutándose para asignación: ${doc._id}`);
+  if (!doc) return;
   
   try {
-    const syncService = require('../services/syncService');
-    await syncService.syncAllocationToPersonalExpense(doc);
+    console.log(`Post-actualización hook ejecutándose para asignación: ${doc._id}`);
+    await syncAllocationWithPersonalExpense(doc);
     console.log(`Sincronización post-actualización completada para asignación: ${doc._id}`);
   } catch (error) {
-    console.error(`Error en hook post-update para asignación ${doc._id}:`, error);
+    console.error(`Error en post-update hook para asignación ${doc._id}:`, error);
   }
 });
+
+// Sync allocation with personal expense
+async function syncAllocationWithPersonalExpense(allocation) {
+  // Prevent infinite loops if the allocation is already being synchronized
+  if (syncInProgress.has(allocation._id.toString())) {
+    console.log(`Sincronización ya en progreso para asignación: ${allocation._id}, evitando duplicación`);
+    return;
+  }
+  
+  syncInProgress.set(allocation._id.toString(), true);
+  
+  try {
+    console.log(`Iniciando sincronización para asignación: ${allocation._id}`);
+    console.log(`Datos de asignación: userId=${allocation.userId}, amount=${allocation.amount}`);
+    
+    // Ensure necessary models are loaded
+    const mongoose = require('mongoose');
+    const PersonalExpense = mongoose.model('PersonalExpense');
+    const SharedSession = mongoose.model('SharedSession');
+    const User = mongoose.model('User');
+    
+    // Get session details
+    const session = await SharedSession.findById(allocation.sessionId);
+    if (!session) {
+      console.log(`No se encontró la sesión ${allocation.sessionId}`);
+      return;
+    }
+    
+    console.log(`Sesión compartida encontrada: ${session.name}`);
+    
+    // Get user details
+    const user = await User.findById(allocation.userId);
+    if (!user) {
+      console.log(`No se encontró el usuario ${allocation.userId}`);
+      return;
+    }
+    
+    const userName = user.nombre || user.email || 'Usuario';
+    console.log(`Información de usuario obtenida: ${userName}`);
+    
+    // Check if a personal expense already exists for this allocation
+    let personalExpense;
+    
+    if (allocation.personalExpenseId) {
+      // Try to find by ID first
+      personalExpense = await PersonalExpense.findById(allocation.personalExpenseId);
+    }
+    
+    if (!personalExpense) {
+      // Otherwise search by the allocation's ID reference
+      personalExpense = await PersonalExpense.findOne({
+        allocationId: allocation._id
+      });
+      
+      if (!personalExpense) {
+        // Last resort: try to find by session reference data
+        personalExpense = await PersonalExpense.findOne({
+          user: allocation.userId.toString(),
+          'sessionReference.sessionId': allocation.sessionId,
+          year: allocation.year,
+          month: allocation.month
+        });
+      }
+    }
+    
+    console.log(`Buscando gasto personal por allocationId: ${allocation._id}, encontrado: ${!!personalExpense}`);
+    
+    // Create or update the expense date - middle of the month
+    const expenseDate = new Date(allocation.year, allocation.month, 15);
+    
+    // If personal expense exists, update it
+    if (personalExpense) {
+      personalExpense.name = session.name;
+      personalExpense.description = `Gastos compartidos: ${session.name} (${allocation.percentage}%)`;
+      personalExpense.amount = allocation.amount;
+      personalExpense.currency = allocation.currency;
+      personalExpense.date = expenseDate;
+      personalExpense.allocationId = allocation._id;
+      
+      if (!personalExpense.sessionReference) {
+        personalExpense.sessionReference = {};
+      }
+      
+      personalExpense.sessionReference = {
+        ...personalExpense.sessionReference,
+        sessionId: allocation.sessionId,
+        sessionName: session.name,
+        percentage: allocation.percentage,
+        year: allocation.year,
+        month: allocation.month,
+        isRecurringShare: session.sessionType === 'permanent'
+      };
+      
+      // Update the reference in the allocation if needed
+      if (!allocation.personalExpenseId || !allocation.personalExpenseId.equals(personalExpense._id)) {
+        console.log(`Actualizada referencia de gasto personal en asignación: ${personalExpense._id}`);
+        await mongoose.model('ParticipantAllocation').findByIdAndUpdate(
+          allocation._id,
+          { personalExpenseId: personalExpense._id },
+          { new: true }
+        );
+      }
+      
+      // Save the personal expense
+      console.log(`Guardando gasto personal: ${personalExpense._id}`);
+      console.log(`Datos: usuario=${personalExpense.user}, monto=${personalExpense.amount}, categoria=${personalExpense.category}`);
+      await personalExpense.save();
+      console.log(`Gasto personal actualizado: ${personalExpense._id}`);
+      console.log(`Gasto guardado: ${JSON.stringify({
+        id: personalExpense._id,
+        user: personalExpense.user,
+        name: personalExpense.name,
+        amount: personalExpense.amount,
+        date: personalExpense.date
+      })}`);
+      
+    } else {
+      // Create a new personal expense
+      personalExpense = new PersonalExpense({
+        user: allocation.userId.toString(),
+        name: session.name,
+        description: `Gastos compartidos: ${session.name} (${allocation.percentage}%)`,
+        amount: allocation.amount,
+        currency: allocation.currency || 'EUR',
+        category: 'Gastos Compartidos',
+        date: expenseDate,
+        type: 'expense',
+        allocationId: allocation._id,
+        sessionReference: {
+          sessionId: allocation.sessionId,
+          sessionName: session.name,
+          percentage: allocation.percentage,
+          year: allocation.year,
+          month: allocation.month,
+          isRecurringShare: session.sessionType === 'permanent'
+        }
+      });
+      
+      // Save the personal expense
+      console.log(`Guardando nuevo gasto personal para usuario ${allocation.userId}`);
+      const savedExpense = await personalExpense.save();
+      console.log(`Nuevo gasto personal creado: ${savedExpense._id}`);
+      
+      // Update the allocation with the personal expense ID
+      await mongoose.model('ParticipantAllocation').findByIdAndUpdate(
+        allocation._id,
+        { personalExpenseId: savedExpense._id },
+        { new: true }
+      );
+      
+      console.log(`Actualizada referencia en asignación: ${allocation._id} -> ${savedExpense._id}`);
+    }
+  } catch (error) {
+    console.error(`Error sincronizando asignación con gasto personal: ${error.message}`);
+  } finally {
+    // Remove from in-progress map
+    syncInProgress.delete(allocation._id.toString());
+  }
+}
 
 const ParticipantAllocation = mongoose.model('ParticipantAllocation', participantAllocationSchema);
 

@@ -19,7 +19,19 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  FormHelperText,
+  FormControlLabel,
+  Switch,
+  InputAdornment
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -28,7 +40,8 @@ import {
   Receipt as ReceiptIcon,
   TrendingUp as TrendingUpIcon,
   DateRange as DateRangeIcon,
-  MoreVert as MoreVertIcon
+  MoreVert as MoreVertIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import ExpensesTable from '../personal/ExpensesTable';
 import { useTranslation } from 'react-i18next';
@@ -159,14 +172,25 @@ const PersonalExpenses = () => {
   // Procesar los gastos para adaptarlos al formato que espera ExpensesTable
   const processedExpenses = expenses.map(expense => ({
     id: expense._id,
-    description: expense.description || expense.name,
+    description: expense.name || expense.description,
+    name: expense.name || expense.description,
     amount: expense.amount,
-    category: expense.category,
+    category: expense.category || 'Otros',
     date: expense.date,
     type: expense.type || 'expense',
     isRecurring: expense.isRecurring || false,
     sessionReference: expense.sessionReference
   }));
+
+  const [openExpenseDialog, setOpenExpenseDialog] = useState(false);
+
+  const handleAddExpense = () => {
+    setOpenExpenseDialog(true);
+  };
+  
+  const handleCloseDialog = () => {
+    setOpenExpenseDialog(false);
+  };
 
   if (loading && !refreshing) {
     return (
@@ -262,12 +286,20 @@ const PersonalExpenses = () => {
             variant="contained"
             color="primary"
             startIcon={<AddIcon />}
-            onClick={() => console.log('Añadir nuevo gasto')}
+            onClick={handleAddExpense}
             sx={{ 
               borderRadius: 2,
               boxShadow: '0 4px 14px rgba(0, 0, 0, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              touchAction: 'manipulation',
               '&:hover': {
                 boxShadow: '0 6px 20px rgba(0, 0, 0, 0.2)'
+              },
+              '&:active': {
+                transform: 'translateY(1px)',
+                boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
               }
             }}
           >
@@ -454,7 +486,7 @@ const PersonalExpenses = () => {
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
-              onClick={() => console.log('Añadir nuevo gasto')}
+              onClick={handleAddExpense}
               sx={{ borderRadius: 2 }}
             >
               {t('newExpense')}
@@ -476,6 +508,109 @@ const PersonalExpenses = () => {
           />
         )}
       </Box>
+
+      {/* Formulario de gastos en diálogo */}
+      <Dialog
+        open={openExpenseDialog}
+        onClose={handleCloseDialog}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          elevation: 3,
+          sx: { borderRadius: 2 }
+        }}
+      >
+        <DialogTitle sx={{ py: 3, px: 4 }}>
+          Nuevo Gasto
+          <IconButton
+            onClick={handleCloseDialog}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 3, pb: 4, px: 4 }}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                name="amount"
+                label="Importe"
+                type="number"
+                fullWidth
+                required
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">€</InputAdornment>,
+                  sx: { py: 0.5 }
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth required>
+                <InputLabel>Categoría</InputLabel>
+                <Select
+                  name="category"
+                  label="Categoría"
+                  sx={{ '.MuiSelect-select': { py: 1.5 } }}
+                >
+                  <MenuItem value="Otros">Otros</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                name="description"
+                label="Descripción"
+                fullWidth
+                required
+                InputProps={{
+                  sx: { py: 0.5 }
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                name="date"
+                label="Fecha"
+                type="date"
+                fullWidth
+                required
+                InputLabelProps={{ shrink: true }}
+                InputProps={{
+                  sx: { py: 0.5 }
+                }}
+              />
+              <FormHelperText sx={{ mt: 1, ml: 0 }}>
+                Se guardará como gasto del mes mayo
+              </FormHelperText>
+            </Grid>
+
+            <Grid item xs={12} sx={{ mt: 1 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    sx={{ mr: 1 }}
+                  />
+                }
+                label="Es recurrente (se repite cada mes)"
+                sx={{ py: 1.5 }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 4, pb: 4 }}>
+          <Button onClick={handleCloseDialog} variant="outlined">
+            Cancelar
+          </Button>
+          <Button variant="contained" type="submit">
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -48,12 +48,14 @@ import {
   Work as WorkIcon,
   Today as TodayIcon,
   ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon
+  ChevronRight as ChevronRightIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import format from 'date-fns/format';
 import es from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
+import { alpha } from '@mui/material/styles';
 
 // Constantes
 const EXPENSE_CATEGORIES = [
@@ -106,6 +108,7 @@ const MONTH_NAMES = [
 
 const INITIAL_EXPENSE_DATA = {
   amount: '',
+  name: '',
   description: '',
   category: '',
   date: format(new Date(), 'yyyy-MM-dd'),
@@ -132,6 +135,7 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
   const formattedDate = format(date, 'dd MMM yyyy', { locale: es });
   const icon = CATEGORY_ICONS[expense.category] || <MoreHorizIcon fontSize="small" />;
   const isIncome = expense.type === 'income';
+  const isShared = !!expense.sessionReference;
   
   return (
     <Paper 
@@ -151,7 +155,11 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
           left: 0,
           bottom: 0,
           width: 4,
-          backgroundColor: isIncome ? '#4caf50' : getCategoryColor(expense.category),
+          backgroundColor: isIncome 
+            ? '#4caf50' 
+            : isShared 
+              ? '#2196f3' 
+              : getCategoryColor(expense.category),
         }
       }}
     >
@@ -162,8 +170,16 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
             icon={isIncome ? <IncomeIcon fontSize="small" /> : icon}
             label={expense.category}
             sx={{ 
-              backgroundColor: isIncome ? 'rgba(76, 175, 80, 0.1)' : `${getCategoryColor(expense.category)}20`,
-              color: isIncome ? '#4caf50' : getCategoryColor(expense.category),
+              backgroundColor: isIncome 
+                ? 'rgba(76, 175, 80, 0.1)' 
+                : isShared 
+                  ? 'rgba(33, 150, 243, 0.1)' 
+                  : `${getCategoryColor(expense.category)}20`,
+              color: isIncome 
+                ? '#4caf50' 
+                : isShared 
+                  ? '#2196f3' 
+                  : getCategoryColor(expense.category),
               fontSize: '0.7rem',
               height: 22
             }}
@@ -203,7 +219,27 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
           textOverflow: 'ellipsis'
         }}
       >
-        {expense.description}
+        {expense.name || expense.description}
+        {(isIncome || isShared) && (
+          <Box component="span" sx={{ ml: 1 }}>
+            {isIncome && (
+              <Chip
+                size="small"
+                label="Ingreso"
+                color="success"
+                sx={{ height: 18, fontSize: '0.6rem' }}
+              />
+            )}
+            {isShared && !isIncome && (
+              <Chip
+                size="small"
+                label="Compartido"
+                color="info"
+                sx={{ height: 18, fontSize: '0.6rem' }}
+              />
+            )}
+          </Box>
+        )}
       </Typography>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -241,7 +277,25 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
 const PersonalExpenses = () => {
   const { t } = useTranslation();
   const currentDate = new Date();
-  const isMobile = window.matchMedia('(max-width: 600px)').matches;
+  
+  // Mejorar la detección de móvil usando useMediaQuery en lugar de window.matchMedia
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    // Esta función se ejecutará tanto en el renderizado inicial como al cambiar el tamaño de la ventana
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 600);
+    };
+    
+    // Comprobar inicialmente
+    checkMobile();
+    
+    // Agregar listener para cambios de tamaño
+    window.addEventListener('resize', checkMobile);
+    
+    // Limpiar el listener cuando el componente se desmonte
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Estados
   const [expenses, setExpenses] = useState([]);
@@ -267,32 +321,57 @@ const PersonalExpenses = () => {
   }, [resetForm]);
 
   // Añadir manejadores para navegar entre meses con flechas
-  const handlePreviousMonth = () => {
+  const handlePreviousMonth = useCallback((e) => {
+    // Detener eventos predeterminados para evitar doble ejecución en táctiles
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log("Ejecutando handlePreviousMonth", {selectedMonth, selectedYear});
+    
     if (selectedMonth === 0) {
+      console.log("Cambiando a diciembre del año anterior");
       setSelectedMonth(11);
-      setSelectedYear(selectedYear - 1);
+      setSelectedYear(prevYear => prevYear - 1);
     } else {
-      setSelectedMonth(selectedMonth - 1);
+      console.log(`Cambiando de ${selectedMonth} a ${selectedMonth - 1}`);
+      setSelectedMonth(prevMonth => prevMonth - 1);
     }
-    console.log("Cambiando al mes anterior");
-  };
+  }, [selectedMonth, selectedYear]);
 
-  const handleNextMonth = () => {
+  const handleNextMonth = useCallback((e) => {
+    // Detener eventos predeterminados para evitar doble ejecución en táctiles
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log("Ejecutando handleNextMonth", {selectedMonth, selectedYear});
+    
     if (selectedMonth === 11) {
+      console.log("Cambiando a enero del año siguiente");
       setSelectedMonth(0);
-      setSelectedYear(selectedYear + 1);
+      setSelectedYear(prevYear => prevYear + 1);
     } else {
-      setSelectedMonth(selectedMonth + 1);
+      console.log(`Cambiando de ${selectedMonth} a ${selectedMonth + 1}`);
+      setSelectedMonth(prevMonth => prevMonth + 1);
     }
-    console.log("Cambiando al mes siguiente");
-  };
+  }, [selectedMonth, selectedYear]);
 
-  const goToCurrentMonth = () => {
-    const now = new Date();
-    setSelectedMonth(now.getMonth());
-    setSelectedYear(now.getFullYear());
-    console.log("Volviendo al mes actual");
-  };
+  const goToCurrentMonth = useCallback((e) => {
+    // Prevenir comportamiento predeterminado para evitar problemas táctiles
+    e?.preventDefault();
+    console.log("Ejecutando goToCurrentMonth");
+    
+    // Agregar un pequeño retraso para móviles
+    setTimeout(() => {
+      const now = new Date();
+      setSelectedMonth(now.getMonth());
+      setSelectedYear(now.getFullYear());
+      console.log("Volviendo al mes actual");
+    }, 50);
+  }, []);
 
   // Manejadores de eventos
   const handleExpenseChange = useCallback((e) => {
@@ -311,6 +390,24 @@ const PersonalExpenses = () => {
       recurringDay: isRecurring ? new Date(prev.date).getDate().toString() : ''
     }));
   }, []);
+
+  // Función para actualizar la fecha del formulario basada en el mes seleccionado
+  const getInitialDateForSelectedMonth = useCallback(() => {
+    const date = new Date();
+    date.setMonth(selectedMonth);
+    date.setFullYear(selectedYear);
+    // Mantener el día actual pero ajustarlo si es mayor que los días del mes seleccionado
+    const currentDay = date.getDate();
+    const lastDayOfMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    date.setDate(Math.min(currentDay, lastDayOfMonth));
+    
+    return format(date, 'yyyy-MM-dd');
+  }, [selectedMonth, selectedYear]);
+
+  // Función para mostrar correctamente el nombre del mes en dispositivos móviles
+  const getShortMonthName = (monthIndex) => {
+    return MONTH_NAMES[monthIndex].substring(0, 3);
+  };
 
   // Funciones principales
   const fetchExpenses = useCallback(async () => {
@@ -381,8 +478,8 @@ const PersonalExpenses = () => {
     const payload = {
       amount: parseFloat(expenseData.amount),
       category: expenseData.category,
+      name: expenseData.name || expenseData.description,
       description: expenseData.description,
-      name: expenseData.description,
       date: new Date(expenseData.date),
       type: expenseData.type,
       isRecurring: expenseData.isRecurring,
@@ -530,15 +627,17 @@ const PersonalExpenses = () => {
     setExpenseData(prev => ({
       ...prev,
       type,
-      category: type === 'income' ? 'Nómina' : 'Otros'
+      category: type === 'income' ? 'Nómina' : 'Otros',
+      date: getInitialDateForSelectedMonth()
     }));
     setOpenExpenseDialog(true);
-  }, [resetForm]);
+  }, [resetForm, getInitialDateForSelectedMonth]);
 
   const handleEdit = useCallback((expense) => {
     setSelectedExpense(expense);
     setExpenseData({
       amount: expense.amount || '',
+      name: expense.name || '',
       description: expense.description || '',
       category: expense.category || '',
       date: expense.date ? format(new Date(expense.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
@@ -590,14 +689,31 @@ const PersonalExpenses = () => {
     if (isMobile) {
       return (
         <Box sx={{ mt: 2 }}>
-          {expenses.map(expense => (
-            <ExpenseCard
-              key={expense._id || generateExpenseKey(expense)}
-              expense={expense}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
-          ))}
+          {expenses
+            .sort((a, b) => {
+              // Prioridad 1: Ingresos
+              if (a.type === 'income' && b.type !== 'income') return -1;
+              if (a.type !== 'income' && b.type === 'income') return 1;
+              
+              // Prioridad 2: Gastos compartidos (si tiene sessionReference es compartido)
+              if (a.type !== 'income' && b.type !== 'income') {
+                const aIsShared = !!a.sessionReference;
+                const bIsShared = !!b.sessionReference;
+                if (aIsShared && !bIsShared) return -1;
+                if (!aIsShared && bIsShared) return 1;
+              }
+              
+              // Por defecto, ordenar por fecha (más reciente primero)
+              return new Date(b.date) - new Date(a.date);
+            })
+            .map(expense => (
+              <ExpenseCard
+                key={expense._id || generateExpenseKey(expense)}
+                expense={expense}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            ))}
         </Box>
       );
     }
@@ -607,80 +723,130 @@ const PersonalExpenses = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Fecha</TableCell>
-              <TableCell>Descripción</TableCell>
+              <TableCell>Nombre</TableCell>
               <TableCell>Categoría</TableCell>
-              <TableCell>Tipo</TableCell>
-              <TableCell align="right">Importe</TableCell>
+              <TableCell>Fecha</TableCell>
+              <TableCell align="right">Monto</TableCell>
+              <TableCell>Recurrente</TableCell>
               <TableCell align="center">Acciones</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {expenses.map(expense => {
-              const date = new Date(expense.date);
-              const formattedDate = format(date, 'dd MMM yyyy', { locale: es });
-              const icon = CATEGORY_ICONS[expense.category] || <MoreHorizIcon fontSize="small" />;
-              const isIncome = expense.type === 'income';
+            {/* Ordenar los gastos: primero ingresos, luego gastos compartidos, finalmente el resto */}
+            {expenses
+              .sort((a, b) => {
+                // Prioridad 1: Ingresos
+                if (a.type === 'income' && b.type !== 'income') return -1;
+                if (a.type !== 'income' && b.type === 'income') return 1;
+                
+                // Prioridad 2: Gastos compartidos (si tiene sessionReference es compartido)
+                if (a.type !== 'income' && b.type !== 'income') {
+                  const aIsShared = !!a.sessionReference;
+                  const bIsShared = !!b.sessionReference;
+                  if (aIsShared && !bIsShared) return -1;
+                  if (!aIsShared && bIsShared) return 1;
+                }
+                
+                // Por defecto, ordenar por fecha (más reciente primero)
+                return new Date(b.date) - new Date(a.date);
+              })
+              .map(expense => {
+                const date = new Date(expense.date);
+                const formattedDate = format(date, 'dd MMM yyyy', { locale: es });
+                const icon = CATEGORY_ICONS[expense.category] || <MoreHorizIcon fontSize="small" />;
+                const isIncome = expense.type === 'income';
+                const isShared = !!expense.sessionReference;
 
-              return (
-                <TableRow key={expense._id || generateExpenseKey(expense)}>
-                  <TableCell>{formattedDate}</TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      {expense.description}
-                      {expense.isRecurring && (
-                        <Tooltip title="Movimiento recurrente">
-                          <TimerIcon fontSize="small" color="primary" sx={{ ml: 1 }} />
-                        </Tooltip>
+                return (
+                  <TableRow 
+                    key={expense._id || generateExpenseKey(expense)}
+                    sx={{
+                      // Destacar visualmente según el tipo
+                      bgcolor: isIncome 
+                        ? alpha('#4caf50', 0.05)  // Verde claro para ingresos
+                        : isShared 
+                          ? alpha('#2196f3', 0.05)  // Azul claro para compartidos
+                          : 'inherit'  // Color normal para el resto
+                    }}
+                  >
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {expense.name || expense.description}
+                        {isIncome && (
+                          <Chip
+                            size="small"
+                            icon={<IncomeIcon fontSize="small" />}
+                            label="Ingreso"
+                            color="success"
+                            sx={{ fontSize: '0.7rem', ml: 1 }}
+                          />
+                        )}
+                        {isShared && !isIncome && (
+                          <Chip
+                            size="small"
+                            label="Compartido"
+                            color="info"
+                            sx={{ fontSize: '0.7rem', ml: 1 }}
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        icon={icon}
+                        label={expense.category}
+                        sx={{
+                          backgroundColor: `${getCategoryColor(expense.category)}20`,
+                          color: getCategoryColor(expense.category)
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>{formattedDate}</TableCell>
+                    <TableCell align="right">
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 'bold',
+                          color: isIncome ? 'success.main' : 'error.main'
+                        }}
+                      >
+                        {isIncome ? '+' : '-'}{formatAmount(expense.amount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {expense.isRecurring ? (
+                        <Chip
+                          size="small"
+                          icon={<TimerIcon fontSize="small" />}
+                          label="Sí"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      ) : (
+                        <Chip
+                          size="small"
+                          label="No"
+                          variant="outlined"
+                          color="default"
+                        />
                       )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      icon={icon}
-                      label={expense.category}
-                      sx={{
-                        backgroundColor: `${getCategoryColor(expense.category)}20`,
-                        color: getCategoryColor(expense.category)
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      icon={isIncome ? <IncomeIcon fontSize="small" /> : <ExpenseIcon fontSize="small" />}
-                      label={isIncome ? "Ingreso" : "Gasto"}
-                      color={isIncome ? "success" : "error"}
-                      sx={{ fontSize: '0.7rem' }}
-                    />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontWeight: 'bold',
-                        color: isIncome ? 'success.main' : 'error.main'
-                      }}
-                    >
-                      {isIncome ? '+' : '-'}{formatAmount(expense.amount)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Tooltip title="Editar">
-                      <IconButton size="small" onClick={() => handleEdit(expense)}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Eliminar">
-                      <IconButton size="small" onClick={() => handleDelete(expense._id)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Tooltip title="Editar">
+                        <IconButton size="small" onClick={() => handleEdit(expense)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar">
+                        <IconButton size="small" onClick={() => handleDelete(expense._id)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
           </TableBody>
         </Table>
       </TableContainer>
@@ -701,29 +867,25 @@ const PersonalExpenses = () => {
           {t('personalExpenses')}
         </Typography>
         
-        <Box sx={{ display: 'flex' }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {/* Botón GASTO simple y directo */}
           <Button
             variant="contained"
             color="primary"
-            onClick={() => {
-              openNewExpense('expense');
-            }}
+            onClick={openNewExpense.bind(null, 'expense')}
             startIcon={<AddIcon />}
-            size={isMobile ? "small" : "medium"}
-            sx={{ mr: 1, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
+            sx={{ height: 40, fontSize: '0.85rem' }}
           >
             {isMobile ? 'Gasto' : 'Nuevo Gasto'}
           </Button>
           
+          {/* Botón INGRESO simple y directo */}
           <Button
             variant="outlined"
             color="success"
-            onClick={() => {
-              openNewExpense('income');
-            }}
+            onClick={openNewExpense.bind(null, 'income')}
             startIcon={<AddIcon />}
-            size={isMobile ? "small" : "medium"}
-            sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
+            sx={{ height: 40, fontSize: '0.85rem' }}
           >
             {isMobile ? 'Ingreso' : 'Nuevo Ingreso'}
           </Button>
@@ -738,72 +900,142 @@ const PersonalExpenses = () => {
 
       <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 2, mb: 2 }}>
         <Grid container spacing={1} alignItems="center">
-          {/* Reemplazamos los selectores de mes y año por un controlador de fechas compacto */}
           <Grid item xs={12} sm={6} md={3}>
+            {/* Navegación de mes mejorada para móviles */}
             <Box sx={{ 
-              display: 'flex', 
+              display: 'flex',
               alignItems: 'center',
-              justifyContent: 'flex-start'
+              justifyContent: 'center',
+              gap: 1,
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              p: 0.5,
+              backgroundColor: 'background.paper'
             }}>
-              <IconButton 
-                size="small" 
-                color="primary" 
+              {/* Botón MES ANTERIOR - Implementación mejorada para móviles */}
+              <Box
+                component="div"
+                role="button"
+                aria-label="Mes anterior"
                 onClick={handlePreviousMonth}
-                title="Mes anterior"
+                onTouchEnd={handlePreviousMonth}
                 sx={{ 
-                  border: '1px solid', 
+                  minWidth: 40, 
+                  width: 40, 
+                  height: 38, 
+                  borderRadius: 1.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                  transition: 'background-color 0.2s',
+                  border: '1px solid',
                   borderColor: 'divider',
-                  borderRadius: 2,
-                  p: isMobile ? 0.5 : 0.75,
-                  mr: 1
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.08)'
+                  },
+                  '&:active': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.12)'
+                  }
                 }}
               >
-                <ChevronLeftIcon fontSize={isMobile ? "small" : "small"} />
-              </IconButton>
+                <ChevronLeftIcon />
+              </Box>
               
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  mx: 1,
-                  fontSize: { xs: '0.9rem', sm: '1rem' },
-                  fontWeight: 'medium',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {MONTH_NAMES[selectedMonth]} {selectedYear}
-              </Typography>
-              
-              <IconButton 
-                size="small" 
-                color="primary" 
-                onClick={handleNextMonth}
-                title="Mes siguiente"
-                sx={{ 
-                  border: '1px solid', 
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                  p: isMobile ? 0.5 : 0.75,
-                  ml: 1
-                }}
-              >
-                <ChevronRightIcon fontSize={isMobile ? "small" : "small"} />
-              </IconButton>
-              
-              <IconButton 
-                size="small" 
-                color="primary" 
+              {/* Selector de MES */}
+              <Box
+                component="div"
+                role="button"
+                aria-label="Mes actual"
                 onClick={goToCurrentMonth}
-                title="Ir al mes actual"
                 sx={{ 
-                  border: '1px solid', 
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                  ml: 1,
-                  p: isMobile ? 0.5 : 0.75
+                  flex: 1, 
+                  height: 38, 
+                  maxWidth: 200,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.9rem',
+                  fontWeight: 'medium',
+                  borderRadius: 1.5,
+                  mx: 0.5,
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  '&:hover': {
+                    backgroundColor: 'action.hover'
+                  },
+                  '&:active': {
+                    backgroundColor: 'action.selected'
+                  }
                 }}
               >
-                <TodayIcon fontSize={isMobile ? "small" : "small"} />
-              </IconButton>
+                {isMobile ? getShortMonthName(selectedMonth) : MONTH_NAMES[selectedMonth]} {selectedYear}
+              </Box>
+              
+              {/* Botón MES SIGUIENTE */}
+              <Box
+                component="div"
+                role="button"
+                aria-label="Mes siguiente"
+                onClick={handleNextMonth}
+                onTouchEnd={handleNextMonth}
+                sx={{ 
+                  minWidth: 40, 
+                  width: 40, 
+                  height: 38, 
+                  borderRadius: 1.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                  transition: 'background-color 0.2s',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.08)'
+                  },
+                  '&:active': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.12)'
+                  }
+                }}
+              >
+                <ChevronRightIcon />
+              </Box>
+              
+              {/* Botón HOY (sólo en desktop) */}
+              <Box
+                component="div"
+                role="button"
+                aria-label="Ir a hoy"
+                onClick={goToCurrentMonth}
+                sx={{ 
+                  minWidth: 40, 
+                  width: 40, 
+                  height: 38, 
+                  borderRadius: 1.5,
+                  display: { xs: 'none', sm: 'flex' },
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  ml: 0.5,
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: 'action.hover'
+                  }
+                }}
+              >
+                <TodayIcon />
+              </Box>
             </Box>
           </Grid>
           
@@ -862,138 +1094,343 @@ const PersonalExpenses = () => {
 
       {renderExpensesList()}
 
-      {/* Formulario de gastos/ingresos */}
+      {/* Formulario de gastos/ingresos - NUEVA IMPLEMENTACIÓN */}
       <Dialog
         open={openExpenseDialog}
         onClose={closeDialog}
         fullWidth
         maxWidth="sm"
+        fullScreen={isMobile}
         PaperProps={{
-          sx: { borderRadius: 2 }
+          elevation: 3,
+          sx: { 
+            borderRadius: isMobile ? 0 : 2,
+            height: isMobile ? '100%' : 'auto',
+            m: isMobile ? 0 : 2,
+            maxHeight: isMobile ? '100vh' : '95vh',
+            overflow: 'auto'
+          }
         }}
       >
-        <form onSubmit={handleSubmit}>
-          <DialogTitle id="expense-dialog-title">
-            {selectedExpense ? 'Editar' : 'Nuevo'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}
-          </DialogTitle>
-
-          <DialogContent sx={{ pt: 2 }}>
+        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Cabecera del formulario */}
+          <Box 
+            sx={{ 
+              px: 3, 
+              py: 2.5, 
+              borderBottom: 1, 
+              borderColor: 'divider',
+              backgroundColor: theme => expenseData.type === 'income' 
+                ? alpha(theme.palette.success.main, 0.05)
+                : alpha(theme.palette.primary.main, 0.05),
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              position: 'relative',
+              zIndex: 1
+            }}
+          >
+            <Typography variant="h6" fontWeight="medium">
+              {selectedExpense ? 'Editar' : 'Nuevo'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}
+            </Typography>
+            <IconButton edge="end" onClick={closeDialog} aria-label="close">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          
+          {/* Contenido del formulario */}
+          <Box sx={{ 
+            p: 3, 
+            flexGrow: 1, 
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* Mensaje de error si existe */}
             {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
+              <Alert severity="error" sx={{ mb: 3, borderRadius: 1 }}>
                 {error}
               </Alert>
             )}
-
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
+            
+            {/* Importe */}
+            <Box sx={{ mb: 3 }}>
+              <Typography 
+                variant="subtitle2" 
+                component="label" 
+                htmlFor="amount" 
+                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+              >
+                Importe
+              </Typography>
+              <TextField
+                id="amount"
+                name="amount"
+                value={expenseData.amount}
+                onChange={handleExpenseChange}
+                type="number"
+                fullWidth
+                required
+                placeholder="0.00"
+                variant="outlined"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Typography color="text.secondary">€</Typography>
+                    </InputAdornment>
+                  ),
+                  sx: { py: 1.5, backgroundColor: 'background.paper' }
+                }}
+              />
+            </Box>
+            
+            {/* Nombre */}
+            <Box sx={{ mb: 3 }}>
+              <Typography 
+                variant="subtitle2" 
+                component="label" 
+                htmlFor="name" 
+                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+              >
+                Nombre
+              </Typography>
+              <TextField
+                id="name"
+                name="name"
+                value={expenseData.name}
+                onChange={handleExpenseChange}
+                fullWidth
+                required
+                placeholder="Nombre del gasto"
+                variant="outlined"
+                InputProps={{
+                  sx: { py: 1.5, backgroundColor: 'background.paper' }
+                }}
+              />
+            </Box>
+            
+            {/* Categoría */}
+            <Box sx={{ mb: 3 }}>
+              <Typography 
+                variant="subtitle2" 
+                component="label" 
+                htmlFor="category" 
+                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+              >
+                Categoría
+              </Typography>
+              <FormControl
+                fullWidth
+                variant="outlined"
+                required
+              >
+                <Select
+                  id="category"
+                  name="category"
+                  value={expenseData.category}
+                  onChange={handleExpenseChange}
+                  displayEmpty
+                  sx={{
+                    backgroundColor: 'background.paper',
+                    '& .MuiSelect-select': { py: 1.5 }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: { maxHeight: 300, borderRadius: 1 }
+                    },
+                    anchorOrigin: {
+                      vertical: 'bottom',
+                      horizontal: 'left',
+                    },
+                    transformOrigin: {
+                      vertical: 'top',
+                      horizontal: 'left',
+                    },
+                    sx: { zIndex: 9999 }
+                  }}
+                  renderValue={(selected) => {
+                    if (!selected) {
+                      return <Typography color="text.secondary">Seleccionar categoría</Typography>;
+                    }
+                    return (
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {CATEGORY_ICONS[selected] && (
+                          <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
+                            {CATEGORY_ICONS[selected]}
+                          </Box>
+                        )}
+                        {selected}
+                      </Box>
+                    );
+                  }}
+                >
+                  {(expenseData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((category) => (
+                    <MenuItem key={category} value={category}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {CATEGORY_ICONS[category] && (
+                          <Box sx={{ mr: 1.5, display: 'flex', alignItems: 'center' }}>
+                            {CATEGORY_ICONS[category]}
+                          </Box>
+                        )}
+                        {category}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+            
+            {/* Descripción */}
+            <Box sx={{ mb: 3 }}>
+              <Typography 
+                variant="subtitle2" 
+                component="label" 
+                htmlFor="description" 
+                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+              >
+                Descripción
+              </Typography>
+              <TextField
+                id="description"
+                name="description"
+                value={expenseData.description}
+                onChange={handleExpenseChange}
+                fullWidth
+                placeholder="Descripción del gasto (opcional)"
+                variant="outlined"
+                InputProps={{
+                  sx: { py: 1.5, backgroundColor: 'background.paper' }
+                }}
+              />
+            </Box>
+            
+            {/* Fecha */}
+            <Box sx={{ mb: 3 }}>
+              <Typography 
+                variant="subtitle2" 
+                component="label" 
+                htmlFor="date" 
+                sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+              >
+                Fecha
+              </Typography>
+              <TextField
+                id="date"
+                name="date"
+                type="date"
+                value={expenseData.date}
+                onChange={handleExpenseChange}
+                fullWidth
+                required
+                variant="outlined"
+                InputProps={{
+                  sx: { py: 1.5, backgroundColor: 'background.paper' }
+                }}
+              />
+              <Typography variant="caption" sx={{ display: 'block', mt: 1, ml: 1, color: 'text.secondary' }}>
+                Se guardará como {expenseData.type === 'income' ? 'ingreso' : 'gasto'} del mes{' '}
+                {new Date(expenseData.date).toLocaleDateString('es-ES', { month: 'long' })}
+              </Typography>
+            </Box>
+            
+            {/* Es recurrente */}
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={expenseData.isRecurring}
+                    onChange={handleRecurringChange}
+                    name="isRecurring"
+                    color={expenseData.type === 'income' ? 'success' : 'primary'}
+                  />
+                }
+                label={
+                  <Typography variant="body2">
+                    Es {expenseData.type === 'income' ? 'ingreso' : 'gasto'} recurrente (se repite cada mes)
+                  </Typography>
+                }
+              />
+            </Box>
+            
+            {/* Día del mes (condicional) */}
+            {expenseData.isRecurring && (
+              <Box sx={{ mb: 2 }}>
+                <Typography 
+                  variant="subtitle2" 
+                  component="label" 
+                  htmlFor="recurringDay" 
+                  sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+                >
+                  Día del mes
+                </Typography>
                 <TextField
-                  name="amount"
-                  label="Importe"
+                  id="recurringDay"
+                  name="recurringDay"
                   type="number"
-                  fullWidth
-                  required
-                  value={expenseData.amount}
+                  value={expenseData.recurringDay}
                   onChange={handleExpenseChange}
                   InputProps={{
-                    startAdornment: <InputAdornment position="start">€</InputAdornment>
+                    inputProps: { min: 1, max: 31 },
+                    sx: { 
+                      py: 1.5, 
+                      backgroundColor: 'background.paper',
+                      width: { xs: '100%', sm: '50%' }
+                    }
                   }}
                 />
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>Categoría</InputLabel>
-                  <Select
-                    name="category"
-                    value={expenseData.category}
-                    onChange={handleExpenseChange}
-                    label="Categoría"
-                  >
-                    {(expenseData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(category => (
-                      <MenuItem key={category} value={category}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          {CATEGORY_ICONS[category]}
-                          <Box sx={{ ml: 1 }}>{category}</Box>
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12}>
-                <TextField
-                  name="description"
-                  label="Descripción"
-                  fullWidth
-                  required
-                  value={expenseData.description}
-                  onChange={handleExpenseChange}
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <TextField
-                  name="date"
-                  label="Fecha"
-                  type="date"
-                  fullWidth
-                  required
-                  value={expenseData.date}
-                  onChange={handleExpenseChange}
-                  InputLabelProps={{ shrink: true }}
-                />
-                <FormHelperText>
-                  Se guardará como {expenseData.type === 'income' ? 'ingreso' : 'gasto'} del mes{' '}
-                  {new Date(expenseData.date).toLocaleDateString('es-ES', { month: 'long' })}
-                </FormHelperText>
-              </Grid>
-
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={expenseData.isRecurring}
-                      onChange={handleRecurringChange}
-                    />
-                  }
-                  label="Es recurrente (se repite cada mes)"
-                />
-              </Grid>
-
-              {expenseData.isRecurring && (
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="recurringDay"
-                    label="Día del mes"
-                    type="number"
-                    fullWidth
-                    value={expenseData.recurringDay}
-                    onChange={handleExpenseChange}
-                    InputProps={{
-                      inputProps: { min: 1, max: 31 }
-                    }}
-                    helperText="Día del mes en que se repite este gasto"
-                  />
-                </Grid>
-              )}
-            </Grid>
-          </DialogContent>
-
-          <DialogActions sx={{ px: 3, py: 2 }}>
-            <Button onClick={closeDialog} disabled={submitting}>
+                <Typography variant="caption" sx={{ display: 'block', mt: 1, ml: 1, color: 'text.secondary' }}>
+                  Día del mes en que se repite este {expenseData.type === 'income' ? 'ingreso' : 'gasto'}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+          
+          {/* Botones de acción */}
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              p: 3, 
+              borderTop: 1, 
+              borderColor: 'divider',
+              backgroundColor: theme => alpha(theme.palette.background.default, 0.5),
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 10
+            }}
+          >
+            <Button
+              onClick={closeDialog}
+              sx={{ 
+                py: 1.5, 
+                px: 3, 
+                borderRadius: 2,
+                textTransform: 'none',
+                fontSize: '0.95rem'
+              }}
+              disabled={submitting}
+            >
               Cancelar
             </Button>
+            
             <Button
               type="submit"
               variant="contained"
               color={expenseData.type === 'income' ? 'success' : 'primary'}
               disabled={submitting}
+              sx={{ 
+                py: 1.5, 
+                px: 4, 
+                borderRadius: 2,
+                textTransform: 'none',
+                fontSize: '0.95rem',
+                fontWeight: 'medium'
+              }}
             >
               {submitting ? 'Guardando...' : (selectedExpense ? 'Actualizar' : 'Guardar')}
             </Button>
-          </DialogActions>
-        </form>
+          </Box>
+        </Box>
       </Dialog>
     </Container>
   );

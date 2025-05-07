@@ -114,4 +114,19 @@ router.post('/:id/repair-dates', auth, sharedSessionController.repairExpenseDate
 // Ruta para reparar la estructura de meses en todas las sesiones (admin only)
 router.post('/admin/repair-month-structure', auth, sharedSessionController.repairAllSessionsMonthStructure);
 
+// @route   POST api/shared-sessions/admin/update-usernames
+// @desc    Actualizar nombres de usuario en las asignaciones
+// @access  Private (Admin)
+router.post('/admin/update-usernames', auth, sharedSessionController.updateAllocationUsernames);
+
+// @route   POST api/shared-sessions/admin/generate-all-allocations
+// @desc    Generar asignaciones mensuales para todas las sesiones
+// @access  Private (Admin)
+router.post('/admin/generate-all-allocations', auth, sharedSessionController.generateAllMonthlyAllocations);
+
+// @route   POST api/shared-sessions/:id/generate-allocations
+// @desc    Generar asignaciones mensuales para una sesión específica
+// @access  Private
+router.post('/:id/generate-allocations', auth, sharedSessionController.generateMonthlyAllocations);
+
 module.exports = router; 

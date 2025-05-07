@@ -182,7 +182,12 @@ const ExpenseList = ({
               startIcon={<AddIcon />}
               onClick={onAddExpense}
               size={isMobile ? "small" : "medium"}
-              sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }}
+              sx={{ 
+                fontSize: isMobile ? '0.75rem' : '0.875rem',
+                height: 40,
+                minWidth: isMobile ? 80 : 'auto',
+                borderRadius: 1
+              }}
             >
               {isMobile ? "Nuevo" : "Nuevo Gasto"}
             </Button>

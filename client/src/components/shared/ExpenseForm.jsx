@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -20,14 +20,17 @@ import {
   useTheme,
   IconButton,
   Typography,
-  Divider
+  Divider,
+  InputAdornment
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import format from 'date-fns/format';
 import es from 'date-fns/locale/es';
 import CloseIcon from '@mui/icons-material/Close';
+import EuroIcon from '@mui/icons-material/Euro';
 
 const EXPENSE_CATEGORIES = [
   'Alimentación',
@@ -47,23 +50,56 @@ const ExpenseForm = ({
   onSubmit,
   initialData = null,
   loading = false,
-  error = null
+  error = null,
+  selectedMonth = null,
+  selectedYear = null
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+
+  // Crear fecha inicial basada en el mes/año seleccionado si se proporciona
+  const getInitialDate = () => {
+    if (initialData?.date) {
+      return new Date(initialData.date);
+    } 
+    
+    if (selectedMonth !== null && selectedYear !== null) {
+      // Si se proporciona mes/año, crear fecha con esos valores
+      const newDate = new Date();
+      newDate.setMonth(selectedMonth);
+      newDate.setFullYear(selectedYear);
+      return newDate;
+    }
+    
+    return new Date();
+  };
   
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     amount: initialData?.amount || '',
     category: initialData?.category || '',
-    date: initialData?.date ? new Date(initialData.date) : new Date(),
+    date: getInitialDate(),
     description: initialData?.description || '',
     isRecurring: initialData?.isRecurring || false
   });
 
   const [formErrors, setFormErrors] = useState({});
   const [showRecurringInfo, setShowRecurringInfo] = useState(formData.isRecurring);
+
+  // Actualizar la fecha cuando cambia el mes/año seleccionado
+  useEffect(() => {
+    if (selectedMonth !== null && selectedYear !== null && !initialData) {
+      const newDate = new Date(formData.date);
+      newDate.setMonth(selectedMonth);
+      newDate.setFullYear(selectedYear);
+      
+      setFormData(prev => ({
+        ...prev,
+        date: newDate
+      }));
+    }
+  }, [selectedMonth, selectedYear, initialData]);
 
   const validateForm = () => {
     const errors = {};
@@ -102,7 +138,7 @@ const ExpenseForm = ({
       if (!(validDate instanceof Date) || isNaN(validDate.getTime())) {
         validDate = new Date();
       }
-      
+
       onSubmit({
         ...formData,
         amount: Number(formData.amount),
@@ -124,235 +160,328 @@ const ExpenseForm = ({
       fullWidth
       fullScreen={isMobile}
       PaperProps={{
-        sx: { 
+        elevation: 3,
+        sx: {
           borderRadius: isMobile ? 0 : 2,
           height: isMobile ? '100%' : 'auto',
           m: isMobile ? 0 : 2,
+          maxHeight: isMobile ? '100vh' : '95vh',
+          overflow: 'auto'
         }
       }}
     >
-      <form onSubmit={handleSubmit}>
-        <DialogTitle 
+      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {/* Cabecera del formulario */}
+        <Box 
           sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
+            px: 3, 
+            py: 2.5, 
+            borderBottom: 1, 
+            borderColor: 'divider',
+            backgroundColor: theme => alpha(theme.palette.primary.main, 0.05),
+            display: 'flex',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            pb: 1,
-            pt: { xs: 2, sm: 2.5 },
-            px: { xs: 2, sm: 3 },
-            fontSize: { xs: '1.1rem', sm: '1.25rem' },
+            position: 'relative',
+            zIndex: 1
           }}
         >
-          <Typography variant="h6" fontWeight="bold">
+          <Typography variant="h6" fontWeight="medium">
             {initialData ? 'Editar Gasto' : 'Nuevo Gasto'}
           </Typography>
           <IconButton edge="end" onClick={onClose} aria-label="close">
             <CloseIcon />
           </IconButton>
-        </DialogTitle>
-        
-        <Divider />
+        </Box>
 
-        <DialogContent sx={{ px: { xs: 2, sm: 3 }, py: { xs: 2, sm: 2.5 } }}>
+        {/* Contenido del formulario */}
+        <Box sx={{ 
+          p: 3, 
+          flexGrow: 1, 
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
           {error && (
-            <Alert 
-              severity="error" 
-              sx={{ 
-                mb: 2, 
+            <Alert
+              severity="error"
+              sx={{
+                mb: 3,
                 borderRadius: 1,
-                fontSize: { xs: '0.8rem', sm: '0.875rem' } 
+                fontSize: '0.9rem'
               }}
             >
               {error}
             </Alert>
           )}
 
-          <Box sx={{ 
-            display: 'flex', 
-            flexDirection: { xs: 'column', sm: 'row' }, 
-            gap: { xs: 1, sm: 2 }, 
-            mb: { xs: 1, sm: 2 } 
-          }}>
+          {/* Nombre y Monto */}
+          <Box sx={{ mb: 3 }}>
+            <Typography 
+              variant="subtitle2" 
+              component="label" 
+              htmlFor="name" 
+              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+            >
+              Nombre
+            </Typography>
             <TextField
-              autoComplete="off"
-              label="Nombre"
+              id="name"
               name="name"
               value={formData.name}
               onChange={handleChange}
               fullWidth
-              margin="normal"
-              variant="outlined"
               required
               error={!!formErrors.name}
               helperText={formErrors.name}
-              sx={{ flex: 2, my: { xs: 0.5, sm: 1 } }}
+              placeholder="Nombre del gasto"
+              variant="outlined"
               InputProps={{
-                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
+                sx: { py: 1.5, backgroundColor: 'background.paper' }
               }}
-              InputLabelProps={{
-                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
-              }}
-            />
-
-            <TextField
-              margin="dense"
-              name="amount"
-              label="Monto"
-              type="number"
-              value={formData.amount}
-              onChange={handleChange}
-              error={!!formErrors.amount}
-              helperText={formErrors.amount}
-              InputProps={{
-                inputProps: { min: 0, step: "0.01" },
-                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
-              }}
-              InputLabelProps={{
-                sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
-              }}
-              sx={{ flex: 1, my: { xs: 0.5, sm: 1 } }}
             />
           </Box>
 
-          <Box sx={{ mb: { xs: 1, sm: 2 } }}>
-            <FormControl 
-              fullWidth 
-              error={!!formErrors.category}
-              sx={{ my: { xs: 0.5, sm: 1 } }}
+          <Box sx={{ mb: 3 }}>
+            <Typography 
+              variant="subtitle2" 
+              component="label" 
+              htmlFor="amount" 
+              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
             >
-              <InputLabel sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Categoría</InputLabel>
+              Importe
+            </Typography>
+            <TextField
+              id="amount"
+              name="amount"
+              value={formData.amount}
+              onChange={handleChange}
+              type="number"
+              fullWidth
+              required
+              error={!!formErrors.amount}
+              helperText={formErrors.amount}
+              placeholder="0.00"
+              variant="outlined"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EuroIcon fontSize="small" color="action" />
+                  </InputAdornment>
+                ),
+                inputProps: { min: 0, step: "0.01" },
+                sx: { py: 1.5, backgroundColor: 'background.paper' }
+              }}
+            />
+          </Box>
+
+          {/* Categoría */}
+          <Box sx={{ mb: 3 }}>
+            <Typography 
+              variant="subtitle2" 
+              component="label" 
+              htmlFor="category" 
+              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+            >
+              Categoría
+            </Typography>
+            <FormControl
+              fullWidth
+              error={!!formErrors.category}
+              variant="outlined"
+            >
               <Select
+                id="category"
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
-                label="Categoría"
-                sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}
+                displayEmpty
+                sx={{
+                  backgroundColor: 'background.paper',
+                  '& .MuiSelect-select': { py: 1.5 }
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: { maxHeight: 300, borderRadius: 1 }
+                  },
+                  anchorOrigin: {
+                    vertical: 'bottom',
+                    horizontal: 'left',
+                  },
+                  transformOrigin: {
+                    vertical: 'top',
+                    horizontal: 'left',
+                  },
+                  sx: { zIndex: 9999 }
+                }}
+                renderValue={(selected) => {
+                  if (!selected) {
+                    return <Typography color="text.secondary">Seleccionar categoría</Typography>;
+                  }
+                  return selected;
+                }}
               >
                 {EXPENSE_CATEGORIES.map(category => (
-                  <MenuItem 
-                    key={category} 
+                  <MenuItem
+                    key={category}
                     value={category}
-                    sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}
                   >
                     {category}
                   </MenuItem>
                 ))}
               </Select>
               {formErrors.category && (
-                <FormHelperText sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' } }}>
+                <FormHelperText>
                   {formErrors.category}
                 </FormHelperText>
               )}
             </FormControl>
           </Box>
 
-          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
-            <DatePicker
-              label="Fecha"
-              value={formData.date}
-              onChange={(newValue) => {
-                setFormData(prev => ({
-                  ...prev,
-                  date: newValue
-                }));
-                setFormErrors(prev => ({
-                  ...prev,
-                  date: ''
-                }));
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  fullWidth
-                  error={!!formErrors.date}
-                  helperText={formErrors.date}
-                  sx={{ 
-                    mb: { xs: 1, sm: 2 },
-                    my: { xs: 0.5, sm: 1 },
-                    '.MuiInputLabel-root': { fontSize: { xs: '0.9rem', sm: '1rem' } },
-                    '.MuiInputBase-root': { fontSize: { xs: '0.9rem', sm: '1rem' } }
-                  }}
-                />
-              )}
-            />
-          </LocalizationProvider>
-
-          <TextField
-            multiline
-            rows={3}
-            margin="dense"
-            name="description"
-            label="Descripción (opcional)"
-            value={formData.description}
-            onChange={handleChange}
-            fullWidth
-            InputProps={{
-              sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
-            }}
-            InputLabelProps={{
-              sx: { fontSize: { xs: '0.9rem', sm: '1rem' } }
-            }}
-            sx={{ my: { xs: 0.5, sm: 1 } }}
-          />
-
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={formData.isRecurring}
-                onChange={(e) => {
-                  setFormData({
-                    ...formData,
-                    isRecurring: e.target.checked
-                  });
-                  setShowRecurringInfo(e.target.checked);
+          {/* Fecha */}
+          <Box sx={{ mb: 3 }}>
+            <Typography 
+              variant="subtitle2" 
+              component="label" 
+              htmlFor="date" 
+              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+            >
+              Fecha
+            </Typography>
+            <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
+              <DatePicker
+                value={formData.date}
+                onChange={(newValue) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    date: newValue
+                  }));
+                  setFormErrors(prev => ({
+                    ...prev,
+                    date: ''
+                  }));
                 }}
-                color="primary"
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    variant: 'outlined',
+                    error: !!formErrors.date,
+                    helperText: formErrors.date || 'Se guardará como gasto del mes ' + 
+                      format(formData.date, 'MMMM yyyy', { locale: es }),
+                    InputProps: {
+                      sx: { py: 1.5, backgroundColor: 'background.paper' }
+                    }
+                  },
+                  popper: {
+                    sx: { zIndex: 9999 }
+                  }
+                }}
               />
-            }
-            label={
-              <Typography sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
-                Es un gasto recurrente
-              </Typography>
-            }
-            sx={{ mt: { xs: 1, sm: 2 } }}
-          />
+            </LocalizationProvider>
+          </Box>
+
+          {/* Descripción */}
+          <Box sx={{ mb: 3 }}>
+            <Typography 
+              variant="subtitle2" 
+              component="label" 
+              htmlFor="description" 
+              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+            >
+              Descripción (opcional)
+            </Typography>
+            <TextField
+              id="description"
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              fullWidth
+              multiline
+              rows={3}
+              placeholder="Detalles adicionales del gasto"
+              variant="outlined"
+              InputProps={{
+                sx: { backgroundColor: 'background.paper' }
+              }}
+            />
+          </Box>
+
+          {/* Recurrente */}
+          <Box sx={{ mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.isRecurring}
+                  onChange={(e) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      isRecurring: e.target.checked
+                    }));
+                    setShowRecurringInfo(e.target.checked);
+                  }}
+                  color="primary"
+                />
+              }
+              label={
+                <Typography>
+                  Es un gasto recurrente
+                </Typography>
+              }
+            />
+          </Box>
 
           {showRecurringInfo && (
-            <Alert 
-              severity="info" 
-              sx={{ 
-                mt: 1, 
-                fontSize: { xs: '0.8rem', sm: '0.875rem' },
+            <Alert
+              severity="info"
+              sx={{
                 borderRadius: 1
               }}
             >
               Los gastos recurrentes se repiten automáticamente cada mes el día {getDayFromDate(formData.date)}.
             </Alert>
           )}
-        </DialogContent>
+        </Box>
 
-        <Divider />
-
-        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 }, justifyContent: 'space-between' }}>
-          <Button 
-            onClick={onClose} 
-            color="inherit"
+        {/* Botones de acción */}
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            p: 3,
+            borderTop: 1,
+            borderColor: 'divider',
+            backgroundColor: theme => alpha(theme.palette.background.default, 0.5),
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 10
+          }}
+        >
+          <Button
+            onClick={onClose}
             sx={{ 
-              fontSize: { xs: '0.85rem', sm: '0.9rem' },
-              px: { xs: 2, sm: 3 }
+              py: 1.5, 
+              px: 3, 
+              borderRadius: 2,
+              textTransform: 'none',
+              fontSize: '0.95rem'
             }}
+            disabled={loading}
           >
             Cancelar
           </Button>
+          
           <Button
             type="submit"
             variant="contained"
             color="primary"
             disabled={loading}
             sx={{ 
-              fontSize: { xs: '0.85rem', sm: '0.9rem' },
-              px: { xs: 2, sm: 3 },
-              minWidth: { xs: 90, sm: 100 }
+              py: 1.5, 
+              px: 4, 
+              borderRadius: 2,
+              textTransform: 'none',
+              fontSize: '0.95rem',
+              fontWeight: 'medium'
             }}
           >
             {loading ? (
@@ -363,8 +492,8 @@ const ExpenseForm = ({
               'Guardar'
             )}
           </Button>
-        </DialogActions>
-      </form>
+        </Box>
+      </Box>
     </Dialog>
   );
 };

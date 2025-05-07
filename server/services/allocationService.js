@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { SharedSession, ParticipantAllocation } = require('../models');
+const { SharedSession, ParticipantAllocation, PersonalExpense } = require('../models');
 const syncService = require('./syncService');
 
 /**
@@ -256,12 +256,207 @@ const updateAllocation = async (allocationId, updateData) => {
   return updatedAllocation;
 };
 
+/**
+ * Genera asignaciones de participantes para una sesión compartida por año/mes
+ * @param {Object} session - Sesión compartida
+ * @param {Number} year - Año
+ * @param {Number} month - Mes (0-11)
+ * @returns {Array} Lista de asignaciones creadas
+ */
+const generateMonthlyAllocations = async (session, year, month) => {
+  const { _id: sessionId, allocations, currency = 'EUR', yearlyExpenses } = session;
+  
+  // Validaciones
+  if (!sessionId) {
+    throw new Error('ID de sesión no válido');
+  }
+  
+  if (!allocations || !Array.isArray(allocations) || allocations.length === 0) {
+    throw new Error('No hay asignaciones de porcentajes definidas');
+  }
+  
+  validatePercentages(allocations);
+  
+  // Buscar el monto total para el año/mes
+  const yearData = yearlyExpenses.find(y => y.year === year);
+  if (!yearData) {
+    throw new Error(`No hay datos para el año ${year}`);
+  }
+  
+  const monthData = yearData.months.find(m => m.month === month);
+  if (!monthData) {
+    throw new Error(`No hay datos para el mes ${month} del año ${year}`);
+  }
+  
+  const totalAmount = monthData.totalAmount;
+  if (!totalAmount || totalAmount <= 0) {
+    throw new Error(`El monto total para ${year}-${month+1} debe ser mayor que cero`);
+  }
+  
+  console.log(`Generando asignaciones para sesión ${sessionId}, año ${year}, mes ${month}, total: ${totalAmount} ${currency}`);
+  
+  // Iniciar transacción de MongoDB
+  const session_db = await mongoose.startSession();
+  session_db.startTransaction();
+  
+  try {
+    // Primero eliminar asignaciones existentes para esta combinación
+    await ParticipantAllocation.deleteMany({ 
+      sessionId, 
+      year, 
+      month 
+    }, { session: session_db });
+    
+    // Crear asignaciones para cada participante
+    const allocationsToInsert = allocations.map(participant => {
+      // Calcular monto asignado con 2 decimales
+      const amount = parseFloat((totalAmount * (participant.percentage / 100)).toFixed(2));
+      
+      return {
+        sessionId,
+        userId: participant.userId,
+        username: participant.name || 'Usuario',
+        year,
+        month,
+        amount,
+        totalAmount,
+        currency,
+        percentage: participant.percentage,
+        status: 'pending'
+      };
+    });
+    
+    // Verificar suma total después del redondeo
+    const totalAllocated = allocationsToInsert.reduce((sum, alloc) => sum + alloc.amount, 0);
+    
+    // Ajustar por diferencias de redondeo (asignar a primer participante)
+    if (Math.abs(totalAllocated - totalAmount) > 0.01 && allocationsToInsert.length > 0) {
+      const diff = totalAmount - totalAllocated;
+      allocationsToInsert[0].amount = parseFloat((allocationsToInsert[0].amount + diff).toFixed(2));
+      console.log(`Ajuste por redondeo: ${diff.toFixed(2)} ${currency} asignado al primer participante`);
+    }
+    
+    console.log(`Insertando ${allocationsToInsert.length} asignaciones`);
+    
+    // Insertar las asignaciones en la base de datos
+    const createdAllocations = await ParticipantAllocation.insertMany(allocationsToInsert, { session: session_db });
+    
+    // Confirmar transacción
+    await session_db.commitTransaction();
+    session_db.endSession();
+    
+    console.log(`Asignaciones mensuales creadas correctamente. Sincronizando con gastos personales...`);
+    
+    // Sincronizar con gastos personales
+    const syncResults = [];
+    for (const allocation of createdAllocations) {
+      try {
+        // Verificar si ya existe un gasto personal para esta asignación
+        const existingExpense = await PersonalExpense.findOne({
+          user: allocation.userId.toString(),
+          'sessionReference.sessionId': sessionId,
+          'sessionReference.year': year,
+          'sessionReference.month': month
+        });
+        
+        if (existingExpense) {
+          // Actualizar el gasto existente
+          existingExpense.amount = allocation.amount;
+          existingExpense.allocationId = allocation._id;
+          existingExpense.date = new Date(year, month, 15); // Fecha en el medio del mes
+          await existingExpense.save();
+          
+          // Actualizar el ID del gasto personal en la asignación
+          await ParticipantAllocation.findByIdAndUpdate(
+            allocation._id,
+            { personalExpenseId: existingExpense._id }
+          );
+          
+          syncResults.push({
+            allocationId: allocation._id,
+            userId: allocation.userId,
+            success: true,
+            action: 'updated',
+            personalExpenseId: existingExpense._id
+          });
+          
+          console.log(`Actualizado gasto personal existente ${existingExpense._id} para la asignación ${allocation._id}`);
+        } else {
+          // Crear un nuevo gasto personal
+          // Obtener el nombre de la sesión
+          const sessionName = session.name || 'Gastos compartidos';
+          
+          const date = new Date(year, month, 15); // Día 15 del mes
+          
+          // Crear el gasto personal
+          const newExpense = new PersonalExpense({
+            user: allocation.userId.toString(),
+            name: sessionName,
+            description: `Gastos compartidos: ${sessionName} (${allocation.percentage}%)`,
+            amount: allocation.amount,
+            currency: allocation.currency || 'EUR',
+            category: 'Gastos Compartidos',
+            date: date,
+            type: 'expense',
+            allocationId: allocation._id,
+            sessionReference: {
+              sessionId: allocation.sessionId,
+              sessionName: sessionName,
+              percentage: allocation.percentage,
+              year: year,
+              month: month,
+              isRecurringShare: session.sessionType === 'permanent'
+            }
+          });
+          
+          await newExpense.save();
+          
+          // Actualizar la asignación con el ID del gasto personal
+          await ParticipantAllocation.findByIdAndUpdate(
+            allocation._id,
+            { personalExpenseId: newExpense._id }
+          );
+          
+          syncResults.push({
+            allocationId: allocation._id,
+            userId: allocation.userId,
+            success: true,
+            action: 'created',
+            personalExpenseId: newExpense._id
+          });
+          
+          console.log(`Creado nuevo gasto personal ${newExpense._id} para la asignación ${allocation._id}`);
+        }
+      } catch (error) {
+        console.error(`Error al sincronizar asignación ${allocation._id}:`, error);
+        syncResults.push({
+          allocationId: allocation._id,
+          userId: allocation.userId,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+    
+    console.log(`Resultados de sincronización:`, JSON.stringify(syncResults));
+    
+    return createdAllocations;
+  } catch (error) {
+    // Revertir transacción en caso de error
+    await session_db.abortTransaction();
+    session_db.endSession();
+    console.error(`Error en generateMonthlyAllocations:`, error);
+    throw error;
+  }
+};
+
 module.exports = {
+  validatePercentages,
   distributeAmount,
   updateAllocations,
   getUserAllocations,
   getSessionAllocations,
   updateAllocationStatus,
   updateAllocation,
-  validatePercentages
+  generateMonthlyAllocations
 }; 
