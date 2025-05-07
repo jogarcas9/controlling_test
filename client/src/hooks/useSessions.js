@@ -7,11 +7,6 @@ export const useSessions = () => {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Cargar sesiones automáticamente al montar el componente
-  useEffect(() => {
-    fetchSessions();
-  }, []);
-
   const fetchSessions = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
@@ -31,6 +26,11 @@ export const useSessions = () => {
       setLoading(false);
     }
   }, []);
+
+  // Cargar sesiones automáticamente al montar el componente
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
 
   const createSession = useCallback(async (sessionData) => {
     try {

@@ -42,24 +42,24 @@ const handleApiError = (functionName, error) => {
       console.warn(`${functionName}: Recurso no encontrado`);
     }
     
-    throw {
-      ...error,
+    throw new Error(JSON.stringify({
+      originalError: error,
       userMessage: errorMessage,
       statusCode
-    };
+    }));
   } else if (error.request) {
     // Error sin respuesta del servidor (problema de conectividad)
     console.warn(`${functionName}: Sin respuesta del servidor - posible problema de conectividad`);
-    throw {
-      ...error,
+    throw new Error(JSON.stringify({
+      originalError: error,
       userMessage: 'No se pudo conectar con el servidor. Verifica tu conexión a internet.'
-    };
+    }));
   } else {
     // Error al configurar la solicitud
-    throw {
-      ...error,
+    throw new Error(JSON.stringify({
+      originalError: error,
       userMessage: 'Error al procesar la solicitud: ' + error.message
-    };
+    }));
   }
 };
 
@@ -208,10 +208,10 @@ export const deleteSessionExpense = async (sessionId, expenseId) => {
     const token = localStorage.getItem('token');
     if (!token) {
       console.error('No hay token JWT, el usuario debe iniciar sesión');
-      throw {
+      throw new Error(JSON.stringify({
         response: { status: 401 },
         message: 'No hay token de autenticación'
-      };
+      }));
     }
     
     // Corrección de la ruta para que coincida con la API del servidor
@@ -227,35 +227,33 @@ export const deleteSessionExpense = async (sessionId, expenseId) => {
       if (status === 401) {
         console.error('Error de autenticación: Token inválido o expirado');
         localStorage.removeItem('token'); // Limpiar token inválido
-        throw {
-          ...error,
+        throw new Error(JSON.stringify({
+          originalError: error,
           userMessage: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.'
-        };
+        }));
       } else if (status === 403) {
         console.error('Error de permisos al eliminar gasto:', data);
-        throw {
-          ...error,
+        throw new Error(JSON.stringify({
+          originalError: error,
           userMessage: 'No tienes permisos para eliminar este gasto.'
-        };
+        }));
       } else if (status === 404) {
         console.error('Gasto o sesión no encontrados:', data);
-        throw {
-          ...error,
+        throw new Error(JSON.stringify({
+          originalError: error,
           userMessage: 'El gasto que intentas eliminar no existe o ha sido eliminado.'
-        };
+        }));
       } else if (status === 500) {
         console.error('Error del servidor al eliminar gasto:', data);
         // Registrar información diagnóstica adicional
         console.error('Detalles adicionales:', {
           sessionId,
-          expenseId,
-          errorData: data
+          expenseId
         });
-        
-        throw {
-          ...error,
-          userMessage: 'Error interno del servidor. Inténtalo de nuevo más tarde.'
-        };
+        throw new Error(JSON.stringify({
+          originalError: error,
+          userMessage: 'Error interno del servidor al eliminar el gasto.'
+        }));
       }
     }
     
@@ -269,10 +267,7 @@ export const deleteSessionExpense = async (sessionId, expenseId) => {
       hasToken: !!localStorage.getItem('token')
     });
     
-    throw {
-      ...error,
-      userMessage: 'Error al eliminar el gasto. Por favor, verifica tu conexión e inténtalo de nuevo.'
-    };
+    throw error;
   }
 };
 
@@ -438,10 +433,10 @@ export const getExpensesByMonth = async (sessionId, year, month, retryCount = 0)
     const token = localStorage.getItem('token');
     if (!token) {
       console.error('No hay token JWT, el usuario debe iniciar sesión');
-      throw {
+      throw new Error(JSON.stringify({
         response: { status: 401 },
         message: 'No hay token de autenticación'
-      };
+      }));
     }
     
     // Asegurar que son números
@@ -556,49 +551,16 @@ export const repairSessionStructure = async (sessionId) => {
     const token = localStorage.getItem('token');
     if (!token) {
       console.error('No hay token JWT, el usuario debe iniciar sesión');
-      throw {
+      throw new Error(JSON.stringify({
         response: { status: 401 },
         message: 'No hay token de autenticación'
-      };
+      }));
     }
     
     const response = await api.post(`/api/shared-sessions/${sessionId}/repair`);
-    console.log('Reparación completada:', response.data);
     return response.data;
   } catch (error) {
-    console.error('Error al intentar reparar la sesión:', error);
-    
-    // Manejo específico para errores de autenticación
-    if (error.response && error.response.status === 401) {
-      console.error('Error de autenticación: Token inválido o expirado');
-      localStorage.removeItem('token'); // Limpiar token inválido
-    }
-    
+    console.error('Error al reparar la sesión:', error);
     throw error;
   }
 };
-
-export default {
-  fetchSharedSessions,
-  fetchPendingInvitations,
-  respondToInvitation,
-  getSessionDetails,
-  createSession,
-  updateSession,
-  deleteSession,
-  removeParticipant,
-  addExpenseToSession,
-  updateSessionExpense,
-  deleteSessionExpense,
-  generateSessionReport,
-  syncToPersonal,
-  updateDistribution,
-  listSessions,
-  getUserByEmail,
-  invalidateSessionsCache,
-  getSessionAllocations,
-  getUserAllocations,
-  updateAllocationStatus,
-  getExpensesByMonth,
-  repairSessionStructure
-}; 
