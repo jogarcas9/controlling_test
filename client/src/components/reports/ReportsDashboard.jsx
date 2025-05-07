@@ -17,7 +17,66 @@ import {
   CardContent,
   Divider
 } from '@mui/material';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+
+// Importación con manejo de errores para recharts
+let BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell;
+try {
+  // Intentar importar recharts normalmente
+  const recharts = require('recharts');
+  BarChart = recharts.BarChart;
+  Bar = recharts.Bar;
+  XAxis = recharts.XAxis;
+  YAxis = recharts.YAxis;
+  Tooltip = recharts.Tooltip;
+  Legend = recharts.Legend;
+  ResponsiveContainer = recharts.ResponsiveContainer;
+  PieChart = recharts.PieChart;
+  Pie = recharts.Pie;
+  Cell = recharts.Cell;
+} catch (error) {
+  console.warn('Error al cargar recharts localmente. Usando fallback.', error);
+  
+  // Si falla, crear componentes dummy para evitar errores
+  const createDummyComponent = (name) => (props) => {
+    console.warn(`Componente ${name} no disponible. Usando dummy.`);
+    return <div>{`[${name} no disponible]`}</div>;
+  };
+  
+  BarChart = createDummyComponent('BarChart');
+  Bar = createDummyComponent('Bar');
+  XAxis = createDummyComponent('XAxis');
+  YAxis = createDummyComponent('YAxis');
+  Tooltip = createDummyComponent('Tooltip');
+  Legend = createDummyComponent('Legend');
+  ResponsiveContainer = createDummyComponent('ResponsiveContainer');
+  PieChart = createDummyComponent('PieChart');
+  Pie = createDummyComponent('Pie');
+  Cell = createDummyComponent('Cell');
+  
+  // Añadir la librería CDN
+  if (typeof document !== 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/recharts@2.15.3/umd/Recharts.min.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.Recharts) {
+        console.log('Recharts cargado desde CDN');
+        BarChart = window.Recharts.BarChart;
+        Bar = window.Recharts.Bar;
+        XAxis = window.Recharts.XAxis;
+        YAxis = window.Recharts.YAxis;
+        Tooltip = window.Recharts.Tooltip;
+        Legend = window.Recharts.Legend;
+        ResponsiveContainer = window.Recharts.ResponsiveContainer;
+        PieChart = window.Recharts.PieChart;
+        Pie = window.Recharts.Pie;
+        Cell = window.Recharts.Cell;
+      }
+    };
+    document.head.appendChild(script);
+  }
+}
+
 import { useTranslation } from 'react-i18next';
 import { 
   CalendarToday, 
