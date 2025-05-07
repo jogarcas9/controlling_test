@@ -17,6 +17,14 @@ import {
   CardContent,
   Divider
 } from '@mui/material';
+import { useTranslation } from 'react-i18next';
+import { 
+  CalendarToday, 
+  // eslint-disable-next-line no-unused-vars
+  Download, 
+  Refresh 
+} from '@mui/icons-material';
+import { fetchMonthlyReport, fetchYearlyReport, fetchSummary } from '../../services/reportService';
 
 // Importación con manejo de errores para recharts
 let BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell;
@@ -76,15 +84,6 @@ try {
     document.head.appendChild(script);
   }
 }
-
-import { useTranslation } from 'react-i18next';
-import { 
-  CalendarToday, 
-  // eslint-disable-next-line no-unused-vars
-  Download, 
-  Refresh 
-} from '@mui/icons-material';
-import { fetchMonthlyReport, fetchYearlyReport, fetchSummary } from '../../services/reportService';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#A4DE6C', '#D0ED57'];
 
