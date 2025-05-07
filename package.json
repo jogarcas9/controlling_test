@@ -9,12 +9,13 @@
   },
   "scripts": {
     "start": "node server/server.js",
-    "build": "node setup-env.js && cd client && npm install --legacy-peer-deps && npm install recharts --save && npm run build",
+    "build": "node setup-env.js && cd client && CI=false npm install --legacy-peer-deps && CI=false npm install recharts --save --force && CI=false npm run build",
+    "vercel-build": "npm run build",
     "server": "cd server && nodemon server.js",
     "client": "cd client && npm start",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "install-all": "npm install && cd server && npm install && cd ../client && npm install --legacy-peer-deps && npm install recharts --save",
-    "vercel-build": "npm run install-all && npm run build"
+    "postinstall": "npm run install-all"
   },
   "author": "",
   "license": "ISC",
