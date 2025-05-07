@@ -6,7 +6,8 @@
       "use": "@vercel/static-build",
       "config": {
         "distDir": "build",
-        "installCommand": "cd .. && npm run install-all && cd client && npm install recharts --save"
+        "buildCommand": "npm run build",
+        "installCommand": "npm install --legacy-peer-deps && npm install recharts@2.15.3 --save --force"
       }
     },
     {
