@@ -57,11 +57,22 @@ const SharedExpensesTable = ({
   };
 
   const formatDate = (date) => {
-    return new Intl.DateTimeFormat('es-ES', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    }).format(new Date(date));
+    try {
+      if (!date) return 'Fecha no disponible';
+      
+      const dateObj = new Date(date);
+      // Verificar si la fecha es válida
+      if (isNaN(dateObj.getTime())) return 'Fecha no disponible';
+      
+      return new Intl.DateTimeFormat('es-ES', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      }).format(dateObj);
+    } catch (error) {
+      console.error('Error al formatear fecha:', error);
+      return 'Fecha no disponible';
+    }
   };
 
   const getCategoryColor = (category) => {

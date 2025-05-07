@@ -170,4 +170,44 @@ router.put('/me', auth, async (req, res) => {
   }
 });
 
+// Buscar usuario por email
+router.get('/by-email/:email', async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    console.log(`Buscando usuario con email: ${email}`);
+    
+    const user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      console.log(`Usuario con email ${email} no encontrado en la base de datos`);
+      return res.status(404).json({ 
+        msg: 'Usuario no encontrado',
+        user: null 
+      });
+    }
+    
+    console.log(`Usuario encontrado: ${user.nombre || user.name || user.email}`);
+    
+    // Devolver el usuario en formato consistente con el campo 'user'
+    res.json({
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name || user.nombre || null,
+        last_name: user.last_name || user.apellidos || null,
+        nombre: user.nombre || user.name || null,
+        apellidos: user.apellidos || user.last_name || null,
+        email: user.email
+      }
+    });
+  } catch (err) {
+    console.error('Error al buscar usuario por email:', err.message);
+    res.status(500).json({ 
+      msg: 'Error del servidor', 
+      error: err.message,
+      user: null
+    });
+  }
+});
+
 module.exports = router; 

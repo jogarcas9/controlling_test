@@ -8,12 +8,45 @@ const SharedExpense = require('../models/SharedExpense');
 // @access  Private
 router.get('/', auth, async (req, res) => {
   try {
+    // Verificar si hay parámetros de filtro por mes
+    const { month, year } = req.query;
+    let dateFilter = {};
+    
+    if (month && year) {
+      // Si se especifican mes y año, filtrar por ese período
+      const monthNum = parseInt(month);
+      const yearNum = parseInt(year);
+      
+      if (!isNaN(monthNum) && !isNaN(yearNum) && monthNum >= 1 && monthNum <= 12) {
+        const firstDayOfMonth = new Date(yearNum, monthNum - 1, 1);
+        const lastDayOfMonth = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+        
+        console.log(`Filtrando gastos compartidos entre ${firstDayOfMonth.toISOString()} y ${lastDayOfMonth.toISOString()}`);
+        
+        dateFilter = {
+          date: {
+            $gte: firstDayOfMonth,
+            $lte: lastDayOfMonth
+          }
+        };
+      }
+    }
+    
     const expenses = await SharedExpense.find({
       $or: [
         { owner: req.user.id },
         { 'participants.user': req.user.id }
-      ]
+      ],
+      ...dateFilter
     }).sort({ date: -1 });
+    
+    // Registrar información sobre los gastos encontrados
+    console.log(`Encontrados ${expenses.length} gastos compartidos para el usuario ${req.user.id}`);
+    if (expenses.length > 0) {
+      console.log('Ejemplo del primer gasto encontrado:');
+      console.log(`ID: ${expenses[0]._id}, Fecha: ${expenses[0].date}, Monto: ${expenses[0].amount}`);
+    }
+    
     res.json(expenses);
   } catch (err) {
     console.error(err.message);
@@ -28,11 +61,25 @@ router.post('/', auth, async (req, res) => {
   try {
     const { description, amount, category, date, participants } = req.body;
 
+    // Asegurar que la fecha sea válida
+    let validDate;
+    if (date) {
+      validDate = new Date(date);
+      // Verificar si la fecha es válida
+      if (isNaN(validDate.getTime())) {
+        validDate = new Date(); // Si la fecha es inválida, usar la fecha actual
+      }
+    } else {
+      validDate = new Date(); // Si no hay fecha, usar la fecha actual
+    }
+    
+    console.log(`Creando gasto compartido con fecha: ${validDate.toISOString()}`);
+
     const newExpense = new SharedExpense({
       description,
       amount,
       category,
-      date,
+      date: validDate,
       owner: req.user.id,
       participants: participants || []
     });

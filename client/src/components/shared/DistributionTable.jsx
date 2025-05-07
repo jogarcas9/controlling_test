@@ -96,63 +96,52 @@ const DistributionTable = ({
 
   useEffect(() => {
     const fetchParticipantNames = async () => {
-      // Si no hay participantes, no hacer nada
-      if (!participantsWithNames.length) {
-        console.log('No hay participantes para obtener nombres');
-        return;
-      }
-      
       console.log('Obteniendo nombres para participantes:', participantsWithNames);
       
+      if (!participantsWithNames.length) return;
+      
+      // Procesar todos los participantes en paralelo
       const updatedParticipants = await Promise.all(
         participantsWithNames.map(async (participant) => {
-          // Si no tiene userId o email, mantener como está
-          if (!participant.userId || !participant.email) {
-            console.warn('Participante sin userId o email:', participant);
-            return { ...participant, name: participant.name || 'Participante' };
-          }
-          
-          // Si ya tiene nombre que no sea el email o parte del email, mantenerlo
-          if (participant.name && 
-              participant.email && 
-              !participant.email.includes(participant.name) && 
-              participant.name !== participant.email) {
+          // Si no hay email, mantener los datos originales
+          if (!participant.email) {
             return participant;
           }
           
+          // Guardar los datos originales
+          const originalParticipant = { ...participant };
+          
           try {
             console.log(`Obteniendo nombre para email: ${participant.email}`);
-            const data = await sharedSessionService.getUserByEmail(participant.email);
+            const result = await sharedSessionService.getUserByEmail(participant.email);
             
-            // Extraer el mejor nombre disponible del usuario
-            let bestName = participant.email.split('@')[0]; // Default: parte del email
-            
-            if (data && data.user) {
-              const user = data.user;
+            // Si tenemos datos de usuario
+            if (result && result.user) {
+              const user = result.user;
               
-              // Preferir nombre+apellidos si están disponibles
-              if (user.nombre && user.apellidos) {
-                bestName = `${user.nombre} ${user.apellidos}`.trim();
-              } else if (user.nombre) {
-                bestName = user.nombre;
-              } else if (user.name && user.name !== participant.email) {
-                bestName = user.name;
-              }
+              // Utilizar el nombre ya procesado que viene en la respuesta
+              const displayName = user.name || participant.email.split('@')[0];
               
-              console.log(`Nombre obtenido para ${participant.email}: ${bestName}`);
-            } else {
-              console.warn(`No se encontraron datos de usuario para email: ${participant.email}`);
+              console.log(`Nombre obtenido para ${participant.email}: ${displayName}`);
+              
+              return {
+                ...originalParticipant,
+                name: displayName
+              };
             }
             
+            // Si no hay datos de usuario, usar el nombre existente o extraer del email
             return {
-              ...participant,
-              name: bestName || participant.email.split('@')[0]
+              ...originalParticipant,
+              name: originalParticipant.name || participant.email.split('@')[0]
             };
           } catch (error) {
             console.error(`Error al obtener nombre para ${participant.email}:`, error);
+            
+            // En caso de error, mantener los datos originales o usar el email como fallback
             return {
-              ...participant,
-              name: participant.email.split('@')[0] || 'Participante'
+              ...originalParticipant,
+              name: originalParticipant.name || participant.email.split('@')[0]
             };
           }
         })

@@ -5,25 +5,48 @@ export const formatDate = (date) => {
   return d.toLocaleDateString();
 };
 
+// Obtener el nombre del mes a partir del índice (0-11)
+export const getMonthName = (monthIndex) => {
+  const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  // Asegurar que el índice está en el rango válido
+  if (monthIndex < 0 || monthIndex > 11) {
+    return `Mes ${monthIndex < 0 ? 1 : monthIndex > 11 ? 12 : monthIndex + 1}`;
+  }
+  return monthNames[monthIndex];
+};
+
 // Formatear mes y año
 export const formatMonthYear = (month, year) => {
   const months = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
-  return `${months[month]} ${year}`;
+  // Asegurar que el mes esté en el rango 0-11
+  const safeMonth = month < 0 ? 0 : month > 11 ? 11 : month;
+  return `${months[safeMonth]} ${year}`;
 };
 
-// Obtener el primer día del mes actual
-export const getFirstDayOfMonth = () => {
-  const date = new Date();
-  return new Date(date.getFullYear(), date.getMonth(), 1);
+// Obtener el primer día del mes especificado (o el actual si no se especifica)
+export const getFirstDayOfMonth = (year = null, month = null) => {
+  if (year === null || month === null) {
+    const date = new Date();
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+  // Usar mes en formato 0-11 donde 0 es enero y 11 es diciembre
+  return new Date(year, month, 1);
 };
 
-// Obtener el último día del mes actual
-export const getLastDayOfMonth = () => {
-  const date = new Date();
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+// Obtener el último día del mes especificado (o el actual si no se especifica)
+export const getLastDayOfMonth = (year = null, month = null) => {
+  if (year === null || month === null) {
+    const date = new Date();
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  }
+  // Para obtener el último día del mes: usar el día 0 del mes siguiente
+  return new Date(year, month + 1, 0);
 };
 
 // Obtener el primer día del mes anterior
@@ -42,7 +65,8 @@ export const getLastDayOfPreviousMonth = () => {
 export const groupExpensesByMonth = (expenses) => {
   return expenses.reduce((acc, expense) => {
     const date = new Date(expense.date);
-    const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
+    // Usar formato año-mes para la clave donde mes está en formato 0-11
+    const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
     
     if (!acc[monthKey]) {
       acc[monthKey] = [];

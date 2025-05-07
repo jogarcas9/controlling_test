@@ -29,7 +29,7 @@ const sharedExpenseSchema = new mongoose.Schema({
   },
   date: {
     type: Date,
-    default: Date.now
+    default: function() { return new Date(); }
   },
   isRecurring: {
     type: Boolean,

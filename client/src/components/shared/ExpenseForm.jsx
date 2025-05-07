@@ -98,9 +98,15 @@ const ExpenseForm = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateForm()) {
+      let validDate = formData.date;
+      if (!(validDate instanceof Date) || isNaN(validDate.getTime())) {
+        validDate = new Date();
+      }
+      
       onSubmit({
         ...formData,
-        amount: Number(formData.amount)
+        amount: Number(formData.amount),
+        date: validDate.toISOString()
       });
     }
   };

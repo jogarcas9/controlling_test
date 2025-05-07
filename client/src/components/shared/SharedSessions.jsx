@@ -422,6 +422,9 @@ const SharedSessions = () => {
       setShowExpenseForm(false);
       setEditingExpense(null);
       
+      // Después de añadir/actualizar un gasto, asegurarse de que la lista está actualizada
+      await fetchExpenses();
+      
       // Sincronizar solo después de que el gasto se haya guardado correctamente
       try {
         await sharedSessionService.syncToPersonal(currentSession._id);
@@ -446,6 +449,9 @@ const SharedSessions = () => {
       try {
         // Eliminar el gasto y dejar que el hook maneje la actualización del estado
         await deleteExpense(expense._id);
+        
+        // Después de eliminar un gasto, asegurarse de que la lista está actualizada
+        await fetchExpenses();
         
         // Sincronizar después de eliminar el gasto
         try {

@@ -98,4 +98,20 @@ router.put('/:id/expenses/:expenseId', auth, sharedSessionController.updateExpen
 // @access  Private
 router.delete('/:id/expenses/:expenseId', auth, sharedSessionController.deleteExpense);
 
+// @route   GET api/shared-sessions/:id/expenses-by-month
+// @desc    Obtener los gastos de un mes y año específico
+// @access  Private
+router.get('/:id/expenses-by-month', auth, sharedSessionController.getExpensesByMonth);
+
+// @route   POST api/shared-sessions/:id/repair
+// @desc    Reparar la estructura de datos de una sesión si tiene problemas
+// @access  Private
+router.post('/:id/repair', auth, sharedSessionController.repairSessionStructure);
+
+// Ruta para reparar fechas de gastos en una sesión
+router.post('/:id/repair-dates', auth, sharedSessionController.repairExpenseDates);
+
+// Ruta para reparar la estructura de meses en todas las sesiones (admin only)
+router.post('/admin/repair-month-structure', auth, sharedSessionController.repairAllSessionsMonthStructure);
+
 module.exports = router; 
