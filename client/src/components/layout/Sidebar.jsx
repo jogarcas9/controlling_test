@@ -159,9 +159,16 @@ const Sidebar = ({
         flexDirection: 'column',
         bgcolor: 'background.paper',
         position: 'relative',
-        boxShadow: theme.shadows[1],
-        overflowX: 'hidden',
+        boxShadow: 'none',
+        overflow: 'hidden',
+        padding: 0,
+        margin: 0,
+        width: '100%',
         maxWidth: '100%',
+        border: 'none',
+        borderRight: '1px solid',
+        borderColor: 'divider',
+        boxSizing: 'border-box'
       }}
     >
       {/* Botón para minimizar/maximizar (solo en desktop) */}
@@ -288,11 +295,18 @@ const Sidebar = ({
       </Box>
 
       {/* Lista de elementos de navegación */}
-      <List 
-        sx={{ 
-          width: '100%', 
-          p: { xs: 1, sm: 1.5 },
-          flexGrow: 1
+      <List
+        component="nav"
+        sx={{
+          width: '100%',
+          padding: 0,
+          mt: 1,
+          '& .MuiListItem-root': {
+            mb: 0.5,
+            borderRadius: 1,
+            mx: effectiveMinimized ? 1 : 2,
+            pr: 0
+          }
         }}
       >
         {menuItems.map((item) => {

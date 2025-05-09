@@ -326,18 +326,18 @@ const PersonalExpenses = () => {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const _error = useState(null);
-  const _openExpenseDialog = useState(false);
+  const [error, setError] = useState(null);
+  const [openExpenseDialog, setOpenExpenseDialog] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState(null);
   const [expenseData, setExpenseData] = useState(INITIAL_EXPENSE_DATA);
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const _categories = useState([]);
-  const _validationErrors = useState({});
-  const _openNewExpenseDialog = useState(false);
-  const _editingExpense = useState(null);
-  const _confirmDeleteDialogOpen = useState(false);
-  const _expenseToDelete = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [openNewExpenseDialog, setOpenNewExpenseDialog] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState(null);
   const _formRef = React.useRef(null);
 
   // Nuevo estado para actualización en tiempo real
@@ -373,11 +373,11 @@ const PersonalExpenses = () => {
   const resetForm = useCallback(() => {
     setExpenseData(INITIAL_EXPENSE_DATA);
     setSelectedExpense(null);
-    _error(null);
+    setError(null);
   }, []);
 
   const closeDialog = useCallback(() => {
-    _openExpenseDialog(false);
+    setOpenExpenseDialog(false);
     resetForm();
   }, [resetForm]);
 
@@ -478,7 +478,7 @@ const PersonalExpenses = () => {
     }
 
     setLoading(true);
-    _error(null);
+    setError(null);
 
     try {
       const token = localStorage.getItem('token');
@@ -511,7 +511,7 @@ const PersonalExpenses = () => {
       setExpenses(Array.from(uniqueExpenses.values()));
     } catch (err) {
       console.error('Error al cargar gastos:', err);
-      _error('Error al cargar los gastos: ' + (err.response?.data?.msg || 'Error de conexión'));
+      setError('Error al cargar los gastos: ' + (err.response?.data?.msg || 'Error de conexión'));
     } finally {
       setLoading(false);
     }
@@ -534,7 +534,7 @@ const PersonalExpenses = () => {
     }
 
     setSubmitting(true);
-    _error(null);
+    setError(null);
 
     const payload = {
       amount: parseFloat(expenseData.amount),
@@ -619,11 +619,11 @@ const PersonalExpenses = () => {
               return;
             }
           } catch (retryErr) {
-            _error('Error al guardar el gasto: ' + (retryErr.response?.data?.msg || 'Error desconocido'));
+            setError('Error al guardar el gasto: ' + (retryErr.response?.data?.msg || 'Error desconocido'));
           }
         }
       } else {
-        _error('Error al guardar el gasto: ' + (err.response?.data?.msg || err.message || 'Error desconocido'));
+        setError('Error al guardar el gasto: ' + (err.response?.data?.msg || err.message || 'Error desconocido'));
       }
     } finally {
       setSubmitting(false);
@@ -636,7 +636,7 @@ const PersonalExpenses = () => {
       const expenseToDelete = expenses.find(expense => expense._id === id);
       
       if (expenseToDelete?.sessionReference?.sessionId) {
-        _error('No se pueden eliminar gastos que provienen de una sesión compartida');
+        setError('No se pueden eliminar gastos que provienen de una sesión compartida');
         return;
       }
 
@@ -676,10 +676,10 @@ const PersonalExpenses = () => {
       await fetchExpenses();
       
       // Mostrar mensaje de éxito
-      _error(null);
+      setError(null);
     } catch (err) {
       console.error('Error al eliminar:', err);
-      _error('Error al eliminar el gasto: ' + (err.response?.data?.msg || 'Error desconocido'));
+      setError('Error al eliminar el gasto: ' + (err.response?.data?.msg || 'Error desconocido'));
     }
   };
 
@@ -691,7 +691,7 @@ const PersonalExpenses = () => {
       category: type === 'income' ? 'Nómina' : 'Otros',
       date: getInitialDateForSelectedMonth()
     }));
-    _openExpenseDialog(true);
+    setOpenExpenseDialog(true);
   }, [resetForm, getInitialDateForSelectedMonth]);
 
   const handleEdit = useCallback((expense) => {
@@ -706,7 +706,7 @@ const PersonalExpenses = () => {
       isRecurring: Boolean(expense.isRecurring),
       recurringDay: expense.recurringDay || ''
     });
-    _openExpenseDialog(true);
+    setOpenExpenseDialog(true);
   }, []);
 
   // Efectos
@@ -930,9 +930,9 @@ const PersonalExpenses = () => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 1.5, sm: 3 }, px: { xs: 1, sm: 3 } }}>
-      <Box sx={{ width: '100%', p: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+    <Container maxWidth="xl" sx={{ py: { xs: 0.5, sm: 1 }, px: { xs: 0, sm: 0.5 } }}>
+      <Box sx={{ width: '100%', p: { xs: 0.5, sm: 1 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
           <Typography variant="h4" component="h1">
             {t('personalExpenses.title')}
           </Typography>
@@ -967,7 +967,7 @@ const PersonalExpenses = () => {
             <Button 
               variant="contained" 
               startIcon={<AddIcon />}
-              onClick={() => _openNewExpenseDialog(true)}
+              onClick={() => setOpenNewExpenseDialog(true)}
               size={isMobile ? "small" : "medium"}
             >
               {isMobile ? t('common.add') : t('personalExpenses.addNew')}

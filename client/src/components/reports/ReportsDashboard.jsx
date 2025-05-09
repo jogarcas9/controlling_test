@@ -15,7 +15,8 @@ import {
   TextField,
   Card,
   CardContent,
-  Divider
+  Divider,
+  Container
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -198,211 +199,223 @@ const ReportsDashboard = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" gutterBottom>
-          {t('reports.title')}
-        </Typography>
-        
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button 
-            variant="outlined" 
-            startIcon={<CalendarToday />}
-            onClick={handleMonthMenuOpen}
-          >
-            {selectedMonth}/
-            <span onClick={(e) => { e.stopPropagation(); handleYearMenuOpen(e); }}>
-              {selectedYear}
-            </span>
-          </Button>
+    <Container 
+      maxWidth={false} 
+      disableGutters 
+      sx={{ 
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        py: { xs: 1, sm: 2 },
+        px: 0
+      }}
+    >
+      <Box sx={{ px: { xs: 1, sm: 1.5 }, width: '100%' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            {t('reports.title')}
+          </Typography>
           
-          <IconButton onClick={loadReports}>
-            <Refresh />
-          </IconButton>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button 
+              variant="outlined" 
+              startIcon={<CalendarToday />}
+              onClick={handleMonthMenuOpen}
+            >
+              {selectedMonth}/
+              <span onClick={(e) => { e.stopPropagation(); handleYearMenuOpen(e); }}>
+                {selectedYear}
+              </span>
+            </Button>
+            
+            <IconButton onClick={loadReports}>
+              <Refresh />
+            </IconButton>
+          </Box>
+          
+          <Menu
+            anchorEl={monthMenuAnchor}
+            open={Boolean(monthMenuAnchor)}
+            onClose={handleMonthMenuClose}
+          >
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+              <MenuItem 
+                key={month} 
+                onClick={() => handleMonthSelect(month)}
+                selected={month === selectedMonth}
+              >
+                {month}
+              </MenuItem>
+            ))}
+          </Menu>
+          
+          <Menu
+            anchorEl={yearMenuAnchor}
+            open={Boolean(yearMenuAnchor)}
+            onClose={handleYearMenuClose}
+          >
+            {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+              <MenuItem 
+                key={year} 
+                onClick={() => handleYearSelect(year)}
+                selected={year === selectedYear}
+              >
+                {year}
+              </MenuItem>
+            ))}
+          </Menu>
         </Box>
         
-        <Menu
-          anchorEl={monthMenuAnchor}
-          open={Boolean(monthMenuAnchor)}
-          onClose={handleMonthMenuClose}
-        >
-          {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-            <MenuItem 
-              key={month} 
-              onClick={() => handleMonthSelect(month)}
-              selected={month === selectedMonth}
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+        
+        <Grid container spacing={3}>
+          {/* Distribución por categorías */}
+          <Grid item xs={12} md={6}>
+            <Paper
+              sx={{
+                p: 3,
+                display: 'flex',
+                flexDirection: 'column',
+                height: 340,
+              }}
             >
-              {month}
-            </MenuItem>
-          ))}
-        </Menu>
-        
-        <Menu
-          anchorEl={yearMenuAnchor}
-          open={Boolean(yearMenuAnchor)}
-          onClose={handleYearMenuClose}
-        >
-          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-            <MenuItem 
-              key={year} 
-              onClick={() => handleYearSelect(year)}
-              selected={year === selectedYear}
-            >
-              {year}
-            </MenuItem>
-          ))}
-        </Menu>
-      </Box>
-      
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-      
-      <Grid container spacing={3}>
-        {/* Distribución por categorías */}
-        <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 3,
-              display: 'flex',
-              flexDirection: 'column',
-              height: 340,
-            }}
-          >
-            <Typography variant="h6" gutterBottom>
-              {t('reports.categoryDistribution')}
-            </Typography>
-            
-            {monthlyData && monthlyData.byCategory ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={formatCategoryData()}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {formatCategoryData().map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <Box
-                sx={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Typography color="text.secondary">
-                  {t('reports.noData')}
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-        
-        {/* Totales mensuales */}
-        <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 3,
-              display: 'flex',
-              flexDirection: 'column',
-              height: 340,
-            }}
-          >
-            <Typography variant="h6" gutterBottom>
-              {t('reports.monthlyExpenses')}
-            </Typography>
-            
-            {monthlyData ? (
-              <Box sx={{ textAlign: 'center', my: 2 }}>
-                <Typography variant="h4" color="primary">
-                  ${monthlyData.total?.toFixed(2) || '0.00'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {monthlyData.count} gastos en {selectedMonth}/{selectedYear}
-                </Typography>
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Typography color="text.secondary">
-                  {t('reports.noData')}
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-        
-        {/* Tendencia anual */}
-        <Grid item xs={12}>
-          <Paper
-            sx={{
-              p: 3,
-              display: 'flex',
-              flexDirection: 'column',
-              height: 400,
-            }}
-          >
-            <Typography variant="h6" gutterBottom>
-              {t('reports.annualTrend')} {selectedYear}
-            </Typography>
-            
-            {yearlyData && yearlyData.monthlyTotals ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={formatMonthlyData()}
-                  margin={{
-                    top: 20,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
+              <Typography variant="h6" gutterBottom>
+                {t('reports.categoryDistribution')}
+              </Typography>
+              
+              {monthlyData && monthlyData.byCategory ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={formatCategoryData()}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {formatCategoryData().map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Box
+                  sx={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                  <Legend />
-                  <Bar dataKey="amount" name="Gastos" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <Box
-                sx={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Typography color="text.secondary">
-                  {t('reports.noData')}
-                </Typography>
-              </Box>
-            )}
-          </Paper>
+                  <Typography color="text.secondary">
+                    {t('reports.noData')}
+                  </Typography>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+          
+          {/* Totales mensuales */}
+          <Grid item xs={12} md={6}>
+            <Paper
+              sx={{
+                p: 3,
+                display: 'flex',
+                flexDirection: 'column',
+                height: 340,
+              }}
+            >
+              <Typography variant="h6" gutterBottom>
+                {t('reports.monthlyExpenses')}
+              </Typography>
+              
+              {monthlyData ? (
+                <Box sx={{ textAlign: 'center', my: 2 }}>
+                  <Typography variant="h4" color="primary">
+                    ${monthlyData.total?.toFixed(2) || '0.00'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {monthlyData.count} gastos en {selectedMonth}/{selectedYear}
+                  </Typography>
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Typography color="text.secondary">
+                    {t('reports.noData')}
+                  </Typography>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+          
+          {/* Tendencia anual */}
+          <Grid item xs={12}>
+            <Paper
+              sx={{
+                p: 3,
+                display: 'flex',
+                flexDirection: 'column',
+                height: 400,
+              }}
+            >
+              <Typography variant="h6" gutterBottom>
+                {t('reports.annualTrend')} {selectedYear}
+              </Typography>
+              
+              {yearlyData && yearlyData.monthlyTotals ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={formatMonthlyData()}
+                    margin={{
+                      top: 20,
+                      right: 30,
+                      left: 20,
+                      bottom: 5,
+                    }}
+                  >
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                    <Legend />
+                    <Bar dataKey="amount" name="Gastos" fill="#8884d8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Box
+                  sx={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Typography color="text.secondary">
+                    {t('reports.noData')}
+                  </Typography>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
         </Grid>
-      </Grid>
-    </Box>
+      </Box>
+    </Container>
   );
 };
 

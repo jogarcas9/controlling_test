@@ -259,275 +259,287 @@ const Settings = () => {
   }
   
   return (
-    <Container maxWidth="lg" sx={{ mt: 2, mb: 4 }}>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange} aria-label="configuración tabs">
-          <Tab label={t('general')} id="settings-tab-0" />
-          <Tab label={t('profile')} id="settings-tab-1" />
-        </Tabs>
-      </Box>
-      
-      <TabPanel value={activeTab} index={0}>
-        <Paper elevation={0} sx={{ borderRadius: 2, mb: 3 }}>
-          <List>
-            <ListItem>
-              <ListItemIcon>
-                <DarkModeIcon />
-              </ListItemIcon>
-              <ListItemText 
-                primary={t('darkMode')} 
-                secondary={t('darkModeDesc')}
-              />
-              <ListItemSecondaryAction>
-                <Switch
-                  edge="end"
-                  checked={settings.darkMode}
-                  onChange={() => handleSettingChange('darkMode', !settings.darkMode)}
+    <Container 
+      maxWidth={false} 
+      disableGutters 
+      sx={{ 
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        py: { xs: 1, sm: 2 },
+        px: 0
+      }}
+    >
+      <Box sx={{ px: { xs: 1, sm: 1.5 }, width: '100%' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tabs value={activeTab} onChange={handleTabChange} aria-label="configuración tabs">
+            <Tab label={t('general')} id="settings-tab-0" />
+            <Tab label={t('profile')} id="settings-tab-1" />
+          </Tabs>
+        </Box>
+        
+        <TabPanel value={activeTab} index={0}>
+          <Paper elevation={0} sx={{ borderRadius: 2, mb: 3 }}>
+            <List>
+              <ListItem>
+                <ListItemIcon>
+                  <DarkModeIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={t('darkMode')} 
+                  secondary={t('darkModeDesc')}
                 />
-              </ListItemSecondaryAction>
-            </ListItem>
-            
-            <Divider component="li" />
-            
-            <ListItem>
-              <ListItemIcon>
-                <LanguageIcon />
-              </ListItemIcon>
-              <ListItemText 
-                primary={t('language')} 
-                secondary={t('languageDesc')}
-              />
-              <ListItemSecondaryAction>
-                <FormControl variant="standard" sx={{ minWidth: 120 }}>
-                  <Select
-                    value={settings.language}
-                    onChange={(e) => handleSettingChange('language', e.target.value)}
-                    displayEmpty
-                  >
-                    {languages.map((lang) => (
-                      <MenuItem key={lang.value} value={lang.value}>
-                        {lang.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </ListItemSecondaryAction>
-            </ListItem>
-            
-            <Divider component="li" />
-            
-            <ListItem>
-              <ListItemIcon>
-                <MonetizationOnIcon />
-              </ListItemIcon>
-              <ListItemText 
-                primary={t('currency')} 
-                secondary={t('currencyDesc')}
-              />
-              <ListItemSecondaryAction>
-                <FormControl variant="standard" sx={{ minWidth: 150 }}>
-                  <Select
-                    value={settings.currency}
-                    onChange={(e) => handleSettingChange('currency', e.target.value)}
-                    displayEmpty
-                  >
-                    {currencies.map((currency) => (
-                      <MenuItem key={currency.value} value={currency.value}>
-                        {currency.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </ListItemSecondaryAction>
-            </ListItem>
-          </List>
-        </Paper>
-      </TabPanel>
-      
-      <TabPanel value={activeTab} index={1}>
-        {profileLoading ? (
-          <Box display="flex" justifyContent="center" my={4}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={4}>
-              <Card elevation={0} sx={{ borderRadius: 2 }}>
-                <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3 }}>
-                  <Avatar 
-                    sx={{ 
-                      width: 120, 
-                      height: 120, 
-                      mb: 2,
-                      bgcolor: 'primary.main',
-                      fontSize: '3rem'
-                    }}
-                  >
-                    {userProfile.firstName.charAt(0)}
-                  </Avatar>
-                  
-                  <Typography variant="h5" gutterBottom>
-                    {userProfile.firstName} {userProfile.lastName}
-                  </Typography>
-                  
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    {userProfile.email}
-                  </Typography>
-                  
-                  <Typography variant="caption" color="text.secondary">
-                    {t('memberSince')} {formatDate(userProfile.createdAt)}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12} md={8}>
-              <Card elevation={0} sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                    <Typography variant="h6">
-                      <PersonIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                      {t('personalInfo')}
+                <ListItemSecondaryAction>
+                  <Switch
+                    edge="end"
+                    checked={settings.darkMode}
+                    onChange={() => handleSettingChange('darkMode', !settings.darkMode)}
+                  />
+                </ListItemSecondaryAction>
+              </ListItem>
+              
+              <Divider component="li" />
+              
+              <ListItem>
+                <ListItemIcon>
+                  <LanguageIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={t('language')} 
+                  secondary={t('languageDesc')}
+                />
+                <ListItemSecondaryAction>
+                  <FormControl variant="standard" sx={{ minWidth: 120 }}>
+                    <Select
+                      value={settings.language}
+                      onChange={(e) => handleSettingChange('language', e.target.value)}
+                      displayEmpty
+                    >
+                      {languages.map((lang) => (
+                        <MenuItem key={lang.value} value={lang.value}>
+                          {lang.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </ListItemSecondaryAction>
+              </ListItem>
+              
+              <Divider component="li" />
+              
+              <ListItem>
+                <ListItemIcon>
+                  <MonetizationOnIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={t('currency')} 
+                  secondary={t('currencyDesc')}
+                />
+                <ListItemSecondaryAction>
+                  <FormControl variant="standard" sx={{ minWidth: 150 }}>
+                    <Select
+                      value={settings.currency}
+                      onChange={(e) => handleSettingChange('currency', e.target.value)}
+                      displayEmpty
+                    >
+                      {currencies.map((currency) => (
+                        <MenuItem key={currency.value} value={currency.value}>
+                          {currency.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </ListItemSecondaryAction>
+              </ListItem>
+            </List>
+          </Paper>
+        </TabPanel>
+        
+        <TabPanel value={activeTab} index={1}>
+          {profileLoading ? (
+            <Box display="flex" justifyContent="center" my={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
+                <Card elevation={0} sx={{ borderRadius: 2 }}>
+                  <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3 }}>
+                    <Avatar 
+                      sx={{ 
+                        width: 120, 
+                        height: 120, 
+                        mb: 2,
+                        bgcolor: 'primary.main',
+                        fontSize: '3rem'
+                      }}
+                    >
+                      {userProfile.firstName.charAt(0)}
+                    </Avatar>
+                    
+                    <Typography variant="h5" gutterBottom>
+                      {userProfile.firstName} {userProfile.lastName}
                     </Typography>
                     
-                    {!editMode && (
-                      <Button 
-                        startIcon={<EditIcon />} 
-                        onClick={handleEditProfile}
-                        variant="outlined"
-                        size="small"
-                      >
-                        {t('edit')}
-                      </Button>
-                    )}
-                  </Box>
-                  
-                  <Divider sx={{ mb: 3 }} />
-                  
-                  {editMode ? (
-                    <Box component="form">
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            name="firstName"
-                            label={t('firstName')}
-                            fullWidth
-                            value={editedProfile.firstName}
-                            onChange={handleInputChange}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            name="lastName"
-                            label={t('lastName')}
-                            fullWidth
-                            value={editedProfile.lastName}
-                            onChange={handleInputChange}
-                          />
-                        </Grid>
-                        <Grid item xs={12}>
-                          <TextField
-                            label={t('email')}
-                            fullWidth
-                            value={userProfile.email}
-                            disabled
-                            helperText={t('emailDesc')}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                          <Button 
-                            onClick={handleCancelEdit}
-                            sx={{ mr: 1 }}
-                            disabled={loading}
-                          >
-                            {t('cancel')}
-                          </Button>
-                          <Button 
-                            variant="contained" 
-                            onClick={handleSaveProfile}
-                            disabled={loading}
-                          >
-                            {loading ? <CircularProgress size={24} /> : t('save')}
-                          </Button>
-                        </Grid>
-                      </Grid>
-                    </Box>
-                  ) : (
-                    <Box>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            {t('firstName')}
-                          </Typography>
-                          <Typography variant="body1" gutterBottom>
-                            {userProfile.firstName}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            {t('lastName')}
-                          </Typography>
-                          <Typography variant="body1" gutterBottom>
-                            {userProfile.lastName}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            {t('email')}
-                          </Typography>
-                          <Typography variant="body1" gutterBottom>
-                            {userProfile.email}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            {t('registerDate')}
-                          </Typography>
-                          <Typography variant="body1">
-                            {formatDate(userProfile.createdAt)}
-                          </Typography>
-                        </Grid>
-                      </Grid>
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
-              
-              <Card elevation={0} sx={{ borderRadius: 2, mt: 3 }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" mb={2}>
-                    <SecurityIcon sx={{ mr: 1 }} />
-                    <Typography variant="h6">
-                      {t('security')}
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      {userProfile.email}
                     </Typography>
-                  </Box>
-                  
-                  <Divider sx={{ mb: 3 }} />
-                  
-                  <Button 
-                    variant="outlined"
-                    color="primary"
-                    sx={{ mr: 2 }}
-                  >
-                    {t('changePassword')}
-                  </Button>
-                </CardContent>
-              </Card>
+                    
+                    <Typography variant="caption" color="text.secondary">
+                      {t('memberSince')} {formatDate(userProfile.createdAt)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              <Grid item xs={12} md={8}>
+                <Card elevation={0} sx={{ borderRadius: 2 }}>
+                  <CardContent>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                      <Typography variant="h6">
+                        <PersonIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+                        {t('personalInfo')}
+                      </Typography>
+                      
+                      {!editMode && (
+                        <Button 
+                          startIcon={<EditIcon />} 
+                          onClick={handleEditProfile}
+                          variant="outlined"
+                          size="small"
+                        >
+                          {t('edit')}
+                        </Button>
+                      )}
+                    </Box>
+                    
+                    <Divider sx={{ mb: 3 }} />
+                    
+                    {editMode ? (
+                      <Box component="form">
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              name="firstName"
+                              label={t('firstName')}
+                              fullWidth
+                              value={editedProfile.firstName}
+                              onChange={handleInputChange}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              name="lastName"
+                              label={t('lastName')}
+                              fullWidth
+                              value={editedProfile.lastName}
+                              onChange={handleInputChange}
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              label={t('email')}
+                              fullWidth
+                              value={userProfile.email}
+                              disabled
+                              helperText={t('emailDesc')}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                            <Button 
+                              onClick={handleCancelEdit}
+                              sx={{ mr: 1 }}
+                              disabled={loading}
+                            >
+                              {t('cancel')}
+                            </Button>
+                            <Button 
+                              variant="contained" 
+                              onClick={handleSaveProfile}
+                              disabled={loading}
+                            >
+                              {loading ? <CircularProgress size={24} /> : t('save')}
+                            </Button>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ) : (
+                      <Box>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="subtitle2" color="text.secondary">
+                              {t('firstName')}
+                            </Typography>
+                            <Typography variant="body1" gutterBottom>
+                              {userProfile.firstName}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="subtitle2" color="text.secondary">
+                              {t('lastName')}
+                            </Typography>
+                            <Typography variant="body1" gutterBottom>
+                              {userProfile.lastName}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Typography variant="subtitle2" color="text.secondary">
+                              {t('email')}
+                            </Typography>
+                            <Typography variant="body1" gutterBottom>
+                              {userProfile.email}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Typography variant="subtitle2" color="text.secondary">
+                              {t('registerDate')}
+                            </Typography>
+                            <Typography variant="body1">
+                              {formatDate(userProfile.createdAt)}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+                
+                <Card elevation={0} sx={{ borderRadius: 2, mt: 3 }}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" mb={2}>
+                      <SecurityIcon sx={{ mr: 1 }} />
+                      <Typography variant="h6">
+                        {t('security')}
+                      </Typography>
+                    </Box>
+                    
+                    <Divider sx={{ mb: 3 }} />
+                    
+                    <Button 
+                      variant="outlined"
+                      color="primary"
+                      sx={{ mr: 2 }}
+                    >
+                      {t('changePassword')}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
             </Grid>
-          </Grid>
-        )}
-      </TabPanel>
-      
-      <Snackbar 
-        open={openSnackbar} 
-        autoHideDuration={6000} 
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={message.type} sx={{ width: '100%' }}>
-          {message.text}
-        </Alert>
-      </Snackbar>
+          )}
+        </TabPanel>
+        
+        <Snackbar 
+          open={openSnackbar} 
+          autoHideDuration={6000} 
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseSnackbar} severity={message.type} sx={{ width: '100%' }}>
+            {message.text}
+          </Alert>
+        </Snackbar>
+      </Box>
     </Container>
   );
 };

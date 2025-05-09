@@ -201,20 +201,18 @@ const Dashboard = () => {
   }
 
   return (
-    <Box
-      sx={{
-        flexGrow: 1,
-        overflow: 'hidden',
-        minHeight: '100vh',
+    <Container 
+      maxWidth={false} 
+      disableGutters 
+      sx={{ 
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        py: { xs: 1, sm: 2 },
+        px: 0
       }}
     >
-      <Container 
-        maxWidth="xl" 
-        sx={{ 
-          py: { xs: 1.5, sm: 3, md: 4 },
-          px: { xs: 1, sm: 2, md: 3 },
-        }}
-      >
+      <Box sx={{ px: { xs: 1, sm: 1.5 }, width: '100%' }}>
         <Box
           sx={{
             display: 'flex',
@@ -662,8 +660,8 @@ const Dashboard = () => {
             </Grid>
           </Grid>
         </Box>
-      </Container>
-    </Box>
+      </Box>
+    </Container>
   );
 };
 

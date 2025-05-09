@@ -68,7 +68,7 @@ const AppLayout = ({
   
   // Calculamos el ancho efectivo del drawer basado en el dispositivo
   const effectiveDrawerWidth = isMobile ? 0 : 
-                               isTablet ? (isDrawerMinimized ? minimizedDrawerWidth : 200) : 
+                               isTablet ? (isDrawerMinimized ? minimizedDrawerWidth : 180) : 
                                isDrawerMinimized ? minimizedDrawerWidth : drawerWidth;
 
   return (
@@ -125,7 +125,7 @@ const AppLayout = ({
             display: { xs: 'none', sm: 'block', md: isTablet ? 'block' : 'none' },
             '& .MuiDrawer-paper': { 
               boxSizing: 'border-box', 
-              width: isDrawerMinimized ? minimizedDrawerWidth : 200,
+              width: isDrawerMinimized ? minimizedDrawerWidth : 180,
               transition: theme.transitions.create('width', {
                 easing: theme.transitions.easing.sharp,
                 duration: theme.transitions.duration.enteringScreen,
@@ -173,7 +173,7 @@ const AppLayout = ({
         className={(isMobile || isTablet) ? 'main-content-with-bottom-nav' : ''}
         sx={{
           flexGrow: 1,
-          p: { xs: 1, sm: 2, md: 3 },
+          p: { xs: 0.25, sm: 0.5, md: 1 },
           width: { xs: '100%', sm: `calc(100% - ${effectiveDrawerWidth}px)` },
           ml: { xs: 0, sm: `${effectiveDrawerWidth}px` },
           transition: theme.transitions.create(['margin', 'width'], {
@@ -211,8 +211,8 @@ const App = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDrawerMinimized, setIsDrawerMinimized] = useState(false);
-  const drawerWidth = 240;
-  const minimizedDrawerWidth = 70;
+  const drawerWidth = 220;
+  const minimizedDrawerWidth = 60;
   
   // Estados para la configuración
   const [darkMode, setDarkMode] = useState(false);
@@ -451,7 +451,30 @@ const App = () => {
     window.location.href = '/login';
   };
 
+  // Función para manejar cambios en la configuración
+  const handleSettingsChanged = (event) => {
+    const { setting, value } = event.detail;
+    
+    switch (setting) {
+      case 'darkMode':
+        setDarkMode(value);
+        break;
+      case 'language':
+        setLanguage(value);
+        // Forzar el cambio de idioma
+        i18n.changeLanguage(value || 'es');
+        break;
+      case 'currency':
+        setCurrency(value);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Efecto para inicialización y autenticación
   useEffect(() => {
+    // Verificar autenticación al iniciar
     const checkAuth = () => {
       const isAuth = authService.isAuthenticated();
       setIsAuthenticated(isAuth);
@@ -506,26 +529,6 @@ const App = () => {
     loadSettings();
     
     // Escuchar cambios en la configuración
-    const handleSettingsChanged = (event) => {
-      const { setting, value } = event.detail;
-      
-      switch (setting) {
-        case 'darkMode':
-          setDarkMode(value);
-          break;
-        case 'language':
-          setLanguage(value);
-          // Forzar el cambio de idioma
-          i18n.changeLanguage(value || 'es');
-          break;
-        case 'currency':
-          setCurrency(value);
-          break;
-        default:
-          break;
-      }
-    };
-    
     window.addEventListener('settingsChanged', handleSettingsChanged);
     
     return () => {
@@ -645,21 +648,7 @@ const App = () => {
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />;
     }
-    return (
-      <ThemeAwareAppLayout
-        drawerWidth={drawerWidth}
-        minimizedDrawerWidth={minimizedDrawerWidth}
-        isDrawerMinimized={isDrawerMinimized}
-        mobileOpen={mobileOpen}
-        handleDrawerToggle={handleDrawerToggle}
-        handleDrawerMinimize={handleDrawerMinimize}
-        handleLogout={handleLogout}
-        _darkMode={darkMode}
-        _t={t}
-      >
-        {children}
-      </ThemeAwareAppLayout>
-    );
+    return children;
   };
 
   return (
@@ -677,8 +666,8 @@ const App = () => {
                 <ThemeAwareAppLayout
                   drawerWidth={drawerWidth}
                   minimizedDrawerWidth={minimizedDrawerWidth}
-                  mobileOpen={mobileOpen}
                   isDrawerMinimized={isDrawerMinimized}
+                  mobileOpen={mobileOpen}
                   handleDrawerToggle={handleDrawerToggle}
                   handleDrawerMinimize={handleDrawerMinimize}
                   handleLogout={handleLogout}

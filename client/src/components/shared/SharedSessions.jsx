@@ -102,7 +102,9 @@ const SharedSessions = () => {
     invitations,
     count: pendingInvitationsCount,
     fetchInvitations,
-    error: invitationsError
+    error: invitationsError,
+    acceptInvitation,
+    rejectInvitation
   } = useInvitations();
 
   // Función para mostrar correctamente el nombre del mes en dispositivos móviles
@@ -527,386 +529,386 @@ const SharedSessions = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: isMobile ? 2 : 4, px: isMobile ? 1 : 3 }}>
-      <Typography 
-        variant={isMobile ? "h5" : "h4"} 
-        component="h1" 
-        sx={{ 
-          mb: isMobile ? 2 : 4, 
-          fontWeight: 'bold',
-          fontSize: isMobile ? '1.3rem' : '2rem' 
-        }}
-      >
-        Sesiones Compartidas
-      </Typography>
-      
-      {/* Sección de invitaciones pendientes */}
-      {pendingInvitationsCount > 0 && (
-        <Box sx={{ mb: isMobile ? 2 : 3 }}>
-          <Button
-            variant={showPendingInvitations ? "contained" : "outlined"}
-            color="primary"
-            startIcon={<NotificationsIcon />}
-            onClick={() => setShowPendingInvitations(!showPendingInvitations)}
-            endIcon={
-              <Chip 
-                label={pendingInvitationsCount} 
-                color="error" 
-                size={isMobile ? "small" : "small"} 
-                sx={{ 
-                  ml: 1, 
-                  height: isMobile ? 18 : 20, 
-                  minWidth: isMobile ? 18 : 20,
-                  fontSize: isMobile ? '0.65rem' : '0.75rem'
-                }} 
-              />
-            }
-            sx={{ 
-              mb: 2,
-              fontSize: isMobile ? '0.75rem' : '0.875rem'
-            }}
-            size={isMobile ? "small" : "medium"}
-          >
-            {isMobile ? 'Invitaciones' : 'Invitaciones Pendientes'}
-          </Button>
-          
-          {showPendingInvitations && (
-            <Paper sx={{ p: isMobile ? 1.5 : 2, mb: isMobile ? 2 : 4, borderRadius: 2 }}>
-              <PendingInvitations 
-                onInvitationAccepted={handleInvitationAccepted}
-                onInvitationRejected={handleInvitationRejected}
-              />
-            </Paper>
-          )}
-        </Box>
-      )}
-      
-      {/* Si no hay sesión seleccionada, mostrar la lista de sesiones */}
-      {!currentSession ? (
-        <Box>
-          {sessionsError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {sessionsError}
-            </Alert>
-          )}
-          
-          <SessionList
-            sessions={sessions}
-            onSelectSession={handleSelectSession}
-            onEditSession={handleEditSession}
-            onDeleteSession={handleDeleteSession}
-            onAddSession={handleAddSession}
-          />
-        </Box>
-      ) : (
-        <Box>
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between', 
-            mb: isMobile ? 2 : 4,
-            flexDirection: isMobile ? 'column' : 'row'
-          }}>
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center',
-              mb: isMobile ? 2 : 0,
-              width: isMobile ? '100%' : 'auto'
-            }}>
-              <IconButton
-                onClick={() => setCurrentSession(null)}
-                sx={{ mr: 1.5 }}
-                size={isMobile ? "small" : "medium"}
-              >
-                <ArrowBackIcon fontSize={isMobile ? "small" : "medium"} />
-              </IconButton>
-              <Typography 
-                variant={isMobile ? "h5" : "h4"} 
-                component="h1"
-                sx={{ 
-                  fontSize: isMobile ? '1.2rem' : '1.75rem',
-                  fontWeight: 'bold'
-                }}
-              >
-                {currentSession.name}
-              </Typography>
-            </Box>
-            
-            <Box sx={{ 
-              display: 'flex', 
-              gap: 1.5,
-              flexDirection: isMobile ? 'column' : 'row',
-              width: isMobile ? '100%' : 'auto'
-            }}>
-              {/* Navegador de meses mejorado para móviles y escritorio */}
-              <Box sx={{ 
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                mb: isMobile ? 2 : 0,
-                mt: { xs: 1, sm: 0 },
-                gap: 1,
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'divider',
-                p: 0.5,
-                backgroundColor: 'background.paper'
-              }}>
-                {/* Botón MES ANTERIOR */}
-                <Button
-                  variant="text"
-                  color="primary"
-                  onClick={handlePreviousMonth}
+    <Container 
+      maxWidth={false} 
+      disableGutters 
+      sx={{ 
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        py: { xs: 1, sm: 2 },
+        px: 0
+      }}
+    >
+      <Box sx={{ px: { xs: 1, sm: 1.5 }, width: '100%' }}>
+        {/* Sección de invitaciones pendientes */}
+        {pendingInvitationsCount > 0 && (
+          <Box sx={{ mb: isMobile ? 2 : 3 }}>
+            <Button
+              variant={showPendingInvitations ? "contained" : "outlined"}
+              color="primary"
+              startIcon={<NotificationsIcon />}
+              onClick={() => setShowPendingInvitations(!showPendingInvitations)}
+              endIcon={
+                <Chip 
+                  label={pendingInvitationsCount} 
+                  color="error" 
+                  size={isMobile ? "small" : "small"} 
                   sx={{ 
-                    minWidth: 40, 
-                    width: 40, 
-                    height: 38, 
-                    p: 0,
-                    borderRadius: 1.5,
-                    '&:hover': {
-                      backgroundColor: 'action.hover'
-                    }
-                  }}
-                >
-                  <ChevronLeftIcon />
-                </Button>
-                
-                {/* Selector de MES */}
-                <Button
-                  variant="text"
-                  color="inherit"
-                  onClick={goToCurrentMonth}
-                  sx={{ 
-                    flex: 1, 
-                    height: 38, 
-                    maxWidth: 200,
-                    textTransform: 'none',
-                    fontSize: '0.9rem',
-                    fontWeight: 'medium',
-                    px: 2,
-                    borderRadius: 1.5,
-                    mx: 0.5,
-                    '&:hover': {
-                      backgroundColor: 'action.hover'
-                    }
-                  }}
-                >
-                  {isMobile ? getShortMonthName(selectedMonth) : monthNames[selectedMonth]} {selectedYear}
-                </Button>
-                
-                {/* Botón MES SIGUIENTE */}
-                <Button
-                  variant="text"
-                  color="primary"
-                  onClick={handleNextMonth}
-                  sx={{ 
-                    minWidth: 40, 
-                    width: 40, 
-                    height: 38, 
-                    p: 0,
-                    borderRadius: 1.5,
-                    '&:hover': {
-                      backgroundColor: 'action.hover'
-                    }
-                  }}
-                >
-                  <ChevronRightIcon />
-                </Button>
-                
-                {/* Botón HOY (tanto desktop como mobile) */}
-                <Button
-                  variant="text"
-                  color="primary"
-                  onClick={goToCurrentMonth}
-                  sx={{ 
-                    minWidth: 40, 
-                    width: 40, 
-                    height: 38, 
-                    p: 0, 
-                    ml: 0.5,
-                    borderRadius: 1.5,
-                    display: { xs: 'none', sm: 'flex' },
-                    '&:hover': {
-                      backgroundColor: 'action.hover'
-                    }
-                  }}
-                >
-                  <TodayIcon />
-                </Button>
-              </Box>
-              
-              <Button
-                variant="outlined"
-                color="primary"
-                onClick={handleSyncToPersonal}
-                sx={{ 
-                  borderRadius: 2,
-                  fontSize: isMobile ? '0.75rem' : '0.875rem',
-                  height: isMobile ? 'auto' : 40
-                }}
-                disabled={loading}
-                size={isMobile ? "small" : "medium"}
-                fullWidth={isMobile}
-              >
-                {loading ? 'Sincronizando...' : (isMobile ? 'Sincronizar Gastos' : 'Sincronizar a Gastos Personales')}
-              </Button>
-            </Box>
-          </Box>
-          
-          {message && (
-            <Alert 
-              severity={message.type} 
-              sx={{ mb: isMobile ? 2 : 3 }}
-              onClose={() => setMessage(null)}
+                    ml: 1, 
+                    height: isMobile ? 18 : 20, 
+                    minWidth: isMobile ? 18 : 20,
+                    fontSize: isMobile ? '0.65rem' : '0.75rem'
+                  }} 
+                />
+              }
+              sx={{ 
+                mb: 2,
+                fontSize: isMobile ? '0.75rem' : '0.875rem'
+              }}
+              size={isMobile ? "small" : "medium"}
             >
-              {message.text}
-            </Alert>
-          )}
-          
-          {currentSession.sessionType === 'permanent' && !isMobile && (
-            <Typography variant="h6" sx={{ mb: 3, color: 'primary.main' }}>
-              {monthNames[selectedMonth]} {selectedYear}
-              {(selectedMonth !== today.getMonth() || selectedYear !== today.getFullYear()) && (
-                <Button
-                  size="small"
-                  variant="text"
-                  onClick={goToCurrentMonth}
-                  sx={{ ml: 2 }}
-                >
-                  Ir al mes actual
-                </Button>
-              )}
-            </Typography>
-          )}
-
-          <Box sx={{ mb: isMobile ? 2 : 4 }}>
-            <ExpenseList
-              expenses={expenses}
-              onAddExpense={handleAddExpense}
-              onEditExpense={handleEditExpense}
-              onDeleteExpense={handleDeleteExpense}
-              total={calculateTotal()}
-              loading={expensesLoading}
-              userRole="Participante"
-              currentSession={currentSession}
+              {isMobile ? 'Invitaciones' : 'Invitaciones Pendientes'}
+            </Button>
+            
+            {showPendingInvitations && (
+              <Paper sx={{ p: isMobile ? 1.5 : 2, mb: isMobile ? 2 : 4, borderRadius: 2 }}>
+                <PendingInvitations 
+                  onInvitationAccepted={handleInvitationAccepted}
+                  onInvitationRejected={handleInvitationRejected}
+                />
+              </Paper>
+            )}
+          </Box>
+        )}
+        
+        {/* Si no hay sesión seleccionada, mostrar la lista de sesiones */}
+        {!currentSession ? (
+          <Box>
+            {sessionsError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {sessionsError}
+              </Alert>
+            )}
+            
+            <SessionList
+              sessions={sessions}
+              onSelectSession={handleSelectSession}
+              onEditSession={handleEditSession}
+              onDeleteSession={handleDeleteSession}
+              onAddSession={handleAddSession}
             />
           </Box>
-
-          {currentSession.participants?.length > 0 && (
-            <Box>
-              <DistributionTable
-                participants={(() => {
-                  const participantsList = [];
-                  const addedUserIds = new Set(); // Para evitar duplicados
-
-                  // Función para obtener el mejor nombre disponible
-                  const getBestName = (participant) => {
-                    // Si tenemos un objeto usuario completo
-                    if (participant.userId && typeof participant.userId === 'object') {
-                      const user = participant.userId;
-                      
-                      // Intentar obtener nombre+apellidos
-                      if (user.nombre && user.apellidos) {
-                        return `${user.nombre} ${user.apellidos}`.trim();
-                      } else if (user.nombre) {
-                        return user.nombre;
-                      } else if (user.name) {
-                        return user.name;
+        ) : (
+          <Box>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              mb: isMobile ? 2 : 4,
+              flexDirection: isMobile ? 'column' : 'row'
+            }}>
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                mb: isMobile ? 2 : 0,
+                width: isMobile ? '100%' : 'auto'
+              }}>
+                <IconButton
+                  onClick={() => setCurrentSession(null)}
+                  sx={{ mr: 1.5 }}
+                  size={isMobile ? "small" : "medium"}
+                >
+                  <ArrowBackIcon fontSize={isMobile ? "small" : "medium"} />
+                </IconButton>
+                <Typography 
+                  variant={isMobile ? "h5" : "h4"} 
+                  component="h1"
+                  sx={{ 
+                    fontSize: isMobile ? '1.2rem' : '1.75rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {currentSession.name}
+                </Typography>
+              </Box>
+              
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 1.5,
+                flexDirection: isMobile ? 'column' : 'row',
+                width: isMobile ? '100%' : 'auto'
+              }}>
+                {/* Navegador de meses mejorado para móviles y escritorio */}
+                <Box sx={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  mb: isMobile ? 2 : 0,
+                  mt: { xs: 1, sm: 0 },
+                  gap: 1,
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  p: 0.5,
+                  backgroundColor: 'background.paper'
+                }}>
+                  {/* Botón MES ANTERIOR */}
+                  <Button
+                    variant="text"
+                    color="primary"
+                    onClick={handlePreviousMonth}
+                    sx={{ 
+                      minWidth: 40, 
+                      width: 40, 
+                      height: 38, 
+                      p: 0,
+                      borderRadius: 1.5,
+                      '&:hover': {
+                        backgroundColor: 'action.hover'
                       }
-                    }
-                    
-                    // Usar el nombre explícito del participante si existe y no es el email
-                    if (participant.name && 
-                        participant.email && 
-                        participant.name !== participant.email && 
-                        !participant.email.includes(participant.name)) {
-                      return participant.name;
-                    }
-                    
-                    // Si todo lo demás falla, usar la parte local del email
-                    return participant.email ? participant.email.split('@')[0] : 'Participante';
-                  };
+                    }}
+                  >
+                    <ChevronLeftIcon />
+                  </Button>
                   
-                  // Procesar todos los participantes
-                  const allParticipants = currentSession.participants || [];
-                  
-                  allParticipants.forEach(participant => {
-                    // Obtener el ID del usuario
-                    let userId = participant.userId;
-                    
-                    // Si es un objeto, extraer su ID
-                    if (userId && typeof userId === 'object') {
-                      userId = userId._id || userId.id || userId.toString();
-                    }
-                    
-                    // Si no hay ID o ya fue agregado, saltar
-                    if (!userId || addedUserIds.has(userId.toString())) {
-                      return;
-                    }
-                    
-                    // Registrar este ID como procesado
-                    addedUserIds.add(userId.toString());
-                    
-                    // Obtener el mejor nombre disponible
-                    const name = getBestName(participant);
-                    
-                    // Obtener el porcentaje de asignación si existe
-                    const allocation = currentSession.allocations?.find(
-                      a => {
-                        const allocUserId = typeof a.userId === 'object' 
-                          ? (a.userId._id || a.userId.id || a.userId.toString()) 
-                          : a.userId;
-                        return allocUserId?.toString() === userId.toString();
+                  {/* Selector de MES */}
+                  <Button
+                    variant="text"
+                    color="inherit"
+                    onClick={goToCurrentMonth}
+                    sx={{ 
+                      flex: 1, 
+                      height: 38, 
+                      maxWidth: 200,
+                      textTransform: 'none',
+                      fontSize: '0.9rem',
+                      fontWeight: 'medium',
+                      px: 2,
+                      borderRadius: 1.5,
+                      mx: 0.5,
+                      '&:hover': {
+                        backgroundColor: 'action.hover'
                       }
-                    );
-                    
-                    participantsList.push({
-                      userId: userId.toString(),
-                      name: name,
-                      email: participant.email,
-                      percentage: allocation?.percentage || 0
-                    });
-                  });
+                    }}
+                  >
+                    {isMobile ? getShortMonthName(selectedMonth) : monthNames[selectedMonth]} {selectedYear}
+                  </Button>
                   
-                  console.log('Participantes procesados para distribución:', participantsList);
-                  return participantsList;
-                })()}
+                  {/* Botón MES SIGUIENTE */}
+                  <Button
+                    variant="text"
+                    color="primary"
+                    onClick={handleNextMonth}
+                    sx={{ 
+                      minWidth: 40, 
+                      width: 40, 
+                      height: 38, 
+                      p: 0,
+                      borderRadius: 1.5,
+                      '&:hover': {
+                        backgroundColor: 'action.hover'
+                      }
+                    }}
+                  >
+                    <ChevronRightIcon />
+                  </Button>
+                  
+                  {/* Botón HOY (tanto desktop como mobile) */}
+                  <Button
+                    variant="text"
+                    color="primary"
+                    onClick={goToCurrentMonth}
+                    sx={{ 
+                      minWidth: 40, 
+                      width: 40, 
+                      height: 38, 
+                      p: 0, 
+                      ml: 0.5,
+                      borderRadius: 1.5,
+                      display: { xs: 'none', sm: 'flex' },
+                      '&:hover': {
+                        backgroundColor: 'action.hover'
+                      }
+                    }}
+                  >
+                    <TodayIcon />
+                  </Button>
+                </Box>
+                
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  onClick={handleSyncToPersonal}
+                  sx={{ 
+                    borderRadius: 2,
+                    fontSize: isMobile ? '0.75rem' : '0.875rem',
+                    height: isMobile ? 'auto' : 40
+                  }}
+                  disabled={loading}
+                  size={isMobile ? "small" : "medium"}
+                  fullWidth={isMobile}
+                >
+                  {loading ? 'Sincronizando...' : (isMobile ? 'Sincronizar Gastos' : 'Sincronizar a Gastos Personales')}
+                </Button>
+              </Box>
+            </Box>
+            
+            {message && (
+              <Alert 
+                severity={message.type} 
+                sx={{ mb: isMobile ? 2 : 3 }}
+                onClose={() => setMessage(null)}
+              >
+                {message.text}
+              </Alert>
+            )}
+            
+            {currentSession.sessionType === 'permanent' && !isMobile && (
+              <Typography variant="h6" sx={{ mb: 3, color: 'primary.main' }}>
+                {monthNames[selectedMonth]} {selectedYear}
+                {(selectedMonth !== today.getMonth() || selectedYear !== today.getFullYear()) && (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={goToCurrentMonth}
+                    sx={{ ml: 2 }}
+                  >
+                    Ir al mes actual
+                  </Button>
+                )}
+              </Typography>
+            )}
+
+            <Box sx={{ mb: isMobile ? 2 : 4 }}>
+              <ExpenseList
                 expenses={expenses}
-                onUpdateDistribution={handleUpdateDistribution}
+                onAddExpense={handleAddExpense}
+                onEditExpense={handleEditExpense}
+                onDeleteExpense={handleDeleteExpense}
+                total={calculateTotal()}
                 loading={expensesLoading}
-                error={distributionError}
+                userRole="Participante"
+                currentSession={currentSession}
               />
             </Box>
-          )}
-        </Box>
-      )}
 
-      {/* Formularios modales */}
-      <SessionForm
-        open={showSessionForm}
-        onClose={() => {
-          setShowSessionForm(false);
-          setEditingSession(null);
-        }}
-        onSubmit={handleSubmitSession}
-        initialData={editingSession}
-        loading={sessionsLoading}
-        error={sessionsError}
-      />
+            {currentSession.participants?.length > 0 && (
+              <Box>
+                <DistributionTable
+                  participants={(() => {
+                    const participantsList = [];
+                    const addedUserIds = new Set(); // Para evitar duplicados
 
-      <ExpenseForm
-        open={showExpenseForm}
-        onClose={() => {
-          setShowExpenseForm(false);
-          setEditingExpense(null);
-        }}
-        onSubmit={handleExpenseSubmit}
-        initialData={editingExpense}
-        loading={expensesLoading}
-        error={expensesError}
-        selectedMonth={selectedMonth}
-        selectedYear={selectedYear}
-      />
+                    // Función para obtener el mejor nombre disponible
+                    const getBestName = (participant) => {
+                      // Si tenemos un objeto usuario completo
+                      if (participant.userId && typeof participant.userId === 'object') {
+                        const user = participant.userId;
+                        
+                        // Intentar obtener nombre+apellidos
+                        if (user.nombre && user.apellidos) {
+                          return `${user.nombre} ${user.apellidos}`.trim();
+                        } else if (user.nombre) {
+                          return user.nombre;
+                        } else if (user.name) {
+                          return user.name;
+                        }
+                      }
+                      
+                      // Usar el nombre explícito del participante si existe y no es el email
+                      if (participant.name && 
+                          participant.email && 
+                          participant.name !== participant.email && 
+                          !participant.email.includes(participant.name)) {
+                        return participant.name;
+                      }
+                      
+                      // Si todo lo demás falla, usar la parte local del email
+                      return participant.email ? participant.email.split('@')[0] : 'Participante';
+                    };
+                    
+                    // Procesar todos los participantes
+                    const allParticipants = currentSession.participants || [];
+                    
+                    allParticipants.forEach(participant => {
+                      // Obtener el ID del usuario
+                      let userId = participant.userId;
+                      
+                      // Si es un objeto, extraer su ID
+                      if (userId && typeof userId === 'object') {
+                        userId = userId._id || userId.id || userId.toString();
+                      }
+                      
+                      // Si no hay ID o ya fue agregado, saltar
+                      if (!userId || addedUserIds.has(userId.toString())) {
+                        return;
+                      }
+                      
+                      // Registrar este ID como procesado
+                      addedUserIds.add(userId.toString());
+                      
+                      // Obtener el mejor nombre disponible
+                      const name = getBestName(participant);
+                      
+                      // Obtener el porcentaje de asignación si existe
+                      const allocation = currentSession.allocations?.find(
+                        a => {
+                          const allocUserId = typeof a.userId === 'object' 
+                            ? (a.userId._id || a.userId.id || a.userId.toString()) 
+                            : a.userId;
+                          return allocUserId?.toString() === userId.toString();
+                        }
+                      );
+                      
+                      participantsList.push({
+                        userId: userId.toString(),
+                        name: name,
+                        email: participant.email,
+                        percentage: allocation?.percentage || 0
+                      });
+                    });
+                    
+                    console.log('Participantes procesados para distribución:', participantsList);
+                    return participantsList;
+                  })()}
+                  expenses={expenses}
+                  onUpdateDistribution={handleUpdateDistribution}
+                  loading={expensesLoading}
+                  error={distributionError}
+                />
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {/* Formularios modales */}
+        <SessionForm
+          open={showSessionForm}
+          onClose={() => {
+            setShowSessionForm(false);
+            setEditingSession(null);
+          }}
+          onSubmit={handleSubmitSession}
+          initialData={editingSession}
+          loading={sessionsLoading}
+          error={sessionsError}
+        />
+
+        <ExpenseForm
+          open={showExpenseForm}
+          onClose={() => {
+            setShowExpenseForm(false);
+            setEditingExpense(null);
+          }}
+          onSubmit={handleExpenseSubmit}
+          initialData={editingExpense}
+          loading={expensesLoading}
+          error={expensesError}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
+        />
+      </Box>
     </Container>
   );
 };
