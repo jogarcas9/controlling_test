@@ -114,21 +114,25 @@ const SharedSessions = () => {
 
   // Manejadores para la navegación de meses
   const handlePreviousMonth = () => {
-    if (selectedMonth === 0) {
-      setSelectedMonth(11);
-      setSelectedYear(selectedYear - 1);
-    } else {
-      setSelectedMonth(selectedMonth - 1);
-    }
+    console.log('Click en mes anterior');
+    setSelectedMonth(prevMonth => {
+      if (prevMonth === 0) {
+        setSelectedYear(prevYear => prevYear - 1);
+        return 11;
+      }
+      return prevMonth - 1;
+    });
   };
 
   const handleNextMonth = () => {
-    if (selectedMonth === 11) {
-      setSelectedMonth(0);
-      setSelectedYear(selectedYear + 1);
-    } else {
-      setSelectedMonth(selectedMonth + 1);
-    }
+    setSelectedMonth(prevMonth => {
+      if (prevMonth === 11) {
+        setSelectedYear(prevYear => prevYear + 1);
+        return 0;
+      } else {
+        return prevMonth + 1;
+      }
+    });
   };
 
   const goToCurrentMonth = () => {
@@ -615,8 +619,8 @@ const SharedSessions = () => {
                 width: isMobile ? '100%' : 'auto'
               }}>
                 <IconButton
-                  onClick={() => setCurrentSession(null)}
-                  sx={{ mr: 1.5 }}
+                  onClick={() => { console.log('Click en retroceder sesión'); setCurrentSession(null); }}
+                  sx={{ mr: 1.5, zIndex: 2000 }}
                   size={isMobile ? "small" : "medium"}
                 >
                   <ArrowBackIcon fontSize={isMobile ? "small" : "medium"} />
@@ -664,6 +668,7 @@ const SharedSessions = () => {
                       height: 38, 
                       p: 0,
                       borderRadius: 1.5,
+                      zIndex: 2000,
                       '&:hover': {
                         backgroundColor: 'action.hover'
                       }

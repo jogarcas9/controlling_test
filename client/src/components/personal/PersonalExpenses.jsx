@@ -29,7 +29,8 @@ import {
   InputAdornment,
   FormControlLabel,
   Switch,
-  Tooltip
+  Tooltip,
+  Fab
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -51,7 +52,8 @@ import {
   ChevronRight as ChevronRightIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-  FiberManualRecord as FiberManualRecordIcon
+  FiberManualRecord as FiberManualRecordIcon,
+  Remove as RemoveIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import format from 'date-fns/format';
@@ -60,6 +62,7 @@ import { useTranslation } from 'react-i18next';
 import { alpha } from '@mui/material/styles';
 import useRealTimeUpdates from '../../hooks/useRealTimeUpdates';
 import { RealTimeContext } from '../../App';
+import { useTheme, useMediaQuery } from '@mui/material';
 
 // Renombrando variables no utilizadas para evitar advertencias
 const _Dialog = Dialog;
@@ -152,7 +155,7 @@ const formatAmount = (amount) => {
 const getCategoryColor = (category) => CATEGORY_COLORS[category] || '#9e9e9e';
 
 // Componente de tarjeta para móviles
-const ExpenseCard = ({ expense, onEdit, onDelete }) => {
+const ExpenseCard = ({ expense, onView, onEdit, onDelete }) => {
   const date = new Date(expense.date);
   const formattedDate = format(date, 'dd MMM yyyy', { locale: es });
   const icon = CATEGORY_ICONS[expense.category] || <MoreHorizIcon fontSize="small" />;
@@ -170,6 +173,7 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
         position: 'relative',
         overflow: 'hidden',
         boxShadow: 1,
+        cursor: 'pointer',
         '&::before': {
           content: '""',
           position: 'absolute',
@@ -183,6 +187,11 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
               ? '#2196f3' 
               : getCategoryColor(expense.category),
         }
+      }}
+      onClick={(e) => {
+        // Evitar que el click de los botones de acción se propague
+        if (e.defaultPrevented) return;
+        onView(expense);
       }}
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -218,32 +227,48 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
 
         <Box sx={{ display: 'flex' }}>
           <Tooltip title="Editar">
-            <IconButton size="small" onClick={() => onEdit(expense)} sx={{ p: 0.5 }}>
+            <IconButton 
+              size="small" 
+              onClick={(e) => {
+                e.preventDefault();
+                onEdit(expense);
+              }} 
+              sx={{ p: 0.5 }}
+            >
               <EditIcon sx={{ fontSize: '1rem' }} />
             </IconButton>
           </Tooltip>
           <Tooltip title="Eliminar">
-            <IconButton size="small" onClick={() => onDelete(expense._id)} sx={{ p: 0.5 }}>
+            <IconButton 
+              size="small" 
+              onClick={(e) => {
+                e.preventDefault();
+                onDelete(expense._id);
+              }} 
+              sx={{ p: 0.5 }}
+            >
               <DeleteIcon sx={{ fontSize: '1rem' }} />
             </IconButton>
           </Tooltip>
         </Box>
       </Box>
 
-      <Typography 
-        variant="body2" 
-        sx={{ 
-          fontWeight: 600, 
-          mb: 0.5, 
-          fontSize: '0.8rem',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis'
-        }}
-      >
-        {expense.name || expense.description}
+      {/* Nombre/Descripción del gasto */}
+      <Box sx={{ 
+        fontWeight: 600, 
+        mb: 0.5, 
+        fontSize: '0.8rem',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        display: 'flex',
+        alignItems: 'center'
+      }}>
+        <Box component="span" sx={{ maxWidth: 'calc(100% - 70px)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {expense.name || expense.description}
+        </Box>
         {(isIncome || isShared) && (
-          <Box component="span" sx={{ ml: 1 }}>
+          <Box sx={{ ml: 1, display: 'flex' }}>
             {isIncome && (
               <Chip
                 size="small"
@@ -262,7 +287,7 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
             )}
           </Box>
         )}
-      </Typography>
+      </Box>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography 
@@ -299,42 +324,28 @@ const ExpenseCard = ({ expense, onEdit, onDelete }) => {
 const PersonalExpenses = () => {
   const { t } = useTranslation();
   const currentDate = new Date();
+  const theme = useTheme();
   
   // Añadir el contexto de tiempo real
   const { showNotification } = React.useContext(RealTimeContext);
   
-  // Mejorar la detección de móvil usando useMediaQuery en lugar de window.matchMedia
-  const [isMobile, setIsMobile] = useState(false);
+  // Mejorar la detección de móvil usando useMediaQuery de Material UI
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
   
-  useEffect(() => {
-    // Esta función se ejecutará tanto en el renderizado inicial como al cambiar el tamaño de la ventana
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 600);
-    };
-    
-    // Comprobar inicialmente
-    checkMobile();
-    
-    // Agregar listener para cambios de tamaño
-    window.addEventListener('resize', checkMobile);
-    
-    // Limpiar el listener cuando el componente se desmonte
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
   // Estados
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [openExpenseDialog, setOpenExpenseDialog] = useState(false);
+  const [openViewDialog, setOpenViewDialog] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState(null);
   const [expenseData, setExpenseData] = useState(INITIAL_EXPENSE_DATA);
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [categories, setCategories] = useState([]);
   const [validationErrors, setValidationErrors] = useState({});
-  const [openNewExpenseDialog, setOpenNewExpenseDialog] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState(null);
@@ -342,32 +353,6 @@ const PersonalExpenses = () => {
 
   // Nuevo estado para actualización en tiempo real
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
-
-  // Configurar actualizaciones en tiempo real
-  const { isConnected, lastUpdate } = useRealTimeUpdates({
-    onExpenseAdded: (data) => {
-      console.log('Nuevo gasto detectado:', data);
-      // Refrescar los datos automáticamente
-      fetchExpenses();
-    },
-    onExpenseUpdated: (data) => {
-      console.log('Gasto actualizado detectado:', data);
-      // Refrescar los datos automáticamente
-      fetchExpenses();
-    },
-    onExpenseDeleted: (data) => {
-      console.log('Eliminación de gasto detectada:', data);
-      // Refrescar los datos automáticamente
-      fetchExpenses();
-    }
-  });
-
-  // Actualizar la marca de tiempo cuando se refresca
-  useEffect(() => {
-    if (lastUpdate) {
-      setLastRefreshTime(lastUpdate);
-    }
-  }, [lastUpdate]);
 
   // Funciones de utilidad
   const resetForm = useCallback(() => {
@@ -380,95 +365,6 @@ const PersonalExpenses = () => {
     setOpenExpenseDialog(false);
     resetForm();
   }, [resetForm]);
-
-  // Añadir manejadores para navegar entre meses con flechas
-  const handlePreviousMonth = useCallback((e) => {
-    // Detener eventos predeterminados para evitar doble ejecución en táctiles
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    
-    console.log("Ejecutando handlePreviousMonth", {selectedMonth, selectedYear});
-    
-    if (selectedMonth === 0) {
-      console.log("Cambiando a diciembre del año anterior");
-      setSelectedMonth(11);
-      setSelectedYear(prevYear => prevYear - 1);
-    } else {
-      console.log(`Cambiando de ${selectedMonth} a ${selectedMonth - 1}`);
-      setSelectedMonth(prevMonth => prevMonth - 1);
-    }
-  }, [selectedMonth, selectedYear]);
-
-  const handleNextMonth = useCallback((e) => {
-    // Detener eventos predeterminados para evitar doble ejecución en táctiles
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    
-    console.log("Ejecutando handleNextMonth", {selectedMonth, selectedYear});
-    
-    if (selectedMonth === 11) {
-      console.log("Cambiando a enero del año siguiente");
-      setSelectedMonth(0);
-      setSelectedYear(prevYear => prevYear + 1);
-    } else {
-      console.log(`Cambiando de ${selectedMonth} a ${selectedMonth + 1}`);
-      setSelectedMonth(prevMonth => prevMonth + 1);
-    }
-  }, [selectedMonth, selectedYear]);
-
-  const goToCurrentMonth = useCallback((e) => {
-    // Prevenir comportamiento predeterminado para evitar problemas táctiles
-    e?.preventDefault();
-    console.log("Ejecutando goToCurrentMonth");
-    
-    // Agregar un pequeño retraso para móviles
-    setTimeout(() => {
-      const now = new Date();
-      setSelectedMonth(now.getMonth());
-      setSelectedYear(now.getFullYear());
-      console.log("Volviendo al mes actual");
-    }, 50);
-  }, []);
-
-  // Manejadores de eventos
-  const _handleExpenseChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setExpenseData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  }, []);
-
-  const _handleRecurringChange = useCallback((e) => {
-    const isRecurring = e.target.checked;
-    setExpenseData(prev => ({
-      ...prev,
-      isRecurring,
-      recurringDay: isRecurring ? new Date(prev.date).getDate().toString() : ''
-    }));
-  }, []);
-
-  // Función para actualizar la fecha del formulario basada en el mes seleccionado
-  const getInitialDateForSelectedMonth = useCallback(() => {
-    const date = new Date();
-    date.setMonth(selectedMonth);
-    date.setFullYear(selectedYear);
-    // Mantener el día actual pero ajustarlo si es mayor que los días del mes seleccionado
-    const currentDay = date.getDate();
-    const lastDayOfMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    date.setDate(Math.min(currentDay, lastDayOfMonth));
-    
-    return format(date, 'yyyy-MM-dd');
-  }, [selectedMonth, selectedYear]);
-
-  // Función para mostrar correctamente el nombre del mes en dispositivos móviles
-  const getShortMonthName = (monthIndex) => {
-    return MONTH_NAMES[monthIndex].substring(0, 3);
-  };
 
   // Funciones principales
   const fetchExpenses = useCallback(async () => {
@@ -516,6 +412,136 @@ const PersonalExpenses = () => {
       setLoading(false);
     }
   }, [selectedMonth, selectedYear]);
+
+  // Configurar actualizaciones en tiempo real
+  const { isConnected, lastUpdate } = useRealTimeUpdates({
+    onExpenseAdded: useCallback((data) => {
+      console.log('Nuevo gasto detectado:', data);
+      // Verificar si el gasto pertenece al mes actual antes de refrescar
+      try {
+        if (data && data.date) {
+          const expenseDate = new Date(data.date);
+          const expenseMonth = expenseDate.getMonth();
+          const expenseYear = expenseDate.getFullYear();
+          
+          if (expenseMonth === selectedMonth && expenseYear === selectedYear) {
+            console.log('Refrescando datos automáticamente por nuevo gasto en el mes actual');
+            // Usamos un timeout para evitar múltiples refrescos simultáneos
+            setTimeout(() => fetchExpenses(), 300);
+          }
+        }
+      } catch (error) {
+        console.error('Error procesando evento onExpenseAdded:', error);
+      }
+    }, [fetchExpenses, selectedMonth, selectedYear]),
+    
+    onExpenseUpdated: useCallback((data) => {
+      console.log('Gasto actualizado detectado:', data);
+      // Verificar si el gasto pertenece al mes actual antes de refrescar
+      try {
+        if (data && data.date) {
+          const expenseDate = new Date(data.date);
+          const expenseMonth = expenseDate.getMonth();
+          const expenseYear = expenseDate.getFullYear();
+          
+          if (expenseMonth === selectedMonth && expenseYear === selectedYear) {
+            console.log('Refrescando datos automáticamente por actualización de gasto en el mes actual');
+            // Usamos un timeout para evitar múltiples refrescos simultáneos
+            setTimeout(() => fetchExpenses(), 300);
+          }
+        }
+      } catch (error) {
+        console.error('Error procesando evento onExpenseUpdated:', error);
+      }
+    }, [fetchExpenses, selectedMonth, selectedYear]),
+    
+    onExpenseDeleted: useCallback((data) => {
+      console.log('Eliminación de gasto detectada:', data);
+      try {
+        // Para eliminaciones, usamos un flag para controlar si ya estamos refrescando
+        if (!loading) {
+          console.log('Refrescando datos automáticamente por eliminación de gasto');
+          // Usamos un timeout para evitar múltiples refrescos simultáneos
+          setTimeout(() => fetchExpenses(), 300);
+        }
+      } catch (error) {
+        console.error('Error procesando evento onExpenseDeleted:', error);
+      }
+    }, [fetchExpenses, loading])
+  });
+
+  // Actualizar la marca de tiempo cuando se refresca
+  useEffect(() => {
+    if (lastUpdate) {
+      setLastRefreshTime(lastUpdate);
+    }
+  }, [lastUpdate]);
+
+  // Añadir manejadores para navegar entre meses con flechas
+  const handlePreviousMonth = useCallback(() => {
+    console.log("Ejecutando handlePreviousMonth", { selectedMonth, selectedYear });
+    
+    if (selectedMonth === 0) {
+      setSelectedMonth(11);
+      setSelectedYear(prevYear => prevYear - 1);
+    } else {
+      setSelectedMonth(prevMonth => prevMonth - 1);
+    }
+  }, [selectedMonth, selectedYear]);
+
+  const handleNextMonth = useCallback(() => {
+    console.log("Ejecutando handleNextMonth", { selectedMonth, selectedYear });
+    
+    if (selectedMonth === 11) {
+      setSelectedMonth(0);
+      setSelectedYear(prevYear => prevYear + 1);
+    } else {
+      setSelectedMonth(prevMonth => prevMonth + 1);
+    }
+  }, [selectedMonth, selectedYear]);
+
+  const goToCurrentMonth = useCallback(() => {
+    console.log("Ejecutando goToCurrentMonth");
+    const now = new Date();
+    setSelectedMonth(now.getMonth());
+    setSelectedYear(now.getFullYear());
+  }, []);
+
+  // Manejadores de eventos
+  const _handleExpenseChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setExpenseData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }, []);
+
+  const _handleRecurringChange = useCallback((e) => {
+    const isRecurring = e.target.checked;
+    setExpenseData(prev => ({
+      ...prev,
+      isRecurring,
+      recurringDay: isRecurring ? new Date(prev.date).getDate().toString() : ''
+    }));
+  }, []);
+
+  // Función para actualizar la fecha del formulario basada en el mes seleccionado
+  const getInitialDateForSelectedMonth = useCallback(() => {
+    const date = new Date();
+    date.setMonth(selectedMonth);
+    date.setFullYear(selectedYear);
+    // Mantener el día actual pero ajustarlo si es mayor que los días del mes seleccionado
+    const currentDay = date.getDate();
+    const lastDayOfMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    date.setDate(Math.min(currentDay, lastDayOfMonth));
+    
+    return format(date, 'yyyy-MM-dd');
+  }, [selectedMonth, selectedYear]);
+
+  // Función para mostrar correctamente el nombre del mes en dispositivos móviles
+  const getShortMonthName = (monthIndex) => {
+    return MONTH_NAMES[monthIndex].substring(0, 3);
+  };
 
   // Función para generar una key única para cada gasto
   const generateExpenseKey = useCallback((expense) => {
@@ -684,6 +710,7 @@ const PersonalExpenses = () => {
   };
 
   const _openNewExpense = useCallback((type = 'expense') => {
+    console.log(`Abriendo formulario para: ${type}`);
     resetForm();
     setExpenseData(prev => ({
       ...prev,
@@ -693,6 +720,11 @@ const PersonalExpenses = () => {
     }));
     setOpenExpenseDialog(true);
   }, [resetForm, getInitialDateForSelectedMonth]);
+
+  const handleViewExpense = useCallback((expense) => {
+    setSelectedExpense(expense);
+    setOpenViewDialog(true);
+  }, []);
 
   const handleEdit = useCallback((expense) => {
     setSelectedExpense(expense);
@@ -713,7 +745,7 @@ const PersonalExpenses = () => {
   useEffect(() => {
     console.log(`useEffect: Cargando gastos para mes ${selectedMonth + 1}/${selectedYear}`);
     fetchExpenses();
-  }, [fetchExpenses, selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear]);
 
   // Cálculos derivados
   const _totals = expenses.reduce((acc, expense) => {
@@ -750,6 +782,7 @@ const PersonalExpenses = () => {
     if (isMobile) {
       return (
         <Box sx={{ mt: 2 }}>
+          {/* Lista de gastos en formato de tarjetas para móviles */}
           {expenses
             .sort((a, b) => {
               // Prioridad 1: Ingresos
@@ -771,6 +804,7 @@ const PersonalExpenses = () => {
               <ExpenseCard
                 key={expense._id || generateExpenseKey(expense)}
                 expense={expense}
+                onView={handleViewExpense}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
               />
@@ -785,10 +819,10 @@ const PersonalExpenses = () => {
           <TableHead>
             <TableRow>
               <TableCell>Nombre</TableCell>
-              <TableCell>Categoría</TableCell>
-              <TableCell>Fecha</TableCell>
-              <TableCell align="right">Monto</TableCell>
-              <TableCell>Recurrente</TableCell>
+              <TableCell align="center">Categoría</TableCell>
+              <TableCell align="center">Fecha</TableCell>
+              <TableCell align="center">Monto</TableCell>
+              <TableCell align="center">Recurrente</TableCell>
               <TableCell align="center">Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -827,7 +861,13 @@ const PersonalExpenses = () => {
                         ? alpha('#4caf50', 0.05)  // Verde claro para ingresos
                         : isShared 
                           ? alpha('#2196f3', 0.05)  // Azul claro para compartidos
-                          : 'inherit'  // Color normal para el resto
+                          : 'inherit',  // Color normal para el resto
+                      cursor: 'pointer' // Indicar que es clickeable
+                    }}
+                    onClick={(e) => {
+                      // Evitar que el click de los botones de acción se propague
+                      if (e.defaultPrevented) return;
+                      handleViewExpense(expense);
                     }}
                   >
                     <TableCell>
@@ -852,7 +892,7 @@ const PersonalExpenses = () => {
                         )}
                       </Box>
                     </TableCell>
-                    <TableCell>
+                    <TableCell align="center">
                       <Chip
                         size="small"
                         icon={icon}
@@ -863,19 +903,19 @@ const PersonalExpenses = () => {
                         }}
                       />
                     </TableCell>
-                    <TableCell>{formattedDate}</TableCell>
-                    <TableCell align="right">
-                      <Typography
-                        variant="body2"
+                    <TableCell align="center">{formattedDate}</TableCell>
+                    <TableCell align="center">
+                      <Box
                         sx={{
                           fontWeight: 'bold',
-                          color: isIncome ? 'success.main' : 'error.main'
+                          color: isIncome ? 'success.main' : 'error.main',
+                          fontSize: '0.875rem'
                         }}
                       >
                         {isIncome ? '+' : '-'}{formatAmount(expense.amount)}
-                      </Typography>
+                      </Box>
                     </TableCell>
-                    <TableCell>
+                    <TableCell align="center">
                       {expense.isRecurring ? (
                         <Chip
                           size="small"
@@ -895,12 +935,24 @@ const PersonalExpenses = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="Editar">
-                        <IconButton size="small" onClick={() => handleEdit(expense)}>
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(expense);
+                          }}
+                        >
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Eliminar">
-                        <IconButton size="small" onClick={() => handleDelete(expense._id)}>
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(expense._id);
+                          }}
+                        >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -929,12 +981,17 @@ const PersonalExpenses = () => {
     }
   };
 
+  const handleAddExpense = useCallback((type) => {
+    console.log(`Abriendo formulario para: ${type}`);
+    _openNewExpense(type);
+  }, [_openNewExpense]);
+
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 0.5, sm: 1 }, px: { xs: 0, sm: 0.5 } }}>
       <Box sx={{ width: '100%', p: { xs: 0.5, sm: 1 } }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
           <Typography variant="h4" component="h1">
-            {t('personalExpenses.title')}
+            Gastos Personales
           </Typography>
           
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -956,54 +1013,523 @@ const PersonalExpenses = () => {
               </Typography>
             )}
             
-            {/* Botón de refresco manual */}
+            {/* Botón de refresco manual - Siempre visible */}
             <Tooltip title="Refrescar datos">
               <IconButton onClick={handleRefresh} disabled={loading} size="small" sx={{ mr: 1 }}>
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
-            
-            {/* Botón para agregar nuevo gasto */}
-            <Button 
-              variant="contained" 
-              startIcon={<AddIcon />}
-              onClick={() => setOpenNewExpenseDialog(true)}
-              size={isMobile ? "small" : "medium"}
-            >
-              {isMobile ? t('common.add') : t('personalExpenses.addNew')}
-            </Button>
           </Box>
         </Box>
         
-        {/* Controles de filtro y navegación */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Tooltip title="Mes anterior">
-              <IconButton onClick={handlePreviousMonth} disabled={loading} size="small" sx={{ mr: 1 }}>
+        {/* Layout responsive para navegador de meses y botones */}
+        <Box
+          sx={{
+            display: { xs: 'block', md: 'flex' },
+            alignItems: 'center',
+            justifyContent: { xs: 'center', md: 'space-between' },
+            mb: 2,
+            mt: 1,
+            width: '100%'
+          }}
+        >
+          {/* Navegador de meses a la izquierda en escritorio */}
+          {!openExpenseDialog && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: { xs: 2, md: 0 } }}>
+              <IconButton
+                onClick={() => {
+                  console.log('Click en flecha izquierda (retroceder mes)');
+                  handlePreviousMonth();
+                }}
+                color="primary"
+                size="large"
+                sx={{
+                  transition: 'transform 0.1s',
+                  '&:active': { transform: 'scale(0.92)' },
+                  zIndex: 2000,
+                  pointerEvents: 'auto'
+                }}
+              >
                 <ChevronLeftIcon />
               </IconButton>
-            </Tooltip>
-            <Typography variant="h6" component="span" sx={{ mr: 2 }}>
-              {getShortMonthName(selectedMonth)} {selectedYear}
-            </Typography>
-            <Tooltip title="Mes siguiente">
-              <IconButton onClick={handleNextMonth} disabled={loading} size="small" sx={{ ml: 1 }}>
+              <Typography variant="h6" sx={{ minWidth: 100, textAlign: 'center', fontWeight: 'bold' }}>
+                {MONTH_NAMES[selectedMonth]} {selectedYear}
+              </Typography>
+              <IconButton
+                onClick={handleNextMonth}
+                color="primary"
+                size="large"
+                sx={{
+                  transition: 'transform 0.1s',
+                  '&:active': { transform: 'scale(0.92)' },
+                  zIndex: 2000,
+                  pointerEvents: 'auto'
+                }}
+              >
                 <ChevronRightIcon />
               </IconButton>
-            </Tooltip>
-          </Box>
-          <Button 
-            variant="outlined" 
-            startIcon={<TodayIcon />}
-            onClick={goToCurrentMonth}
-            size={isMobile ? "small" : "medium"}
-          >
-            {isMobile ? t('common.today') : t('personalExpenses.today')}
-          </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<TodayIcon />}
+                onClick={goToCurrentMonth}
+                sx={{ ml: 2, borderRadius: 2, fontWeight: 'bold' }}
+              >
+                Hoy
+              </Button>
+            </Box>
+          )}
+          {/* Botones a la derecha en escritorio */}
+          {!openExpenseDialog && (
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: { xs: 'center', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<RemoveIcon />}
+                onClick={() => {
+                  _openNewExpense('expense');
+                }}
+                sx={{
+                  borderRadius: 3,
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  px: 3,
+                  py: 1.2,
+                  bgcolor: 'error.main',
+                  boxShadow: '0 2px 8px rgba(229, 57, 53, 0.10)',
+                  '&:hover': {
+                    bgcolor: 'error.dark',
+                    transform: 'scale(1.04)',
+                    transition: 'transform 0.1s',
+                  },
+                  minWidth: 120,
+                  transition: 'transform 0.1s',
+                  zIndex: 10001
+                }}
+                TouchRippleProps={{
+                  style: { color: '#fff' }
+                }}
+              >
+                Gasto
+              </Button>
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  _openNewExpense('income');
+                }}
+                sx={{
+                  borderRadius: 3,
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  px: 3,
+                  py: 1.2,
+                  bgcolor: 'success.main',
+                  boxShadow: '0 2px 8px rgba(50, 202, 128, 0.10)',
+                  '&:hover': {
+                    bgcolor: 'success.dark',
+                    transform: 'scale(1.04)',
+                    transition: 'transform 0.1s',
+                  },
+                  minWidth: 120,
+                  transition: 'transform 0.1s',
+                  zIndex: 10001
+                }}
+                TouchRippleProps={{
+                  style: { color: '#fff' }
+                }}
+              >
+                Ingreso
+              </Button>
+            </Box>
+          )}
         </Box>
       </Box>
       
       {renderExpensesList()}
+
+      {/* Diálogo para crear/editar gastos */}
+      <Dialog
+        open={openExpenseDialog}
+        onClose={() => !submitting && closeDialog()}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0px 8px 24px rgba(0,0,0,0.15)',
+            overflow: 'visible'
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            py: 2,
+            px: 3, 
+            bgcolor: expenseData.type === 'income' ? 'success.light' : 'primary.main',
+            color: 'white',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <Typography variant="h6" component="div">{selectedExpense ? 'Editar' : 'Añadir'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}</Typography>
+          <IconButton
+            aria-label="close"
+            onClick={() => !submitting && closeDialog()}
+            sx={{
+              color: 'white',
+              width: 32,
+              height: 32
+            }}
+            disabled={submitting}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 3, pt: 4 }}>
+          <Box component="form" onSubmit={_handleSubmit} ref={_formRef} sx={{ pt: 2 }}>
+            <Grid container spacing={3}>
+              {/* Importe */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="amount"
+                  type="number"
+                  value={expenseData.amount}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  required
+                  placeholder="Importe *"
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">€</InputAdornment>
+                  }}
+                  inputProps={{
+                    step: "0.01",
+                    min: 0
+                  }}
+                  sx={{ marginBottom: { xs: 2, sm: 0 } }}
+                />
+              </Grid>
+              
+              {/* Categoría */}
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth variant="outlined" sx={{ marginBottom: { xs: 2, sm: 0 } }}>
+                  <InputLabel 
+                    id="category-label" 
+                    required
+                    shrink={true}
+                    style={{ display: 'none' }} // Ocultar label visualmente
+                  >
+                    Categoría *
+                  </InputLabel>
+                  <Select
+                    labelId="category-label"
+                    value={expenseData.category}
+                    name="category"
+                    onChange={_handleExpenseChange}
+                    disabled={submitting}
+                    required
+                    displayEmpty
+                    renderValue={selected => selected || "Categoría *"}
+                  >
+                    <MenuItem value="" disabled>
+                      <em>Categoría *</em>
+                    </MenuItem>
+                    {expenseData.type === 'income' ? (
+                      _INCOME_CATEGORIES.map(cat => (
+                        <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                      ))
+                    ) : (
+                      _EXPENSE_CATEGORIES.map(cat => (
+                        <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                      ))
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              {/* Nombre */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="name"
+                  value={expenseData.name}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  placeholder="Nombre"
+                  sx={{ marginBottom: { xs: 2, sm: 0 } }}
+                />
+              </Grid>
+              
+              {/* Fecha */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="date"
+                  type="date"
+                  value={expenseData.date}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  required
+                  placeholder="Fecha *"
+                  inputProps={{
+                    style: { height: isMobile ? '24px' : 'auto' }
+                  }}
+                  sx={{ marginBottom: { xs: 2, sm: 0 } }}
+                />
+              </Grid>
+              
+              {/* Switch para gasto recurrente */}
+              <Grid item xs={12} sm={6}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 1.5, 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    height: '56px',
+                    mb: { xs: 2, sm: 0 }
+                  }}
+                >
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={expenseData.isRecurring}
+                        onChange={_handleRecurringChange}
+                        name="isRecurring"
+                        color="primary"
+                        disabled={submitting}
+                      />
+                    }
+                    label="Es un gasto recurrente"
+                    sx={{ m: 0 }}
+                  />
+                </Paper>
+                
+                {expenseData.isRecurring && (
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    margin="normal"
+                    name="recurringDay"
+                    type="number"
+                    value={expenseData.recurringDay}
+                    onChange={_handleExpenseChange}
+                    disabled={submitting}
+                    placeholder="Día del mes para recurrencia"
+                    InputProps={{
+                      endAdornment: <InputAdornment position="end">del mes</InputAdornment>,
+                    }}
+                    inputProps={{
+                      min: 1,
+                      max: 31,
+                    }}
+                    helperText="Día del mes en que se repetirá este gasto"
+                    sx={{ mt: 2 }}
+                  />
+                )}
+              </Grid>
+              
+              {/* Descripción */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="description"
+                  value={expenseData.description}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  multiline
+                  rows={3}
+                  placeholder="Descripción"
+                />
+              </Grid>
+            </Grid>
+          </Box>
+          
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button 
+            onClick={closeDialog} 
+            disabled={submitting}
+            color="inherit"
+            variant="outlined"
+          >
+            Cancelar
+          </Button>
+          <Button 
+            onClick={_handleSubmit} 
+            variant="contained" 
+            disabled={submitting}
+            startIcon={submitting ? <CircularProgress size={20} /> : null}
+            color={expenseData.type === 'income' ? 'success' : 'primary'}
+            sx={{ ml: 1 }}
+          >
+            {submitting ? 'Guardando...' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo para visualizar detalles del gasto */}
+      <Dialog
+        open={openViewDialog}
+        onClose={() => setOpenViewDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0px 8px 24px rgba(0,0,0,0.15)',
+          }
+        }}
+      >
+        {selectedExpense && (
+          <>
+            <DialogTitle sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              p: 2,
+              bgcolor: selectedExpense.type === 'income' ? 'success.light' : 'error.light',
+              color: 'white'
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }} component="div">
+                {selectedExpense.type === 'income' ? (
+                  <IncomeIcon sx={{ mr: 1 }} />
+                ) : (
+                  <ExpenseIcon sx={{ mr: 1 }} />
+                )}
+                {selectedExpense.type === 'income' ? 'Detalle del Ingreso' : 'Detalle del Gasto'}
+              </Box>
+              <IconButton
+                aria-label="close"
+                onClick={() => setOpenViewDialog(false)}
+                sx={{
+                  color: 'white'
+                }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ p: 3 }}>
+              <Box sx={{ p: 1 }}>
+                <Grid container spacing={3}>
+                  {/* Nombre */}
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary">Nombre</Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 'medium', mt: 0.5 }}>
+                      {selectedExpense.name || '-'}
+                    </Typography>
+                  </Grid>
+                  
+                  {/* Monto */}
+                  <Grid item xs={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Importe</Typography>
+                    <Typography 
+                      variant="body1" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        color: selectedExpense.type === 'income' ? 'success.main' : 'error.main',
+                        mt: 0.5,
+                        fontSize: '1.1rem'
+                      }}
+                    >
+                      {selectedExpense.type === 'income' ? '+' : '-'}{formatAmount(selectedExpense.amount)}
+                    </Typography>
+                  </Grid>
+                  
+                  {/* Categoría */}
+                  <Grid item xs={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Categoría</Typography>
+                    <Box sx={{ mt: 0.5 }}>
+                      <Chip
+                        icon={CATEGORY_ICONS[selectedExpense.category] || <MoreHorizIcon fontSize="small" />}
+                        label={selectedExpense.category}
+                        sx={{
+                          backgroundColor: `${getCategoryColor(selectedExpense.category)}20`,
+                          color: getCategoryColor(selectedExpense.category)
+                        }}
+                      />
+                    </Box>
+                  </Grid>
+                  
+                  {/* Fecha */}
+                  <Grid item xs={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Fecha</Typography>
+                    <Typography variant="body1" sx={{ mt: 0.5, display: 'flex', alignItems: 'center' }}>
+                      <CalendarTodayIcon sx={{ fontSize: '1rem', mr: 0.5 }} />
+                      {format(new Date(selectedExpense.date), 'dd MMM yyyy', { locale: es })}
+                    </Typography>
+                  </Grid>
+                  
+                  {/* Es recurrente */}
+                  <Grid item xs={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Recurrente</Typography>
+                    <Box sx={{ mt: 0.5 }}>
+                      {selectedExpense.isRecurring ? (
+                        <Chip
+                          icon={<TimerIcon fontSize="small" />}
+                          label="Sí"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      ) : (
+                        <Chip
+                          label="No"
+                          variant="outlined"
+                          color="default"
+                        />
+                      )}
+                    </Box>
+                  </Grid>
+                  
+                  {/* Día recurrente */}
+                  {selectedExpense.isRecurring && (
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Día del mes para recurrencia
+                      </Typography>
+                      <Typography variant="body1" sx={{ mt: 0.5 }}>
+                        {selectedExpense.recurringDay || 'No especificado'}
+                      </Typography>
+                    </Grid>
+                  )}
+                  
+                  {/* Descripción */}
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary">Descripción</Typography>
+                    <Paper variant="outlined" sx={{ p: 1.5, mt: 0.5, whiteSpace: 'pre-wrap', minHeight: '60px' }}>
+                      <Typography variant="body2">
+                        {selectedExpense.description || '-'}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+              <Button onClick={() => handleEdit(selectedExpense)} color="primary" startIcon={<EditIcon />} variant="outlined">
+                Editar
+              </Button>
+              <Button onClick={() => setOpenViewDialog(false)} color="inherit" sx={{ ml: 1 }}>
+                Cerrar
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
     </Container>
   );
 };

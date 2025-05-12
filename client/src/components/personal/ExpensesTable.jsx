@@ -500,13 +500,15 @@ const ExpensesTable = ({
       />
 
       {/* Modal de detalles */}
-      <Dialog 
-        open={detailsDialog.open} 
+      <Dialog
+        open={detailsDialog.open}
         onClose={handleCloseDetails}
-        fullWidth
         maxWidth="sm"
+        fullWidth
       >
-        <DialogTitle>{t('expenseDetails')}</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6" component="div">{t('expenseDetails')}</Typography>
+        </DialogTitle>
         <DialogContent dividers>
           {detailsDialog.expense && (
             <Grid container spacing={3}>

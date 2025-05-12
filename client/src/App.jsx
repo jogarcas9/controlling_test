@@ -68,7 +68,7 @@ const AppLayout = ({
   
   // Calculamos el ancho efectivo del drawer basado en el dispositivo
   const effectiveDrawerWidth = isMobile ? 0 : 
-                               isTablet ? (isDrawerMinimized ? minimizedDrawerWidth : 180) : 
+                               isTablet ? (isDrawerMinimized ? minimizedDrawerWidth : 100) : 
                                isDrawerMinimized ? minimizedDrawerWidth : drawerWidth;
 
   return (
@@ -116,21 +116,21 @@ const AppLayout = ({
           />
         </Drawer>
 
-        {/* Menú lateral para tablets */}
+        {/* Menú lateral para tablets y escritorio combinado */}
         <Drawer
-          variant={isTablet ? "temporary" : "permanent"}
-          open={isTablet ? mobileOpen : true}
-          onClose={isTablet ? handleDrawerToggle : undefined}
+          variant={(isMobile || isTablet) ? "temporary" : "permanent"}
+          open={(isMobile || isTablet) ? mobileOpen : true}
+          onClose={(isMobile || isTablet) ? handleDrawerToggle : undefined}
           sx={{
-            display: { xs: 'none', sm: 'block', md: isTablet ? 'block' : 'none' },
+            display: { xs: 'none', sm: 'block' },
             '& .MuiDrawer-paper': { 
               boxSizing: 'border-box', 
-              width: isDrawerMinimized ? minimizedDrawerWidth : 180,
+              width: isDrawerMinimized ? minimizedDrawerWidth : (isTablet ? 100 : drawerWidth),
               transition: theme.transitions.create('width', {
                 easing: theme.transitions.easing.sharp,
                 duration: theme.transitions.duration.enteringScreen,
               }),
-              boxShadow: theme.shadows[3],
+              boxShadow: isTablet ? theme.shadows[3] : 'none',
             },
           }}
         >
@@ -142,30 +142,6 @@ const AppLayout = ({
             isTablet={isTablet}
           />
         </Drawer>
-
-        {/* Menú lateral para escritorio */}
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'none', md: 'block' },
-            '& .MuiDrawer-paper': { 
-              boxSizing: 'border-box', 
-              width: isDrawerMinimized ? minimizedDrawerWidth : drawerWidth,
-              transition: theme.transitions.create('width', {
-                easing: theme.transitions.easing.sharp,
-                duration: theme.transitions.duration.enteringScreen,
-              }),
-            },
-          }}
-          open
-        >
-          <Sidebar 
-            handleDrawerToggle={handleDrawerToggle} 
-            isMinimized={isDrawerMinimized} 
-            onMinimizeToggle={handleDrawerMinimize}
-            handleLogout={handleLogout}
-          />
-        </Drawer>
       </Box>
 
       <Box
@@ -173,7 +149,7 @@ const AppLayout = ({
         className={(isMobile || isTablet) ? 'main-content-with-bottom-nav' : ''}
         sx={{
           flexGrow: 1,
-          p: { xs: 0.25, sm: 0.5, md: 1 },
+          p: { xs: 0.25, sm: 0.5, md: 0.75 },
           width: { xs: '100%', sm: `calc(100% - ${effectiveDrawerWidth}px)` },
           ml: { xs: 0, sm: `${effectiveDrawerWidth}px` },
           transition: theme.transitions.create(['margin', 'width'], {
@@ -212,7 +188,7 @@ const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDrawerMinimized, setIsDrawerMinimized] = useState(false);
   const drawerWidth = 220;
-  const minimizedDrawerWidth = 60;
+  const minimizedDrawerWidth = 70;
   
   // Estados para la configuración
   const [darkMode, setDarkMode] = useState(false);
@@ -436,6 +412,7 @@ const App = () => {
   // Detectar si estamos en un dispositivo móvil
   // eslint-disable-next-line no-unused-vars
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);

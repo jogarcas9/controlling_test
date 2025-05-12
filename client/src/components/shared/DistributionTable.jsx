@@ -46,6 +46,9 @@ const DistributionTable = ({
   const [showSettlements, setShowSettlements] = useState(false);
   const [validationError, setValidationError] = useState('');
 
+  // Caché local para nombres de usuario por email
+  const userNameCache = {};
+
   useEffect(() => {
     // Aplicar filtro de participantes únicos
     const uniqueParticipants = Array.from(new Map(
@@ -103,46 +106,24 @@ const DistributionTable = ({
       // Procesar todos los participantes en paralelo
       const updatedParticipants = await Promise.all(
         participantsWithNames.map(async (participant) => {
-          // Si no hay email, mantener los datos originales
-          if (!participant.email) {
-            return participant;
+          if (!participant.email) return participant;
+          // Si ya está en caché, usarlo directamente
+          if (userNameCache[participant.email]) {
+            return { ...participant, name: userNameCache[participant.email] };
           }
-          
-          // Guardar los datos originales
-          const originalParticipant = { ...participant };
-          
           try {
-            console.log(`Obteniendo nombre para email: ${participant.email}`);
             const result = await sharedSessionService.getUserByEmail(participant.email);
-            
-            // Si tenemos datos de usuario
-            if (result && result.user) {
-              const user = result.user;
-              
-              // Utilizar el nombre ya procesado que viene en la respuesta
-              const displayName = user.name || participant.email.split('@')[0];
-              
-              console.log(`Nombre obtenido para ${participant.email}: ${displayName}`);
-              
-              return {
-                ...originalParticipant,
-                name: displayName
-              };
+            let name = participant.email.split('@')[0];
+            if (result && result.user && result.user.name) {
+              name = result.user.name;
             }
-            
-            // Si no hay datos de usuario, usar el nombre existente o extraer del email
-            return {
-              ...originalParticipant,
-              name: originalParticipant.name || participant.email.split('@')[0]
-            };
+            // Guardar en caché
+            userNameCache[participant.email] = name;
+            return { ...participant, name };
           } catch (error) {
-            console.error(`Error al obtener nombre para ${participant.email}:`, error);
-            
-            // En caso de error, mantener los datos originales o usar el email como fallback
-            return {
-              ...originalParticipant,
-              name: originalParticipant.name || participant.email.split('@')[0]
-            };
+            // Fallback: usar el email como nombre y guardar en caché
+            userNameCache[participant.email] = participant.email.split('@')[0];
+            return { ...participant, name: participant.email.split('@')[0] };
           }
         })
       );
@@ -364,15 +345,7 @@ const DistributionTable = ({
         </Table>
       </TableContainer>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Button
-          variant="outlined"
-          onClick={() => setShowSettlements(!showSettlements)}
-          startIcon={showSettlements ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-        >
-          {showSettlements ? 'Ocultar Pagos' : 'Ver Pagos Sugeridos'}
-        </Button>
-        
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
         <Button
           variant="contained"
           color="primary"
@@ -383,43 +356,6 @@ const DistributionTable = ({
           Aplicar Distribución
         </Button>
       </Box>
-
-      <Collapse in={showSettlements}>
-        <Paper sx={{ p: 2, borderRadius: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Pagos Sugeridos
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          
-          {calculateSettlements().map((settlement, index) => (
-            <Box
-              key={`settlement-${index}`}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                mb: 1
-              }}
-            >
-              <Typography>{settlement.from}</Typography>
-              <SwapIcon color="action" />
-              <Typography>{settlement.to}</Typography>
-              <Chip
-                label={formatCurrency(settlement.amount)}
-                color="primary"
-                size="small"
-                sx={{ ml: 'auto' }}
-              />
-            </Box>
-          ))}
-
-          {calculateSettlements().length === 0 && (
-            <Typography color="text.secondary">
-              No hay pagos pendientes
-            </Typography>
-          )}
-        </Paper>
-      </Collapse>
     </Box>
   );
 };

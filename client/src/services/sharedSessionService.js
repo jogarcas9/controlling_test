@@ -343,7 +343,7 @@ export const getUserByEmail = async (email) => {
     
     // Verificar si hay token en localStorage para añadir autenticación
     const token = localStorage.getItem('token');
-    const config = token ? { headers: { 'x-auth-token': token } } : {};
+    const config = token ? { headers: { 'x-auth-token': token }, timeout: 3000 } : { timeout: 3000 };
     
     // Llamar al endpoint mejorado
     const response = await api.get(`/api/users/by-email/${encodeURIComponent(email)}`, config);
@@ -394,19 +394,8 @@ export const getUserByEmail = async (email) => {
       } 
     };
   } catch (error) {
-    // Manejar el caso de usuario no encontrado
-    if (error.response && error.response.status === 404) {
-      console.log(`Usuario con email ${email} no encontrado en el servidor`);
-      return { 
-        user: {
-          email: email,
-          name: email.split('@')[0]
-        } 
-      };
-    }
-    
-    // Manejar errores generales
-    console.error(`Error al buscar usuario por email (${email}):`, error);
+    // Fallback inmediato: usar el email como nombre, sin reintentos ni throw
+    console.warn(`Fallo getUserByEmail para ${email}, usando fallback local.`, error);
     return { 
       user: {
         email: email,
