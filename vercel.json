@@ -3,12 +3,7 @@
   "builds": [
     {
       "src": "client/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build",
-        "buildCommand": "CI=false npm run build",
-        "installCommand": "CI=false npm install --legacy-peer-deps && CI=false npm install recharts@2.15.3 --save --force"
-      }
+      "use": "@vercel/static-build"
     },
     {
       "src": "server/server.js",
@@ -23,10 +18,6 @@
     {
       "src": "/socket.io/(.*)",
       "dest": "/server/server.js"
-    },
-    {
-      "src": "/(.*\\.(js|json|css|ico|png|jpg|jpeg|svg|gif))",
-      "dest": "/client/build/$1"
     },
     {
       "src": "/(.*)",
