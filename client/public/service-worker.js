@@ -7,86 +7,89 @@
 // You can also remove this file if you'd prefer not to use a
 // service worker, and the Workbox build step will be skipped.
 
-const CACHE_NAME = 'controling-cache-v1';
+const CACHE_NAME = 'controling-v1';
+const STATIC_CACHE = 'static-v1';
+const DYNAMIC_CACHE = 'dynamic-v1';
+
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/static/js/main.js',
-  '/static/css/main.css',
   '/manifest.json',
   '/favicon.ico',
   '/logo192.png',
-  '/logo512.png',
+  '/logo512.png'
 ];
 
 // Instalación - precachear recursos estáticos
-self.addEventListener('install', (event) => {
+self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Abriendo caché');
-        return cache.addAll(STATIC_ASSETS);
-      })
-      .then(() => self.skipWaiting())
+    Promise.all([
+      caches.open(STATIC_CACHE)
+        .then(cache => cache.addAll(STATIC_ASSETS)),
+      caches.open(DYNAMIC_CACHE)
+    ])
   );
 });
 
 // Activación - limpiar cachés antiguos
-self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Eliminando caché antigua:', cacheName);
+        cacheNames.map(cacheName => {
+          if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE) {
             return caches.delete(cacheName);
           }
-          return null;
         })
       );
     }).then(() => self.clients.claim())
   );
 });
 
-// Estrategia de caché: Network first, falling back to cache
-self.addEventListener('fetch', (event) => {
-  // Solo manejar peticiones GET
-  if (event.request.method !== 'GET') return;
-
-  // Evitar interceptar peticiones a la API y socket.io
+// Estrategia de caché: Cache First para estáticos, Network First para dinámicos
+self.addEventListener('fetch', event => {
+  // No interceptar peticiones a la API
   if (event.request.url.includes('/api/') || event.request.url.includes('/socket.io/')) {
     return;
   }
 
+  // Para recursos estáticos, usar Cache First
+  if (STATIC_ASSETS.includes(event.request.url)) {
+    event.respondWith(
+      caches.match(event.request)
+        .then(response => response || fetch(event.request))
+    );
+    return;
+  }
+
+  // Para recursos dinámicos, usar Network First
   event.respondWith(
     fetch(event.request)
-      .then((response) => {
-        // Si la respuesta es válida, clonarla y guardarla en caché
-        if (response && response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-        }
+      .then(response => {
+        // Clonar la respuesta porque solo se puede usar una vez
+        const responseToCache = response.clone();
+        
+        // Guardar en caché dinámica
+        caches.open(DYNAMIC_CACHE)
+          .then(cache => {
+            cache.put(event.request, responseToCache);
+          });
+
         return response;
       })
       .catch(() => {
-        // Si la red falla, intentar servir desde caché
+        // Si falla la red, intentar servir desde caché
         return caches.match(event.request)
-          .then((cachedResponse) => {
+          .then(cachedResponse => {
             if (cachedResponse) {
-              console.log('Sirviendo recurso desde caché:', event.request.url);
               return cachedResponse;
             }
             
-            // Para solicitudes de navegación (HTML), devolver la página offline si existe
+            // Si es una navegación, servir index.html
             if (event.request.mode === 'navigate') {
               return caches.match('/index.html');
             }
             
-            // Si no hay recurso en caché, devolver un error
             return new Response('Error de red: Recurso no disponible sin conexión', {
               status: 503,
               statusText: 'Service Unavailable',
@@ -97,6 +100,13 @@ self.addEventListener('fetch', (event) => {
           });
       })
   );
+});
+
+// Manejo de actualizaciones
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Sincronización en segundo plano

@@ -7,6 +7,18 @@
       "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
   "start_url": "/",
@@ -16,6 +28,36 @@
   "theme_color": "#1976d2",
   "background_color": "#ffffff",
   "prefer_related_applications": false,
-  "permissions": [],
-  "categories": ["finance", "productivity"]
+  "permissions": [
+    "notifications",
+    "storage"
+  ],
+  "categories": ["finance", "productivity"],
+  "screenshots": [
+    {
+      "src": "screenshot1.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "platform": "wide",
+      "label": "Dashboard de Controling"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nuevo Gasto",
+      "short_name": "Gasto",
+      "description": "Añadir un nuevo gasto",
+      "url": "/nuevo-gasto",
+      "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Home",
+      "description": "Ver el dashboard principal",
+      "url": "/",
+      "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
+    }
+  ],
+  "related_applications": [],
+  "iarc_rating_id": "e84b072d-71b3-4d3e-86ae-31a8ce4e53b7"
 } 
