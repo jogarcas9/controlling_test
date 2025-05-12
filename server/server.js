@@ -190,8 +190,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Manejo de 404
-app.use((req, res) => {
+// Manejo de 404 SOLO para rutas de la API
+app.use('/api', (req, res) => {
   console.log('404 Not Found:', req.path);
   res.status(404).json({ 
     message: 'Ruta no encontrada',
