@@ -249,8 +249,13 @@ app.set('io', io);
 // Si estamos en el entorno de Vercel, exportamos la app
 // Si no, iniciamos el servidor
 if (isVercel) {
-  // Para Vercel Serverless Functions
+  // Para Vercel Serverless Functions - exportar server y app para mayor compatibilidad
   module.exports = app;
+  module.exports.app = app;
+  module.exports.server = server;
+  
+  // Log específico para Vercel
+  console.log('Servidor listo para Vercel Serverless Functions');
 } else {
   // Para desarrollo local o servidor convencional
   const PORT = process.env.PORT || 5000;

@@ -37,3 +37,7 @@ yarn-error.log*
 .tmp/
 Thumbs.db 
 .vercel
+
+# Pero no excluir archivos necesarios para Vercel
+!vercel.json
+!.vercel/
