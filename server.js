@@ -45,8 +45,11 @@ app.use(morgan('combined'));
 // Configuración de CORS mejorada para Vercel
 const frontendDomains = [
   'https://controlling-pwa-frontend.vercel.app',
-  'https://controlling-pwa-frontend-ltfxmhn6d-jogarcas9s-projects.vercel.app'
+  'https://controlling-pwa-frontend-ltfxmhn6d-jogarcas9s-projects.vercel.app',
+  'https://controlling-pwa-frontend-ldm2qvnys-jogarcas9s-projects.vercel.app'
 ];
+
+const backendURL = 'https://controling-backend.vercel.app';
 
 app.use(cors({
   origin: function(origin, callback) {

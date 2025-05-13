@@ -1,11 +1,11 @@
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
 
-// En producción, usamos la misma URL base (la solicitud se redirige mediante las reglas de Vercel)
+// En producción, usamos la URL del backend desplegado en Vercel
 // En desarrollo, usamos localhost:5000
 const isProduction = process.env.NODE_ENV === 'production';
 const API_URL = isProduction 
-  ? '' // URL vacía para usar la misma base URL (rutas relativas)
+  ? 'https://controling-backend.vercel.app' // URL correcta del backend en Vercel
   : (process.env.REACT_APP_API_URL || 'http://localhost:5000');
 
 console.log('API URL:', API_URL, 'Environment:', process.env.NODE_ENV);
