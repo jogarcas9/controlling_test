@@ -42,14 +42,51 @@ const io = socketIo(server, {
 // Logging en todos los ambientes
 app.use(morgan('combined'));
 
-// Configuración simple de CORS - permitir todo en desarrollo
+// Configuración de CORS mejorada para Vercel
+const frontendDomains = [
+  'https://controlling-pwa-frontend.vercel.app',
+  'https://controlling-pwa-frontend-ltfxmhn6d-jogarcas9s-projects.vercel.app'
+];
+
 app.use(cors({
-  origin: '*', // Permitir cualquier origen en producción para debugging
+  origin: function(origin, callback) {
+    // Permitir peticiones sin origen (como las de las herramientas API)
+    if (!origin) return callback(null, true);
+    
+    // Comprobar si el origen está en la lista de dominios permitidos
+    if (frontendDomains.indexOf(origin) !== -1 || origin === 'http://localhost:3000') {
+      callback(null, true);
+    } else {
+      console.log('Origen no permitido por CORS:', origin);
+      callback(null, true); // Temporalmente permitir todos los orígenes para debugging
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization'],
-  credentials: false, // Cambiar a false para evitar problemas de CORS
-  maxAge: 600
+  credentials: true, // Habilitar credenciales
+  maxAge: 86400 // 24 horas
 }));
+
+// Middleware para establecer encabezados CORS manualmente 
+// (por si el middleware cors() no funciona correctamente)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (frontendDomains.includes(origin) || origin === 'http://localhost:3000') {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    res.header('Access-Control-Allow-Origin', '*'); // Fallback para debug
+  }
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Manejar las solicitudes de preflight OPTIONS
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  next();
+});
 
 // Aumentar límites de payload
 app.use(express.json({ limit: '10mb' }));
