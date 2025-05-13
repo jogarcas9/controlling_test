@@ -32,6 +32,7 @@ import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Sidebar from './components/layout/Sidebar';
 import MobileBottomNav from './components/layout/MobileBottomNav';
+import InstallPWA from './components/layout/InstallPWA';
 import ReportsDashboard from './components/reports/ReportsDashboard';
 import PWAInstallPrompt from './components/shared/PWAInstallPrompt';
 import { AuthProvider } from './context/AuthContext';
@@ -163,6 +164,7 @@ const AppLayout = ({
       </Box>
 
       {(isMobile || isTablet) && <MobileBottomNav />}
+      <InstallPWA />
     </Box>
   );
 };

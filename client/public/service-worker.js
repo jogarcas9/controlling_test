@@ -17,7 +17,8 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/favicon.ico',
   '/logo192.png',
-  '/logo512.png'
+  '/logo512.png',
+  '/offline.html'
 ];
 
 // Instalación - precachear recursos estáticos
@@ -85,9 +86,9 @@ self.addEventListener('fetch', event => {
               return cachedResponse;
             }
             
-            // Si es una navegación, servir index.html
+            // Si es una navegación, servir offline.html
             if (event.request.mode === 'navigate') {
-              return caches.match('/index.html');
+              return caches.match('/offline.html');
             }
             
             return new Response('Error de red: Recurso no disponible sin conexión', {

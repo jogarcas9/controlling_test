@@ -36,3 +36,4 @@ yarn-error.log*
 .cache/
 .tmp/
 Thumbs.db 
+.vercel

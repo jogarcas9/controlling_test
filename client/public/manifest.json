@@ -28,6 +28,8 @@
   "theme_color": "#1976d2",
   "background_color": "#ffffff",
   "prefer_related_applications": false,
+  "dir": "ltr",
+  "lang": "es-ES",
   "permissions": [
     "notifications",
     "storage"
