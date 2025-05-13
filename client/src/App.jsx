@@ -35,6 +35,7 @@ import MobileBottomNav from './components/layout/MobileBottomNav';
 import InstallPWA from './components/layout/InstallPWA';
 import ReportsDashboard from './components/reports/ReportsDashboard';
 import PWAInstallPrompt from './components/shared/PWAInstallPrompt';
+import PWAStatus from './components/debug/PWAStatus';
 import { AuthProvider } from './context/AuthContext';
 import authService from './services/authService';
 import { checkServiceWorkers } from './utils/checkServiceWorkers';
@@ -700,6 +701,14 @@ const App = () => {
                             currency={currency}
                             onSettingsChanged={handleSettingsChanged}
                           />
+                        </PrivateRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/pwa-status" 
+                      element={
+                        <PrivateRoute>
+                          <PWAStatus />
                         </PrivateRoute>
                       } 
                     />

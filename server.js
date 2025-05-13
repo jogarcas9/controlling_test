@@ -4,7 +4,7 @@ require('dotenv').config();
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jogarcas29:7JAw4tGRRjos9I8d@homeexpenses.acabyfv.mongodb.net/controlling_app';
 process.env.PORT = process.env.PORT || 5000;
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'xJ3!k9$mP2#nQ7@vR4*tL8%wY5&zU6';
 
 const express = require('express');
 const cors = require('cors');
@@ -31,19 +31,7 @@ const server = http.createServer(app);
 // Configurar Socket.IO
 const io = socketIo(server, {
   cors: {
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5000',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5000',
-      'https://controling.vercel.app',
-      'https://controling-app.vercel.app',
-      'https://controling-client.vercel.app',
-      'https://controling-v3-b33cnejyd-jogarcas9s-projects.vercel.app',
-      'https://controling-v3-d4tarzurt-jogarcas9s-projects.vercel.app',
-      // Permitir cualquier subdominio de vercel.app
-      /\.vercel\.app$/
-    ],
+    origin: '*', // Permitir cualquier origen
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true
   },
@@ -54,16 +42,12 @@ const io = socketIo(server, {
 // Logging en todos los ambientes
 app.use(morgan('combined'));
 
-// Configuración optimizada de CORS
+// Configuración simple de CORS - permitir todo en desarrollo
 app.use(cors({
-  origin: function(origin, callback) {
-    // En entorno de producción de Vercel, permitir cualquier origen 
-    // para solucionar problemas con la autenticación
-    callback(null, true);
-  },
+  origin: '*', // Permitir cualquier origen en producción para debugging
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization'],
-  credentials: true,
+  credentials: false, // Cambiar a false para evitar problemas de CORS
   maxAge: 600
 }));
 
@@ -205,4 +189,4 @@ if (isVercel) {
   // Para desarrollo local o servidor convencional
   const PORT = process.env.PORT || 5000;
   server.listen(PORT, () => console.log(`Servidor ejecutándose en el puerto ${PORT} (${isProduction ? 'producción' : 'desarrollo'})`));
-}
+} 

@@ -4,9 +4,11 @@ const User = require('../models/User');
 
 module.exports = async (req, res, next) => {
   try {
+    console.log('Auth middleware - Request headers:', req.headers);
+    
     // Comprobar si hay headers de Authorization
     const authHeader = req.header('Authorization');
-    console.log('Auth middleware - Header recibido:', authHeader ? `${authHeader.substring(0, 20)}...` : 'No hay header');
+    console.log('Auth middleware - Authorization header:', authHeader ? `${authHeader.substring(0, 20)}...` : 'No hay header');
     
     // También verificar x-auth-token para compatibilidad con sistemas legacy
     const legacyToken = req.header('x-auth-token');
@@ -27,12 +29,12 @@ module.exports = async (req, res, next) => {
       });
     }
 
-    console.log('Auth middleware - Token encontrado:', token.substring(0, 15) + '...');
+    console.log('Auth middleware - Token encontrado, verificando...');
 
     try {
       // Verificar token
       const decoded = jwt.verify(token, config.jwtSecret);
-      console.log('Auth middleware - Token verificado para usuario:', decoded.user.id);
+      console.log('Auth middleware - Token verificado para usuario:', decoded.user ? decoded.user.id : 'No user ID');
       
       // Validar datos del usuario
       if (!decoded.user || !decoded.user.id) {
@@ -43,6 +45,8 @@ module.exports = async (req, res, next) => {
         });
       }
 
+      console.log('Auth middleware - Buscando usuario en DB con ID:', decoded.user.id);
+      
       // Buscar el usuario en la base de datos
       const user = await User.findById(decoded.user.id).select('-password');
       
@@ -54,6 +58,8 @@ module.exports = async (req, res, next) => {
         });
       }
 
+      console.log('Auth middleware - Usuario encontrado en DB:', user.email);
+      
       // Añadir el usuario a la request
       req.user = {
         id: user._id.toString(),
@@ -61,18 +67,27 @@ module.exports = async (req, res, next) => {
         username: user.username || '',
         settings: user.settings || {}
       };
-      console.log('Auth middleware - Usuario autenticado:', req.user.email);
+      console.log('Auth middleware - Usuario autenticado exitosamente:', req.user.email);
 
       next();
     } catch (err) {
+      if (err.name === 'TokenExpiredError') {
+        console.error('Auth middleware - Token expirado:', err.message);
+        return res.status(401).json({ 
+          msg: 'Token expirado',
+          details: 'El token proporcionado ha expirado, por favor inicie sesión nuevamente',
+          expired: true
+        });
+      }
+      
       console.error('Auth middleware - Error al verificar token:', err.message);
       return res.status(401).json({ 
         msg: 'Token no válido',
-        details: 'El token proporcionado no es válido o ha expirado'
+        details: 'El token proporcionado no es válido'
       });
     }
   } catch (error) {
-    console.error('Auth middleware - Error general:', error.message);
+    console.error('Auth middleware - Error general:', error.message, error.stack);
     return res.status(500).json({ 
       msg: 'Error del servidor al procesar la autenticación',
       details: error.message

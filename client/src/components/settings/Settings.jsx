@@ -33,7 +33,8 @@ import {
   MonetizationOn as MonetizationOnIcon,
   Person as PersonIcon,
   Security as SecurityIcon,
-  Edit as EditIcon
+  Edit as EditIcon,
+  PhoneIphone as PhoneIphoneIcon
 } from '@mui/icons-material';
 import i18n from '../../i18n';
 
@@ -350,6 +351,18 @@ const Settings = () => {
                     </Select>
                   </FormControl>
                 </ListItemSecondaryAction>
+              </ListItem>
+              
+              <Divider component="li" />
+              
+              <ListItem button component="a" href="/pwa-status">
+                <ListItemIcon>
+                  <PhoneIphoneIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Estado PWA" 
+                  secondary="Verificar el estado de la Progressive Web App"
+                />
               </ListItem>
             </List>
           </Paper>

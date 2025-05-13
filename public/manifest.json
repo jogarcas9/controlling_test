@@ -4,24 +4,23 @@
   "description": "Aplicación para gestionar gastos personales y compartidos",
   "icons": [
     {
-      "src": "/favicon.ico",
+      "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
     },
     {
-      "src": "/images/logo192.png",
+      "src": "logo192.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "/images/logo512.png",
+      "src": "logo512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
     }
   ],
-  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -51,14 +50,14 @@
       "short_name": "Gasto",
       "description": "Añadir un nuevo gasto",
       "url": "/nuevo-gasto",
-      "icons": [{ "src": "/images/logo192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/logo192.png", "sizes": "192x192" }]
     },
     {
       "name": "Dashboard",
       "short_name": "Home",
       "description": "Ver el dashboard principal",
       "url": "/",
-      "icons": [{ "src": "/images/logo192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/logo192.png", "sizes": "192x192" }]
     }
   ],
   "related_applications": [],

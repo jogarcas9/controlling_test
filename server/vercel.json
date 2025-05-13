@@ -9,19 +9,11 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "server.js",
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS,PATCH",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization,x-auth-token"
-      }
+      "dest": "server.js"
     },
     {
       "src": "/socket.io/(.*)",
-      "dest": "server.js",
-      "headers": {
-        "Access-Control-Allow-Origin": "*"
-      }
+      "dest": "server.js"
     }
   ],
   "env": {

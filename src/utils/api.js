@@ -1,18 +1,18 @@
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
 
-// En producción, usamos la misma URL base (la solicitud se redirige mediante las reglas de Vercel)
-// En desarrollo, usamos localhost:5000
+// En producción, usar la URL del backend desplegado
+// En desarrollo, usar localhost:5000
 const isProduction = process.env.NODE_ENV === 'production';
 const API_URL = isProduction 
-  ? '' // URL vacía para usar la misma base URL (rutas relativas)
+  ? 'https://controling-backend.vercel.app'
   : (process.env.REACT_APP_API_URL || 'http://localhost:5000');
 
 console.log('API URL:', API_URL, 'Environment:', process.env.NODE_ENV);
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 15000,
+  timeout: 30000, // aumentamos el timeout a 30 segundos
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'

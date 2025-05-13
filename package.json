@@ -13,9 +13,8 @@
     "server": "cd server && nodemon server.js",
     "client": "cd client && npm start",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "install-all": "npm install && cd server && npm install && cd ../client && npm install --legacy-peer-deps && npm install recharts --save",
-    "build": "cd client && npm install && npm run build",
-    "postinstall": "npm run install-all"
+    "install-deps": "cd server && npm install && cd ../client && npm install --legacy-peer-deps && npm install recharts --save",
+    "build": "cd client && npm install && npm run build"
   },
   "author": "",
   "license": "ISC",
