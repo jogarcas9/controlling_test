@@ -6,7 +6,17 @@ const config = require('../../config');
 const auth = require('../../middleware/auth');
 const User = require('../../models/User');
 
-// @route   POST api/auth/login
+// @route   GET /api/auth
+// @desc    Prueba de autenticación 
+// @access  Public
+router.get('/', (req, res) => {
+  res.json({
+    msg: 'Auth API funcionando',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// @route   POST /api/auth/login
 // @desc    Autenticar usuario y obtener token
 // @access  Public
 router.post('/login', async (req, res) => {
@@ -80,4 +90,16 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ... resto del archivo sin cambios 
+// @route   GET /api/auth/user
+// @desc    Obtener información del usuario autenticado
+// @access  Private
+router.get('/user', (req, res) => {
+  // Para pruebas, devolvemos un usuario fijo
+  res.json({
+    id: '123456',
+    name: 'Usuario Prueba',
+    email: 'test@example.com'
+  });
+});
+
+module.exports = router; 

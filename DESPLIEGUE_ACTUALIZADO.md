@@ -77,6 +77,58 @@ Una vez completados ambos despliegues, verifica que:
 
 ## Solución de problemas comunes
 
+### Error 404 NOT_FOUND en el despliegue del servidor
+
+Si obtienes un error 404 al desplegar el backend en Vercel, verifica lo siguiente:
+
+1. **Estructura de archivos correcta**:
+   - Asegúrate de que `server.js` esté en la raíz del proyecto
+   - Verifica que las carpetas `config`, `routes` y `models` estén también en la raíz
+
+2. **Configuración del vercel.json**:
+   - Comprueba que el archivo vercel.json tenga la siguiente estructura:
+   ```json
+   {
+     "version": 2,
+     "builds": [
+       {
+         "src": "server.js",
+         "use": "@vercel/node"
+       }
+     ],
+     "routes": [
+       {
+         "handle": "filesystem"
+       },
+       {
+         "src": "/api/(.*)",
+         "dest": "server.js"
+       },
+       {
+         "src": "/socket.io/(.*)",
+         "dest": "server.js"
+       },
+       {
+         "src": "/(.*)",
+         "dest": "server.js",
+         "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+       }
+     ]
+   }
+   ```
+
+3. **package.json correcto**:
+   - El archivo `package.json` debe tener todas las dependencias necesarias
+   - El `main` debe apuntar a `server.js` en la raíz
+
+4. **Rutas básicas para pruebas**:
+   - Añade rutas básicas para verificar que el servidor está funcionando:
+   ```javascript
+   app.get('/', (req, res) => {
+     res.json({ message: 'Servidor Controling funcionando correctamente' });
+   });
+   ```
+
 ### Error 401 al cargar manifest.json
 - Asegúrate de que el archivo `client/public/manifest.json` tenga las rutas correctas con barras iniciales (`/images/logo192.png`)
 - Verifica que los archivos de iconos existan en las ubicaciones especificadas en el manifest
@@ -100,6 +152,11 @@ curl https://controling-backend.vercel.app/api/health
 Verificar acceso al manifest.json:
 ```
 curl -I https://controlling-pwa-frontend.vercel.app/manifest.json
+```
+
+Verificar que el servidor responde en la raíz:
+```
+curl https://controling-backend.vercel.app/
 ```
 
 ## Notas adicionales

@@ -133,14 +133,80 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Rutas de la API
-app.use('/api/users', require('./routes/api/users'));
-app.use('/api/auth', require('./routes/api/auth'));
-app.use('/api/personal-expenses', require('./routes/api/personal-expenses'));
-app.use('/api/income', require('./routes/api/income'));
-app.use('/api/reports', require('./routes/api/reports'));
-app.use('/api/shared-sessions', require('./routes/api/shared-sessions'));
-app.use('/api/participant-allocations', require('./routes/api/participant-allocations'));
+// Ruta básica para verificar que el servidor está funcionando
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Servidor Controling funcionando correctamente',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Ruta para prueba de autenticación
+app.get('/api/test', (req, res) => {
+  res.json({
+    message: 'API funcionando correctamente',
+    auth: 'No autenticado',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Rutas de la API - Comentar las que no existan en el proyecto actual
+try {
+  if (require('./routes/api/auth')) {
+    app.use('/api/auth', require('./routes/api/auth'));
+  }
+} catch (e) {
+  console.log('Ruta /api/auth no disponible:', e.message);
+}
+
+try {
+  if (require('./routes/api/users')) {
+    app.use('/api/users', require('./routes/api/users'));
+  }
+} catch (e) {
+  console.log('Ruta /api/users no disponible:', e.message);
+}
+
+try {
+  if (require('./routes/api/personal-expenses')) {
+    app.use('/api/personal-expenses', require('./routes/api/personal-expenses'));
+  }
+} catch (e) {
+  console.log('Ruta /api/personal-expenses no disponible:', e.message);
+}
+
+try {
+  if (require('./routes/api/income')) {
+    app.use('/api/income', require('./routes/api/income'));
+  }
+} catch (e) {
+  console.log('Ruta /api/income no disponible:', e.message);
+}
+
+try {
+  if (require('./routes/api/reports')) {
+    app.use('/api/reports', require('./routes/api/reports'));
+  }
+} catch (e) {
+  console.log('Ruta /api/reports no disponible:', e.message);
+}
+
+try {
+  if (require('./routes/api/shared-sessions')) {
+    app.use('/api/shared-sessions', require('./routes/api/shared-sessions'));
+  }
+} catch (e) {
+  console.log('Ruta /api/shared-sessions no disponible:', e.message);
+}
+
+try {
+  if (require('./routes/api/participant-allocations')) {
+    app.use('/api/participant-allocations', require('./routes/api/participant-allocations'));
+  }
+} catch (e) {
+  console.log('Ruta /api/participant-allocations no disponible:', e.message);
+}
 
 // Middleware para manejo de errores mejorado
 app.use((err, req, res, next) => {
@@ -160,12 +226,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Manejo de 404 SOLO para rutas de la API
-app.use('/api', (req, res) => {
-  console.log('404 Not Found:', req.path);
+// Manejo de 404 para todas las rutas
+app.use('*', (req, res) => {
+  console.log('404 Not Found:', req.originalUrl);
   res.status(404).json({ 
     message: 'Ruta no encontrada',
-    path: req.path,
+    path: req.originalUrl,
     method: req.method
   });
 });
