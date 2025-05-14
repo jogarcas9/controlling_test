@@ -78,25 +78,6 @@ module.exports = {
       return webpackConfig;
     },
   },
-  // Optimización de babel
-  babel: {
-    presets: [],
-    plugins: [
-      [
-        'babel-plugin-transform-imports',
-        {
-          '@mui/material': {
-            transform: '@mui/material/{{member}}',
-            preventFullImport: true,
-          },
-          '@mui/icons-material': {
-            transform: '@mui/icons-material/{{member}}',
-            preventFullImport: true,
-          },
-        },
-      ],
-    ],
-  },
   // Desactivar generación de sourcemaps en producción
   eslint: {
     enable: false, // Desactivar eslint durante la compilación
