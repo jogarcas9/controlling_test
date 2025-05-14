@@ -68,6 +68,10 @@ const Login = () => {
     }
   };
 
+  const inputProps = {
+    style: { padding: '14px 12px' }
+  };
+
   return (
     <Container
       sx={{
@@ -131,24 +135,16 @@ const Login = () => {
 
           <form onSubmit={handleSubmit}>
             <Box sx={{ mb: 3 }}>
-              <Typography
-                variant="body2"
-                sx={{
-                  mb: 1,
-                  color: '#4b5563',
-                  fontWeight: 500
-                }}
-              >
-                Email Address
-              </Typography>
               <TextField
                 fullWidth
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
+                placeholder="Correo electrónico"
                 variant="outlined"
                 disabled={loading}
+                label=""
+                inputProps={inputProps}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 1,
@@ -168,24 +164,16 @@ const Login = () => {
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <Typography
-                variant="body2"
-                sx={{
-                  mb: 1,
-                  color: '#4b5563',
-                  fontWeight: 500
-                }}
-              >
-                Password
-              </Typography>
               <TextField
                 fullWidth
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Contraseña"
                 variant="outlined"
                 disabled={loading}
+                label=""
+                inputProps={inputProps}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 1,
@@ -240,7 +228,7 @@ const Login = () => {
                 variant="body2"
                 sx={{ color: '#6b7280' }}
               >
-                Don't have an account?
+                ¿No tienes una cuenta?
               </Typography>
               <Link
                 component={RouterLink}
@@ -254,7 +242,7 @@ const Login = () => {
                   },
                 }}
               >
-                Create an account
+                Regístrate
               </Link>
             </Box>
 
@@ -277,7 +265,7 @@ const Login = () => {
                   },
                 }}
               >
-                Forgot password?
+                ¿Olvidaste tu contraseña?
               </Link>
             </Box>
           </form>

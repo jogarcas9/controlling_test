@@ -23,6 +23,9 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  fecha: {
+    type: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -45,11 +48,18 @@ const UserSchema = new mongoose.Schema({
 
 // Método para encriptar contraseña antes de guardar
 UserSchema.pre('save', async function(next) {
+  // Si es un documento nuevo (no existe en la base de datos todavía)
+  if (this.isNew) {
+    // Asegurarse de que fecha tenga el mismo valor que createdAt
+    this.fecha = this.createdAt || new Date();
+  }
+
   if (!this.isModified('password')) {
     return next();
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+  next();
 });
 
 // Método para comparar contraseñas

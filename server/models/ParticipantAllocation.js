@@ -179,14 +179,34 @@ async function syncAllocationWithPersonalExpense(allocation) {
     // Create or update the expense date - middle of the month
     const expenseDate = new Date(allocation.year, allocation.month, 15);
     
+    // Formatear el nombre del mes para mostrar en la descripción
+    const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const monthName = monthNames[allocation.month];
+    
+    // Calcular el porcentaje con 2 decimales para mostrar
+    const formattedPercentage = allocation.percentage.toFixed(2);
+    
+    // Formatear el monto con 2 decimales para mostrar
+    const formattedAmount = allocation.amount.toFixed(2);
+
+    // Verificar si la sesión es recurrente
+    const isRecurringSession = session.sessionType === 'permanent';
+    
     // If personal expense exists, update it
     if (personalExpense) {
+      // Simplificar el nombre del gasto para que sea solo el nombre de la sesión
       personalExpense.name = session.name;
-      personalExpense.description = `Gastos compartidos: ${session.name} (${allocation.percentage}%)`;
+      personalExpense.description = `Parte correspondiente (${formattedPercentage}%) de gastos compartidos en "${session.name}" para ${monthName} ${allocation.year}`;
       personalExpense.amount = allocation.amount;
       personalExpense.currency = allocation.currency;
       personalExpense.date = expenseDate;
       personalExpense.allocationId = allocation._id;
+      personalExpense.year = allocation.year;
+      personalExpense.month = allocation.month;
+      // Marcar como recurrente si la sesión es recurrente
+      personalExpense.isRecurring = isRecurringSession;
+      // Marcar como no editable ni borrable
+      personalExpense.isFromSharedSession = true;
       
       if (!personalExpense.sessionReference) {
         personalExpense.sessionReference = {};
@@ -197,9 +217,11 @@ async function syncAllocationWithPersonalExpense(allocation) {
         sessionId: allocation.sessionId,
         sessionName: session.name,
         percentage: allocation.percentage,
+        totalAmount: allocation.totalAmount || 0,
         year: allocation.year,
         month: allocation.month,
-        isRecurringShare: session.sessionType === 'permanent'
+        isRecurringShare: isRecurringSession,
+        participantName: userName
       };
       
       // Update the reference in the allocation if needed
@@ -222,7 +244,9 @@ async function syncAllocationWithPersonalExpense(allocation) {
         user: personalExpense.user,
         name: personalExpense.name,
         amount: personalExpense.amount,
-        date: personalExpense.date
+        date: personalExpense.date,
+        isRecurring: personalExpense.isRecurring,
+        isFromSharedSession: personalExpense.isFromSharedSession
       })}`);
       
     } else {
@@ -230,20 +254,28 @@ async function syncAllocationWithPersonalExpense(allocation) {
       personalExpense = new PersonalExpense({
         user: allocation.userId.toString(),
         name: session.name,
-        description: `Gastos compartidos: ${session.name} (${allocation.percentage}%)`,
+        description: `Parte correspondiente (${formattedPercentage}%) de gastos compartidos en "${session.name}" para ${monthName} ${allocation.year}`,
         amount: allocation.amount,
         currency: allocation.currency || 'EUR',
         category: 'Gastos Compartidos',
         date: expenseDate,
         type: 'expense',
+        year: allocation.year,
+        month: allocation.month,
+        // Marcar como recurrente si la sesión es recurrente
+        isRecurring: isRecurringSession,
+        // Marcar como no editable ni borrable
+        isFromSharedSession: true,
         allocationId: allocation._id,
         sessionReference: {
           sessionId: allocation.sessionId,
           sessionName: session.name,
           percentage: allocation.percentage,
+          totalAmount: allocation.totalAmount || 0,
           year: allocation.year,
           month: allocation.month,
-          isRecurringShare: session.sessionType === 'permanent'
+          isRecurringShare: isRecurringSession,
+          participantName: userName
         }
       });
       

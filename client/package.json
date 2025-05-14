@@ -7,16 +7,12 @@
     "@emotion/styled": "^11.11.0",
     "@mui/icons-material": "^5.15.10",
     "@mui/material": "^5.15.10",
+    "@mui/x-charts": "^6.19.4",
     "@mui/x-date-pickers": "^6.19.4",
-    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.0",
     "@reduxjs/toolkit": "^2.7.0",
-    "ajv": "^8.12.0",
-    "ajv-keywords": "^5.1.0",
     "axios": "^1.6.7",
     "axios-retry": "^4.0.0",
-    "babel-loader": "^8.3.0",
     "date-fns": "^2.30.0",
-    "html-webpack-plugin": "^5.5.0",
     "i18next": "^23.10.0",
     "i18next-browser-languagedetector": "^7.2.0",
     "react": "^18.2.0",
@@ -25,28 +21,31 @@
     "react-redux": "^9.2.0",
     "react-router-dom": "^6.22.1",
     "react-scripts": "5.0.1",
-    "recharts": "2.15.3",
-    "socket.io-client": "^4.8.1",
-    "typescript": "^4.9.5"
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@craco/craco": "^7.1.0",
     "@types/node": "^18.19.14",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
+    "babel-plugin-transform-imports": "^2.0.0",
+    "compression-webpack-plugin": "^10.0.0",
     "cross-env": "7.0.3",
-    "eslint": "^8.56.0",
-    "eslint-plugin-react": "^7.33.2",
-    "eslint-plugin-react-hooks": "^4.6.0"
+    "glob": "^10.3.10",
+    "rimraf": "^5.0.5",
+    "sharp": "^0.33.2",
+    "terser-webpack-plugin": "^5.3.10",
+    "typescript": "^4.9.5",
+    "webpack-bundle-analyzer": "^4.10.1"
   },
   "scripts": {
-    "start": "set PORT=3000 && react-scripts start",
-    "build": "react-scripts build",
-    "vercel-build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "craco start",
+    "build": "GENERATE_SOURCEMAP=false craco build",
+    "analyze": "ANALYZE=true craco build",
+    "test": "craco test",
     "eject": "react-scripts eject",
-    "postinstall": "node postinstall.js"
+    "build:clean": "rimraf build",
+    "optimize-images": "node optimize-images.js"
   },
   "eslintConfig": {
     "extends": [

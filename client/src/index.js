@@ -1,38 +1,32 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
-import { StrictMode } from 'react';
 import './i18n';
-import { Provider } from 'react-redux';
-import { store } from './store';
-import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <StrictMode>
-    <Provider store={store}>
-      <App />
-    </Provider>
-  </StrictMode>
-);
+// Inicialización optimizada de la aplicación
+const renderApp = () => {
+  const container = document.getElementById('root');
+  const root = createRoot(container);
+  
+  // Renderizado con modo concurrente para mejor rendimiento
+  root.render(
+    <App />
+  );
+};
 
-// If you want your app to work offline and load faster, you can change
-// unregister() to register() below. Note this comes with some pitfalls.
-// Learn more about service workers: https://cra.link/PWA
-serviceWorkerRegistration.register({
-  onUpdate: registration => {
-    const waitingServiceWorker = registration.waiting;
+// Iniciar la aplicación
+renderApp();
 
-    if (waitingServiceWorker) {
-      waitingServiceWorker.addEventListener("statechange", event => {
-        if (event.target.state === "activated") {
-          if (window.confirm('Hay una nueva versión de la aplicación disponible. ¿Deseas recargar para actualizar?')) {
-            window.location.reload();
-          }
-        }
-      });
-      waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
-    }
-  }
-}); 
+// Registrar el service worker solo en producción
+if (process.env.NODE_ENV === 'production') {
+  const registerServiceWorker = async () => {
+    const { register } = await import('./serviceWorkerRegistration');
+    register();
+  };
+  
+  // Cargar el service worker después de que la app esté lista
+  window.addEventListener('load', () => {
+    registerServiceWorker();
+  });
+} 

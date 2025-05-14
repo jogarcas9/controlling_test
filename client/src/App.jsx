@@ -40,6 +40,7 @@ import { AuthProvider } from './context/AuthContext';
 import authService from './services/authService';
 import { checkServiceWorkers } from './utils/checkServiceWorkers';
 import socketService from './services/socketService';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Crear un contexto para el estado de la conexión en tiempo real
 export const RealTimeContext = React.createContext({
@@ -663,7 +664,9 @@ const App = () => {
                       path="/dashboard" 
                       element={
                         <PrivateRoute>
-                          <Dashboard />
+                          <ErrorBoundary>
+                            <Dashboard />
+                          </ErrorBoundary>
                         </PrivateRoute>
                       } 
                     />
@@ -671,7 +674,9 @@ const App = () => {
                       path="/personal" 
                       element={
                         <PrivateRoute>
-                          <PersonalExpenses />
+                          <ErrorBoundary>
+                            <PersonalExpenses />
+                          </ErrorBoundary>
                         </PrivateRoute>
                       } 
                     />
@@ -679,7 +684,9 @@ const App = () => {
                       path="/shared" 
                       element={
                         <PrivateRoute>
-                          <SharedSessions />
+                          <ErrorBoundary>
+                            <SharedSessions />
+                          </ErrorBoundary>
                         </PrivateRoute>
                       } 
                     />
@@ -687,7 +694,9 @@ const App = () => {
                       path="/reports" 
                       element={
                         <PrivateRoute>
-                          <ReportsDashboard />
+                          <ErrorBoundary>
+                            <ReportsDashboard />
+                          </ErrorBoundary>
                         </PrivateRoute>
                       } 
                     />
@@ -695,12 +704,14 @@ const App = () => {
                       path="/settings" 
                       element={
                         <PrivateRoute>
-                          <Settings 
-                            darkMode={darkMode} 
-                            language={language}
-                            currency={currency}
-                            onSettingsChanged={handleSettingsChanged}
-                          />
+                          <ErrorBoundary>
+                            <Settings 
+                              darkMode={darkMode} 
+                              language={language}
+                              currency={currency}
+                              onSettingsChanged={handleSettingsChanged}
+                            />
+                          </ErrorBoundary>
                         </PrivateRoute>
                       } 
                     />

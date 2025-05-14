@@ -62,6 +62,10 @@ const Register = () => {
     }
   };
 
+  const inputProps = {
+    style: { padding: '14px 12px' }
+  };
+
   return (
     <Container component="main" maxWidth="xs">
       <Box
@@ -96,12 +100,15 @@ const Register = () => {
               required
               fullWidth
               id="username"
-              label="Nombre de usuario"
               name="username"
               autoComplete="username"
               autoFocus
               value={formData.username}
               onChange={handleChange}
+              variant="outlined"
+              placeholder="Nombre de usuario *"
+              inputProps={inputProps}
+              label=""
             />
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
@@ -109,11 +116,14 @@ const Register = () => {
                   margin="normal"
                   fullWidth
                   id="name"
-                  label="Nombre"
                   name="name"
                   autoComplete="given-name"
                   value={formData.name}
                   onChange={handleChange}
+                  variant="outlined"
+                  placeholder="Nombre"
+                  inputProps={inputProps}
+                  label=""
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -121,11 +131,14 @@ const Register = () => {
                   margin="normal"
                   fullWidth
                   id="last_name"
-                  label="Apellido"
                   name="last_name"
                   autoComplete="family-name"
                   value={formData.last_name}
                   onChange={handleChange}
+                  variant="outlined"
+                  placeholder="Apellido"
+                  inputProps={inputProps}
+                  label=""
                 />
               </Grid>
             </Grid>
@@ -134,34 +147,43 @@ const Register = () => {
               required
               fullWidth
               id="email"
-              label="Correo electrónico"
               name="email"
               autoComplete="email"
               value={formData.email}
               onChange={handleChange}
+              variant="outlined"
+              placeholder="Correo electrónico *"
+              inputProps={inputProps}
+              label=""
             />
             <TextField
               margin="normal"
               required
               fullWidth
               name="password"
-              label="Contraseña"
               type="password"
               id="password"
               autoComplete="new-password"
               value={formData.password}
               onChange={handleChange}
+              variant="outlined"
+              placeholder="Contraseña *"
+              inputProps={inputProps}
+              label=""
             />
             <TextField
               margin="normal"
               required
               fullWidth
               name="confirmPassword"
-              label="Confirmar contraseña"
               type="password"
               id="confirmPassword"
               value={formData.confirmPassword}
               onChange={handleChange}
+              variant="outlined"
+              placeholder="Confirmar contraseña *"
+              inputProps={inputProps}
+              label=""
             />
             <Button
               type="submit"

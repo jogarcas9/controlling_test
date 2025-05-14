@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Snackbar, Box, Typography } from '@mui/material';
-import { GetApp as InstallIcon } from '@mui/icons-material';
+import { Button, Snackbar, Box, Typography, IconButton } from '@mui/material';
+import { GetApp as InstallIcon, Close as CloseIcon } from '@mui/icons-material';
 
 const PWAInstallPrompt = () => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -14,17 +14,36 @@ const PWAInstallPrompt = () => {
       return;
     }
 
+    // Verificar si el usuario ha descartado el prompt recientemente
+    const lastDismissed = localStorage.getItem('pwaPromptDismissed');
+    if (lastDismissed) {
+      const timeSinceLastDismissed = Date.now() - parseInt(lastDismissed, 10);
+      // Si hace menos de 24 horas que lo descartó, no mostrar
+      if (timeSinceLastDismissed < 24 * 60 * 60 * 1000) {
+        return;
+      }
+    }
+
     // Capturar el evento beforeinstallprompt para mostrar botón personalizado
     const handleBeforeInstallPrompt = (e) => {
       // Prevenir que Chrome muestre el prompt automáticamente
       e.preventDefault();
       // Guardar el evento para poder activarlo más tarde
       setDeferredPrompt(e);
-      // Mostrar nuestro prompt personalizado
-      setShowInstallPrompt(true);
+      // Mostrar nuestro prompt personalizado después de un breve retraso
+      setTimeout(() => {
+        setShowInstallPrompt(true);
+      }, 500);
+      
+      console.log('Evento beforeinstallprompt capturado y guardado correctamente');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Si ya hay un evento de instalación disponible en la sesión actual
+    if (window.deferredPrompt) {
+      handleBeforeInstallPrompt(window.deferredPrompt);
+    }
 
     // Detectar cuando la app se instala
     window.addEventListener('appinstalled', () => {
@@ -60,6 +79,8 @@ const PWAInstallPrompt = () => {
 
   const handleClosePrompt = () => {
     setShowInstallPrompt(false);
+    // Guarda esta elección en localStorage para no mostrar tan seguido
+    localStorage.setItem('pwaPromptDismissed', Date.now().toString());
   };
 
   if (!showInstallPrompt || isInstalled) return null;
@@ -79,20 +100,36 @@ const PWAInstallPrompt = () => {
         p: 2,
         borderRadius: 2,
         boxShadow: 3,
-        maxWidth: '90vw'
+        maxWidth: '90vw',
+        position: 'relative'
       }}>
         <Typography variant="body1" sx={{ mr: 2, flexGrow: 1 }}>
-          Instala Controling para una experiencia más rápida y usar sin conexión
+          Instala Controling en tu dispositivo para usarla como una aplicación, incluso sin conexión
         </Typography>
         <Button
           variant="outlined"
           color="inherit"
           startIcon={<InstallIcon />}
           onClick={handleInstallClick}
-          sx={{ whiteSpace: 'nowrap' }}
+          sx={{ whiteSpace: 'nowrap', mr: 1 }}
         >
           Instalar
         </Button>
+        <IconButton
+          size="small"
+          color="inherit"
+          onClick={handleClosePrompt}
+          aria-label="cerrar"
+          sx={{ 
+            padding: 0.5,
+            color: 'white',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 255, 255, 0.2)'
+            }
+          }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
       </Box>
     </Snackbar>
   );

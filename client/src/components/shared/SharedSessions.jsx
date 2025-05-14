@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Box,
@@ -23,6 +23,7 @@ import {
   ChevronRight as ChevronRightIcon,
   Notifications as NotificationsIcon
 } from '@mui/icons-material';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import SessionList from './SessionList';
 import SessionForm from './SessionForm';
@@ -37,6 +38,9 @@ import * as expenseService from '../../services/expenseService';
 import { formatMonthYear } from '../../utils/dateHelpers';
 
 const SharedSessions = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   // Estados locales
   const [currentSession, setCurrentSession] = useState(null);
   const [showSessionForm, setShowSessionForm] = useState(false);
@@ -228,10 +232,10 @@ const SharedSessions = () => {
     }
   };
 
-  const handleAddSession = () => {
+  const handleAddSession = useCallback(() => {
     setEditingSession(null);
     setShowSessionForm(true);
-  };
+  }, []);
 
   const handleEditSession = (session) => {
     // Verificar permisos
@@ -446,8 +450,11 @@ const SharedSessions = () => {
       return;
     }
 
-    if (window.confirm('¿Estás seguro de que deseas eliminar este gasto?' + 
-      (expense.isRecurring ? '\nEste es un gasto recurrente. Se eliminarán todas las versiones futuras.' : ''))) {
+    const isIncome = expense.type === 'income';
+    const itemType = isIncome ? 'ingreso' : 'gasto';
+
+    if (window.confirm(`¿Estás seguro de que deseas eliminar este ${itemType}?` + 
+      (expense.isRecurring ? `\nEste es un ${itemType} recurrente. Se eliminarán todas las versiones futuras.` : ''))) {
       try {
         // Eliminar el gasto y dejar que el hook maneje la actualización del estado
         await deleteExpense(expense._id);
@@ -462,8 +469,8 @@ const SharedSessions = () => {
           console.error('Error en la sincronización después de eliminar:', syncError);
         }
       } catch (error) {
-        console.error('Error al eliminar el gasto:', error);
-        alert('Error al eliminar el gasto: ' + (error.response?.data?.msg || error.message));
+        console.error(`Error al eliminar el ${itemType}:`, error);
+        alert(`Error al eliminar el ${itemType}: ` + (error.response?.data?.msg || error.message));
       }
     }
   };
@@ -521,6 +528,17 @@ const SharedSessions = () => {
       setLoading(false);
     }
   };
+
+  // Efecto para manejar la apertura automática del formulario de sesión cuando se navega desde el dashboard
+  useEffect(() => {
+    if (location.state?.openSessionForm) {
+      console.log('Abriendo formulario de sesión compartida desde navegación');
+      handleAddSession();
+      
+      // Limpiar el estado para evitar que se abra nuevamente si se recarga la página
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, handleAddSession]);
 
   if (sessionsLoading && !sessions.length) {
     return (
@@ -643,103 +661,105 @@ const SharedSessions = () => {
                 flexDirection: isMobile ? 'column' : 'row',
                 width: isMobile ? '100%' : 'auto'
               }}>
-                {/* Navegador de meses mejorado para móviles y escritorio */}
-                <Box sx={{ 
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mb: isMobile ? 2 : 0,
-                  mt: { xs: 1, sm: 0 },
-                  gap: 1,
-                  borderRadius: 1,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  p: 0.5,
-                  backgroundColor: 'background.paper'
-                }}>
-                  {/* Botón MES ANTERIOR */}
-                  <Button
-                    variant="text"
-                    color="primary"
-                    onClick={handlePreviousMonth}
-                    sx={{ 
-                      minWidth: 40, 
-                      width: 40, 
-                      height: 38, 
-                      p: 0,
-                      borderRadius: 1.5,
-                      zIndex: 2000,
-                      '&:hover': {
-                        backgroundColor: 'action.hover'
-                      }
-                    }}
-                  >
-                    <ChevronLeftIcon />
-                  </Button>
-                  
-                  {/* Selector de MES */}
-                  <Button
-                    variant="text"
-                    color="inherit"
-                    onClick={goToCurrentMonth}
-                    sx={{ 
-                      flex: 1, 
-                      height: 38, 
-                      maxWidth: 200,
-                      textTransform: 'none',
-                      fontSize: '0.9rem',
-                      fontWeight: 'medium',
-                      px: 2,
-                      borderRadius: 1.5,
-                      mx: 0.5,
-                      '&:hover': {
-                        backgroundColor: 'action.hover'
-                      }
-                    }}
-                  >
-                    {isMobile ? getShortMonthName(selectedMonth) : monthNames[selectedMonth]} {selectedYear}
-                  </Button>
-                  
-                  {/* Botón MES SIGUIENTE */}
-                  <Button
-                    variant="text"
-                    color="primary"
-                    onClick={handleNextMonth}
-                    sx={{ 
-                      minWidth: 40, 
-                      width: 40, 
-                      height: 38, 
-                      p: 0,
-                      borderRadius: 1.5,
-                      '&:hover': {
-                        backgroundColor: 'action.hover'
-                      }
-                    }}
-                  >
-                    <ChevronRightIcon />
-                  </Button>
-                  
-                  {/* Botón HOY (tanto desktop como mobile) */}
-                  <Button
-                    variant="text"
-                    color="primary"
-                    onClick={goToCurrentMonth}
-                    sx={{ 
-                      minWidth: 40, 
-                      width: 40, 
-                      height: 38, 
-                      p: 0, 
-                      ml: 0.5,
-                      borderRadius: 1.5,
-                      display: { xs: 'none', sm: 'flex' },
-                      '&:hover': {
-                        backgroundColor: 'action.hover'
-                      }
-                    }}
-                  >
-                    <TodayIcon />
-                  </Button>
-                </Box>
+                {/* Navegador de meses mejorado para móviles y escritorio - solo para sesiones permanentes */}
+                {currentSession.sessionType === 'permanent' && (
+                  <Box sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    mb: isMobile ? 2 : 0,
+                    mt: { xs: 1, sm: 0 },
+                    gap: 1,
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    p: 0.5,
+                    backgroundColor: 'background.paper'
+                  }}>
+                    {/* Botón MES ANTERIOR */}
+                    <Button
+                      variant="text"
+                      color="primary"
+                      onClick={handlePreviousMonth}
+                      sx={{ 
+                        minWidth: 40, 
+                        width: 40, 
+                        height: 38, 
+                        p: 0,
+                        borderRadius: 1.5,
+                        zIndex: 2000,
+                        '&:hover': {
+                          backgroundColor: 'action.hover'
+                        }
+                      }}
+                    >
+                      <ChevronLeftIcon />
+                    </Button>
+                    
+                    {/* Selector de MES */}
+                    <Button
+                      variant="text"
+                      color="inherit"
+                      onClick={goToCurrentMonth}
+                      sx={{ 
+                        flex: 1, 
+                        height: 38, 
+                        maxWidth: 200,
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        fontWeight: 'medium',
+                        px: 2,
+                        borderRadius: 1.5,
+                        mx: 0.5,
+                        '&:hover': {
+                          backgroundColor: 'action.hover'
+                        }
+                      }}
+                    >
+                      {isMobile ? getShortMonthName(selectedMonth) : monthNames[selectedMonth]} {selectedYear}
+                    </Button>
+                    
+                    {/* Botón MES SIGUIENTE */}
+                    <Button
+                      variant="text"
+                      color="primary"
+                      onClick={handleNextMonth}
+                      sx={{ 
+                        minWidth: 40, 
+                        width: 40, 
+                        height: 38, 
+                        p: 0,
+                        borderRadius: 1.5,
+                        '&:hover': {
+                          backgroundColor: 'action.hover'
+                        }
+                      }}
+                    >
+                      <ChevronRightIcon />
+                    </Button>
+                    
+                    {/* Botón HOY (tanto desktop como mobile) */}
+                    <Button
+                      variant="text"
+                      color="primary"
+                      onClick={goToCurrentMonth}
+                      sx={{ 
+                        minWidth: 40, 
+                        width: 40, 
+                        height: 38, 
+                        p: 0, 
+                        ml: 0.5,
+                        borderRadius: 1.5,
+                        display: { xs: 'none', sm: 'flex' },
+                        '&:hover': {
+                          backgroundColor: 'action.hover'
+                        }
+                      }}
+                    >
+                      <TodayIcon />
+                    </Button>
+                  </Box>
+                )}
                 
                 <Button
                   variant="outlined"
@@ -769,6 +789,7 @@ const SharedSessions = () => {
               </Alert>
             )}
             
+            {/* Mostrar el encabezado del mes solo para sesiones permanentes */}
             {currentSession.sessionType === 'permanent' && !isMobile && (
               <Typography variant="h6" sx={{ mb: 3, color: 'primary.main' }}>
                 {monthNames[selectedMonth]} {selectedYear}

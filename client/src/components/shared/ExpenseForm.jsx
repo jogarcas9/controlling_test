@@ -424,7 +424,7 @@ const ExpenseForm = ({
               }
               label={
                 <Typography>
-                  Es un gasto recurrente
+                  Es un {formData.type === 'income' ? 'ingreso' : 'gasto'} recurrente
                 </Typography>
               }
             />
@@ -437,7 +437,7 @@ const ExpenseForm = ({
                 borderRadius: 1
               }}
             >
-              Los gastos recurrentes se repiten automáticamente cada mes el día {getDayFromDate(formData.date)}.
+              Los {formData.type === 'income' ? 'ingresos' : 'gastos'} recurrentes se repiten automáticamente cada mes el día {getDayFromDate(formData.date)}.
             </Alert>
           )}
         </Box>

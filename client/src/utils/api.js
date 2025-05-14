@@ -10,22 +10,31 @@ const API_URL = isProduction
 
 console.log('API URL:', API_URL, 'Environment:', process.env.NODE_ENV);
 
+// Reducir el timeout general y aumentar número de reintentos con retardo exponencial
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 15000,
+  timeout: 8000, // Reducido a 8 segundos para evitar bloqueos prolongados
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   }
 });
 
-// Configuración de reintentos
+// Configuración de reintentos mejorada
 axiosRetry(api, {
-  retries: 3,
-  retryDelay: axiosRetry.exponentialDelay,
+  retries: 2, // Reducido para evitar esperas muy largas
+  retryDelay: (retryCount) => {
+    return Math.min(axiosRetry.exponentialDelay(retryCount), 3000); // Máximo 3 segundos de espera
+  },
   retryCondition: (error) => {
-    return axiosRetry.isNetworkOrIdempotentRequestError(error) || 
-           (error.response?.status >= 500 && error.response?.status !== 501);
+    // Solo reintentar errores de red o errores del servidor
+    return (
+      axiosRetry.isNetworkOrIdempotentRequestError(error) || 
+      (error.response?.status >= 500 && error.response?.status !== 501)
+    );
+  },
+  onRetry: (retryCount, error, requestConfig) => {
+    console.warn(`Reintentando petición a ${requestConfig.url} (intento ${retryCount})`);
   }
 });
 
@@ -48,6 +57,9 @@ api.interceptors.request.use(
   config => convertLegacyRoutes(config),
   error => Promise.reject(error)
 );
+
+// Variable para comprobar si ya hemos redirigido al login
+let redirectingToLogin = false;
 
 // Interceptor para añadir el token de autenticación
 api.interceptors.request.use(
@@ -72,19 +84,30 @@ api.interceptors.request.use(
   error => Promise.reject(error)
 );
 
-// Interceptor para manejar errores
+// Interceptor para manejar errores mejorado
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
+    // Si es un error 401 y no estamos ya redirigiendo
+    if (error.response?.status === 401 && !redirectingToLogin) {
+      redirectingToLogin = true;
+      
       // Limpiar datos de autenticación
       localStorage.clear();
       
       // Disparar evento de storage para actualizar el estado de autenticación
       window.dispatchEvent(new Event('storage'));
       
-      // Redirigir al login
-      window.location.href = '/login';
+      // Agregar un pequeño retraso para prevenir múltiples redirecciones
+      setTimeout(() => {
+        // Redirigir al login
+        window.location.href = '/login';
+        // Después de un tiempo, resetear la variable
+        setTimeout(() => {
+          redirectingToLogin = false;
+        }, 1000);
+      }, 100);
+      
       return Promise.reject(new Error('Sesión expirada. Por favor, inicia sesión nuevamente.'));
     }
     
@@ -131,7 +154,7 @@ export const fetchWithCache = async (url, options = {}) => {
 // Función para verificar la salud del servidor
 export const checkServerHealth = async () => {
   try {
-    const response = await api.get('/api/health', { timeout: 5000 });
+    const response = await api.get('/api/health', { timeout: 3000 });
     return { ok: response.status === 200, data: response.data };
   } catch (error) {
     console.error('Error al verificar la salud del servidor:', error);
@@ -147,19 +170,34 @@ export const handleNetworkError = (error) => {
   return error.message || 'Error desconocido';
 };
 
-// Servicios de API
+// Servicios de API optimizados con manejo de errores
 export const authAPI = {
   login: async (credentials) => {
-    const response = await api.post('/api/auth/login', credentials);
-    return response.data;
+    try {
+      const response = await api.post('/api/auth/login', credentials);
+      return response.data;
+    } catch (error) {
+      console.error('Error de login:', error);
+      throw error;
+    }
   },
   register: async (userData) => {
-    const response = await api.post('/api/auth/register', userData);
-    return response.data;
+    try {
+      const response = await api.post('/api/auth/register', userData);
+      return response.data;
+    } catch (error) {
+      console.error('Error de registro:', error);
+      throw error;
+    }
   },
   verifyToken: async () => {
-    const response = await api.get('/api/auth/verify');
-    return response.data;
+    try {
+      const response = await api.get('/api/auth/verify');
+      return response.data;
+    } catch (error) {
+      console.error('Error de verificación de token:', error);
+      throw error;
+    }
   }
 };
 

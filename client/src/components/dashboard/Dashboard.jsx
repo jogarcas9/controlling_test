@@ -16,7 +16,8 @@ import {
   IconButton,
   LinearProgress,
   Tooltip,
-  alpha
+  alpha,
+  Skeleton
 } from '@mui/material';
 import {
   AccountBalance as AccountBalanceIcon,
@@ -27,11 +28,15 @@ import {
   TrendingUp as TrendingUpIcon,
   Face as FaceIcon,
   AttachMoney as AttachMoneyIcon,
+  Add as AddIcon,
+  Group as GroupIcon,
+  AssignmentInd as AssignmentIndIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api, { checkServerHealth } from '../../utils/api';
 import authService from '../../services/authService';
+import ExpenseSummaryByCategory from './ExpenseSummaryByCategory';
 
 const Dashboard = () => {
   const { t } = useTranslation();
@@ -46,6 +51,7 @@ const Dashboard = () => {
   const [monthlyIncome, setMonthlyIncome] = useState(0);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [userData, setUserData] = useState(null);
 
   // Formatear la fecha actual
   const currentDate = new Date();
@@ -87,12 +93,15 @@ const Dashboard = () => {
       }
 
       // Verificar usuario actual
-      const userData = await authService.getCurrentUser();
-      if (!userData) {
+      const currentUser = await authService.getCurrentUser();
+      if (!currentUser) {
         console.log('No hay datos de usuario, redirigiendo a login...');
         navigate('/login');
         return;
       }
+      
+      // Guardar los datos del usuario
+      setUserData(currentUser);
 
       try {
         // Verificar salud del servidor
@@ -102,22 +111,24 @@ const Dashboard = () => {
         }
 
         // Obtener datos financieros
-        const [expensesResponse, incomesResponse, sessionsResponse] = await Promise.all([
+        const [expensesResponse, sessionsResponse] = await Promise.all([
           api.get('/api/personal-expenses/monthly'),
-          api.get('/api/income/monthly'),
           api.get('/api/shared-sessions')
         ]);
 
-        // Procesar gastos
-        const expenses = expensesResponse.data || [];
-        const totalExpenses = expenses
-          .filter(exp => exp.type === 'expense')
-          .reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+        // Procesar gastos e ingresos desde la misma respuesta
+        const personalItems = expensesResponse.data || [];
+        
+        // Calcular gastos totales
+        const totalExpenses = personalItems
+          .filter(item => item.type === 'expense')
+          .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
         setMonthlyExpenses(totalExpenses);
 
-        // Procesar ingresos
-        const incomes = incomesResponse.data || [];
-        const totalIncome = incomes.reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+        // Calcular ingresos totales
+        const totalIncome = personalItems
+          .filter(item => item.type === 'income')
+          .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
         setMonthlyIncome(totalIncome);
 
         // Procesar sesiones compartidas
@@ -182,6 +193,28 @@ const Dashboard = () => {
     return theme.palette.success.main;
   };
 
+  // Manejadores de acciones rápidas
+  const handleAddExpense = () => {
+    // Navegar a gastos personales y abrir directamente formulario para gastos
+    navigate('/personal', { 
+      state: { openExpenseDialog: true, expenseType: 'expense' } 
+    });
+  };
+  
+  const handleAddIncome = () => {
+    // Navegar a gastos personales y abrir directamente formulario para ingresos
+    navigate('/personal', { 
+      state: { openExpenseDialog: true, expenseType: 'income' } 
+    });
+  };
+  
+  const handleCreateSession = () => {
+    // Navegar a la página principal de sesiones compartidas con estado para abrir el formulario de creación
+    navigate('/shared', { 
+      state: { openSessionForm: true } 
+    });
+  };
+
   if (loading && !refreshing) {
     return (
       <Box 
@@ -201,465 +234,350 @@ const Dashboard = () => {
   }
 
   return (
-    <Container 
-      maxWidth={false} 
-      disableGutters 
-      sx={{ 
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        py: { xs: 1, sm: 2 },
-        px: 0
-      }}
-    >
-      <Box sx={{ px: { xs: 1, sm: 1.5 }, width: '100%' }}>
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            mb: { xs: 1.5, sm: 3 },
-            gap: 1,
-          }}
-        >
-          <Typography 
-            variant="h4" 
-            component="h1" 
-            fontWeight="bold"
-            sx={{ 
-              fontSize: { xs: '1.3rem', sm: '1.75rem', md: '2rem' },
-              mb: { xs: 0.5, sm: 0 }
-            }}
-          >
-            {t('dashboard')}
-          </Typography>
-          
-          <Button
-            variant="outlined"
-            startIcon={<RefreshIcon fontSize="small" />}
-            onClick={handleRefresh}
-            disabled={refreshing}
-            size="small"
-            sx={{ minWidth: { xs: 'auto', sm: 'auto' } }}
-          >
-            {refreshing ? t('refreshing') : t('refresh')}
-          </Button>
-        </Box>
+    <Container maxWidth="lg" sx={{ mt: 3, mb: 4 }}>
+      {/* Sección de saludo simplificada - sin botones */}
+      <Box mb={4}>
+        <Grid container alignItems="center" justifyContent="space-between" spacing={2}>
+          <Grid item xs={12}>
+            <Typography variant="h5" component="h1" gutterBottom>
+              {t('Resumen')}
+            </Typography>
+            <Typography variant="body1" color="textSecondary">
+              {capitalizedMonth}
+            </Typography>
+          </Grid>
+        </Grid>
+      </Box>
 
-        {error && (
-          <Paper
-            elevation={0}
-            sx={{
-              p: { xs: 1.5, sm: 3 },
-              mb: { xs: 1.5, sm: 3 },
-              borderRadius: 2,
-              bgcolor: alpha(theme.palette.error.main, 0.1),
-              border: `1px solid ${theme.palette.error.main}`,
-            }}
-          >
-            <Typography color="error" sx={{ fontSize: { xs: '0.85rem', sm: '1rem' } }}>{error}</Typography>
-          </Paper>
-        )}
-
-        {refreshing && (
-          <LinearProgress 
-            sx={{ 
-              mb: { xs: 1.5, sm: 3 },
-              borderRadius: 1,
-              height: { xs: 4, sm: 6 },
-            }} 
-          />
-        )}
-
-        <Typography 
-          variant="h6" 
+      {/* Mostrar error o cargando */}
+      {error && (
+        <Paper 
+          elevation={0} 
           sx={{ 
-            mb: { xs: 1, sm: 2 },
-            fontWeight: 500,
-            fontSize: { xs: '0.9rem', sm: '1.1rem', md: '1.25rem' },
+            p: 3, 
+            mb: 4, 
+            borderRadius: 2, 
+            bgcolor: alpha(theme.palette.error.main, 0.1),
+            color: theme.palette.error.main,
+            border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
           }}
         >
-          {t('overview')} - {capitalizedMonth}
-        </Typography>
+          <Typography>{error}</Typography>
+        </Paper>
+      )}
 
-        <Grid container spacing={{ xs: 1, sm: 3 }}>
-          {/* Tarjeta de Balance */}
-          <Grid item xs={6} sm={6} md={3}>
-            <Card 
-              elevation={2} 
-              sx={{ 
-                borderRadius: { xs: 1.5, sm: 2 }, 
+      {/* Tarjetas de resumen financiero */}
+      <Grid container spacing={3} mb={3}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card 
+            sx={{ 
+              height: '100%', 
+              borderRadius: 2, 
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                right: 0,
                 height: '100%',
-                transition: 'transform 0.3s, box-shadow 0.3s',
-                '&:hover': {
-                  transform: { xs: 'none', sm: 'translateY(-5px)' },
-                  boxShadow: { xs: 2, sm: 6 },
-                },
-              }}
-            >
-              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mb: 1,
-                    gap: { xs: 1, sm: 1.5 },
-                  }}
-                >
-                  <Avatar 
-                    sx={{ 
-                      bgcolor: theme.palette.primary.main,
-                      width: { xs: 32, sm: 48 },
-                      height: { xs: 32, sm: 48 },
-                    }}
-                  >
-                    <AccountBalanceIcon fontSize={_isMobile ? 'small' : 'medium'} />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
-                    {t('balance')}
+                width: '8px',
+                backgroundColor: theme.palette.primary.main,
+                borderTopRightRadius: 8,
+                borderBottomRightRadius: 8
+              }
+            }}
+          >
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography color="textSecondary" variant="body2" gutterBottom>
+                    {t('Balance mensual')}
                   </Typography>
+                  {loading ? (
+                    <Skeleton width={100} height={36} />
+                  ) : (
+                    <Typography variant="h5" component="div">
+                      {formatAmount(balance)}
+                    </Typography>
+                  )}
                 </Box>
-                
-                <Typography 
-                  variant="h4" 
+                <Avatar 
                   sx={{ 
-                    fontWeight: 'bold',
-                    color: balance >= 0 ? 'success.main' : 'error.main',
-                    mb: 1,
-                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    color: theme.palette.primary.main
                   }}
                 >
-                  {formatAmount(balance)}
-                </Typography>
-                
-                <Box sx={{ mt: { xs: 1, sm: 2 } }}>
+                  <AccountBalanceIcon />
+                </Avatar>
+              </Box>
+              {!loading && (
+                <Box sx={{ mt: 2 }}>
                   <LinearProgress
                     variant="determinate"
                     value={Math.min(Math.max(calculatePercentage(), 0), 100)}
                     sx={{ 
-                      height: { xs: 6, sm: 8 }, 
-                      borderRadius: 4,
-                      mb: 0.5,
-                      bgcolor: alpha(getProgressColor(calculatePercentage()), 0.2),
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: alpha(getProgressColor(calculatePercentage()), 0.2),
                       '& .MuiLinearProgress-bar': {
-                        bgcolor: getProgressColor(calculatePercentage()),
+                        backgroundColor: getProgressColor(calculatePercentage()),
+                        borderRadius: 3
                       }
                     }}
                   />
-                  <Typography 
-                    variant="caption" 
-                    display="block" 
-                    color="text.secondary"
-                    sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}
-                  >
-                    {calculatePercentage() >= 0
-                      ? t('savingsGoalProgress', { percentage: Math.round(calculatePercentage()) })
-                      : t('negativeBalanceWarning')}
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                    {/* Quitamos el texto del porcentaje */}
+                    {/* <Typography variant="body2" color="textSecondary">
+                      {`${Math.round(calculatePercentage())}% ${t('of_income')}`}
+                    </Typography> */}
+                  </Box>
                 </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Tarjeta de Ingresos */}
-          <Grid item xs={6} sm={6} md={3}>
-            <Card 
-              elevation={2} 
-              sx={{ 
-                borderRadius: { xs: 1.5, sm: 2 }, 
-                height: '100%',
-                transition: 'transform 0.3s, box-shadow 0.3s',
-                '&:hover': {
-                  transform: { xs: 'none', sm: 'translateY(-5px)' },
-                  boxShadow: { xs: 2, sm: 6 },
-                },
-              }}
-            >
-              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mb: 1,
-                    gap: { xs: 1, sm: 1.5 },
-                  }}
-                >
-                  <Avatar 
-                    sx={{ 
-                      bgcolor: theme.palette.success.main,
-                      width: { xs: 32, sm: 48 },
-                      height: { xs: 32, sm: 48 },
-                    }}
-                  >
-                    <ArrowUpwardIcon fontSize={_isMobile ? 'small' : 'medium'} />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
-                    {t('income')}
-                  </Typography>
-                </Box>
-                
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
-                    fontWeight: 'bold',
-                    color: 'success.main',
-                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
-                  }}
-                >
-                  {formatAmount(monthlyIncome)}
-                </Typography>
-                
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mt: { xs: 1, sm: 1.5 },
-                    gap: 0.5,
-                  }}
-                >
-                  <TrendingUpIcon color="success" fontSize="small" />
-                  <Typography 
-                    variant="body2" 
-                    color="text.secondary"
-                    sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem' } }}
-                  >
-                    {t('incomeThisMonth')}
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Tarjeta de Gastos */}
-          <Grid item xs={6} sm={6} md={3}>
-            <Card 
-              elevation={2} 
-              sx={{ 
-                borderRadius: { xs: 1.5, sm: 2 }, 
-                height: '100%',
-                transition: 'transform 0.3s, box-shadow 0.3s',
-                '&:hover': {
-                  transform: { xs: 'none', sm: 'translateY(-5px)' },
-                  boxShadow: { xs: 2, sm: 6 },
-                },
-              }}
-            >
-              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mb: 1,
-                    gap: { xs: 1, sm: 1.5 },
-                  }}
-                >
-                  <Avatar 
-                    sx={{ 
-                      bgcolor: theme.palette.error.main,
-                      width: { xs: 32, sm: 48 },
-                      height: { xs: 32, sm: 48 },
-                    }}
-                  >
-                    <ArrowDownwardIcon fontSize={_isMobile ? 'small' : 'medium'} />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
-                    {t('expenses')}
-                  </Typography>
-                </Box>
-                
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
-                    fontWeight: 'bold',
-                    color: 'error.main',
-                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
-                  }}
-                >
-                  {formatAmount(monthlyExpenses)}
-                </Typography>
-                
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mt: { xs: 1, sm: 1.5 },
-                    gap: 0.5,
-                  }}
-                >
-                  <ReceiptIcon color="error" fontSize="small" />
-                  <Typography 
-                    variant="body2" 
-                    color="text.secondary"
-                    sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem' } }}
-                  >
-                    {t('expensesThisMonth')}
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Tarjeta de Sesiones Activas */}
-          <Grid item xs={6} sm={6} md={3}>
-            <Card 
-              elevation={2} 
-              sx={{ 
-                borderRadius: { xs: 1.5, sm: 2 }, 
-                height: '100%',
-                transition: 'transform 0.3s, box-shadow 0.3s',
-                '&:hover': {
-                  transform: { xs: 'none', sm: 'translateY(-5px)' },
-                  boxShadow: { xs: 2, sm: 6 },
-                },
-              }}
-            >
-              <CardContent sx={{ p: { xs: 1.5, sm: 3 } }}>
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mb: 1,
-                    gap: { xs: 1, sm: 1.5 },
-                  }}
-                >
-                  <Avatar 
-                    sx={{ 
-                      bgcolor: theme.palette.info.main,
-                      width: { xs: 32, sm: 48 },
-                      height: { xs: 32, sm: 48 },
-                    }}
-                  >
-                    <FaceIcon fontSize={_isMobile ? 'small' : 'medium'} />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem', md: '1.25rem' } }}>
-                    {t('activeSessions')}
-                  </Typography>
-                </Box>
-                
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
-                    fontWeight: 'bold',
-                    color: 'info.main',
-                    fontSize: { xs: '1.1rem', sm: '1.75rem', md: '2rem' },
-                  }}
-                >
-                  {activeSessions}
-                </Typography>
-                
-                <Box sx={{ mt: { xs: 1, sm: 2 } }}>
-                  <Button 
-                    variant="text" 
-                    color="primary" 
-                    onClick={() => navigate('/shared')}
-                    size="small"
-                    sx={{ 
-                      px: 0,
-                      fontSize: { xs: '0.7rem', sm: '0.8rem' },
-                    }}
-                  >
-                    {t('viewAllSessions')}
-                  </Button>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
+              )}
+            </CardContent>
+          </Card>
         </Grid>
 
-        {/* Acciones Rápidas */}
-        <Box sx={{ mt: { xs: 2, sm: 4 } }}>
-          <Typography 
-            variant="h6" 
+        <Grid item xs={12} sm={6} md={3}>
+          <Card 
             sx={{ 
-              mb: { xs: 1, sm: 2 }, 
-              fontWeight: 500,
-              fontSize: { xs: '0.9rem', sm: '1.1rem', md: '1.25rem' },
+              height: '100%', 
+              borderRadius: 2, 
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                height: '100%',
+                width: '8px',
+                backgroundColor: theme.palette.success.main,
+                borderTopRightRadius: 8,
+                borderBottomRightRadius: 8
+              }
             }}
           >
-            {t('quickActions')}
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography color="textSecondary" variant="body2" gutterBottom>
+                    {t('Ingresos mensuales')}
+                  </Typography>
+                  {loading ? (
+                    <Skeleton width={100} height={36} />
+                  ) : (
+                    <Typography variant="h5" component="div" sx={{ color: theme.palette.success.main }}>
+                      {formatAmount(monthlyIncome)}
+                    </Typography>
+                  )}
+                </Box>
+                <Avatar 
+                  sx={{ 
+                    bgcolor: alpha(theme.palette.success.main, 0.1),
+                    color: theme.palette.success.main
+                  }}
+                >
+                  <ArrowUpwardIcon />
+                </Avatar>
+              </Box>
+              {/* Tarjeta de ingresos mensuales */}
+              <Box sx={{ mt: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  color="success"
+                  fullWidth
+                  size="small" 
+                  startIcon={<AddIcon />} 
+                  onClick={handleAddIncome}
+                  sx={{ 
+                    py: 0.5,
+                    textTransform: 'none',
+                    borderRadius: 2,
+                    fontSize: '0.75rem',
+                    zIndex: 10,
+                    position: 'relative'
+                  }}
+                >
+                  {t('Agregar Ingreso')}
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card 
+            sx={{ 
+              height: '100%', 
+              borderRadius: 2, 
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                height: '100%',
+                width: '8px',
+                backgroundColor: theme.palette.error.main,
+                borderTopRightRadius: 8,
+                borderBottomRightRadius: 8
+              }
+            }}
+          >
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography color="textSecondary" variant="body2" gutterBottom>
+                    {t('Gastos mensuales')}
+                  </Typography>
+                  {loading ? (
+                    <Skeleton width={100} height={36} />
+                  ) : (
+                    <Typography variant="h5" component="div" sx={{ color: theme.palette.error.main }}>
+                      {formatAmount(monthlyExpenses)}
+                    </Typography>
+                  )}
+                </Box>
+                <Avatar 
+                  sx={{ 
+                    bgcolor: alpha(theme.palette.error.main, 0.1),
+                    color: theme.palette.error.main
+                  }}
+                >
+                  <ArrowDownwardIcon />
+                </Avatar>
+              </Box>
+              {/* Tarjeta de gastos mensuales */}
+              <Box sx={{ mt: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  color="error"
+                  fullWidth
+                  size="small" 
+                  startIcon={<AddIcon />} 
+                  onClick={handleAddExpense}
+                  sx={{ 
+                    py: 0.5,
+                    textTransform: 'none',
+                    borderRadius: 2,
+                    fontSize: '0.75rem',
+                    zIndex: 10,
+                    position: 'relative'
+                  }}
+                >
+                  {t('Agregar Gasto')}
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card 
+            sx={{ 
+              height: '100%', 
+              borderRadius: 2, 
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                height: '100%',
+                width: '8px',
+                backgroundColor: theme.palette.info.main,
+                borderTopRightRadius: 8,
+                borderBottomRightRadius: 8
+              }
+            }}
+          >
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography color="textSecondary" variant="body2" gutterBottom>
+                    {t('Sesiones activas')}
+                  </Typography>
+                  {loading ? (
+                    <Skeleton width={100} height={36} />
+                  ) : (
+                    <Typography variant="h5" component="div">
+                      {activeSessions}
+                    </Typography>
+                  )}
+                </Box>
+                <Avatar 
+                  sx={{ 
+                    bgcolor: alpha(theme.palette.info.main, 0.1),
+                    color: theme.palette.info.main
+                  }}
+                >
+                  <GroupIcon />
+                </Avatar>
+              </Box>
+              {/* Tarjeta de sesiones activas */}
+              <Box sx={{ mt: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  color="info"
+                  fullWidth
+                  size="small" 
+                  startIcon={<AddIcon />} 
+                  onClick={handleCreateSession}
+                  sx={{ 
+                    py: 0.5,
+                    textTransform: 'none',
+                    borderRadius: 2,
+                    fontSize: '0.75rem',
+                    zIndex: 10,
+                    position: 'relative'
+                  }}
+                >
+                  {t('Crear Sesión')}
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Componente de resumen de gastos por categoría con ancho completo */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12}>
+          <Typography variant="h6" component="h2" gutterBottom sx={{ mt: 2 }}>
+            {t('Resumen de Gastos')}
           </Typography>
-          
-          <Grid container spacing={{ xs: 1, sm: 3 }}>
-            <Grid item xs={6} sm={6} md={3}>
-              <Button
-                variant="contained"
-                color="primary"
-                fullWidth
-                onClick={() => navigate('/personal/add')}
-                startIcon={<ReceiptIcon fontSize={_isMobile ? 'small' : 'medium'} />}
-                sx={{ 
-                  py: { xs: 1, sm: 2 },
-                  borderRadius: { xs: 1.5, sm: 2 },
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  boxShadow: { xs: 1, sm: 2 },
-                  fontSize: { xs: '0.75rem', sm: '1rem' },
-                }}
-              >
-                {t('addExpense')}
-              </Button>
-            </Grid>
-            
-            <Grid item xs={6} sm={6} md={3}>
-              <Button
-                variant="contained"
-                color="success"
-                fullWidth
-                onClick={() => navigate('/personal/income/add')}
-                startIcon={<AttachMoneyIcon fontSize={_isMobile ? 'small' : 'medium'} />}
-                sx={{ 
-                  py: { xs: 1, sm: 2 },
-                  borderRadius: { xs: 1.5, sm: 2 },
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  boxShadow: { xs: 1, sm: 2 },
-                  fontSize: { xs: '0.75rem', sm: '1rem' },
-                }}
-              >
-                {t('addIncome')}
-              </Button>
-            </Grid>
-            
-            <Grid item xs={6} sm={6} md={3}>
-              <Button
-                variant="contained"
-                color="info"
-                fullWidth
-                onClick={() => navigate('/shared/create')}
-                startIcon={<FaceIcon fontSize={_isMobile ? 'small' : 'medium'} />}
-                sx={{ 
-                  py: { xs: 1, sm: 2 },
-                  borderRadius: { xs: 1.5, sm: 2 },
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  boxShadow: { xs: 1, sm: 2 },
-                  fontSize: { xs: '0.75rem', sm: '1rem' },
-                }}
-              >
-                {t('createSession')}
-              </Button>
-            </Grid>
-            
-            <Grid item xs={6} sm={6} md={3}>
-              <Button
-                variant="outlined"
-                fullWidth
-                onClick={() => navigate('/reports')}
-                startIcon={<TrendingUpIcon fontSize={_isMobile ? 'small' : 'medium'} />}
-                sx={{ 
-                  py: { xs: 1, sm: 2 },
-                  borderRadius: { xs: 1.5, sm: 2 },
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  fontSize: { xs: '0.75rem', sm: '1rem' },
-                }}
-              >
-                {t('viewReports')}
-              </Button>
-            </Grid>
-          </Grid>
-        </Box>
+        </Grid>
+        <Grid item xs={12}>
+          {/* Componente de resumen de gastos por categoría */}
+          <ExpenseSummaryByCategory />
+        </Grid>
+      </Grid>
+      
+      {/* Botón de recarga */}
+      <Box sx={{ position: 'fixed', bottom: 20, right: 20 }}>
+        <Tooltip title={t('refresh_data')}>
+          <IconButton
+            color="primary"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            sx={{ 
+              backgroundColor: theme.palette.background.paper,
+              boxShadow: 3,
+              '&:hover': {
+                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+              }
+            }}
+          >
+            {refreshing ? <CircularProgress size={24} /> : <RefreshIcon />}
+          </IconButton>
+        </Tooltip>
       </Box>
     </Container>
   );

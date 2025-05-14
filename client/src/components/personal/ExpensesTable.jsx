@@ -205,34 +205,39 @@ const ExpensesTable = ({
                     <InfoIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title={t('edit')}>
-                  <IconButton
-                    size="small"
-                    onClick={() => onEdit(expense)}
-                    sx={{ 
-                      color: theme.palette.primary.main,
-                      '&:hover': {
-                        bgcolor: alpha(theme.palette.primary.main, 0.1)
-                      }
-                    }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('delete')}>
-                  <IconButton
-                    size="small"
-                    onClick={() => onDelete(expense.id)}
-                    sx={{ 
-                      color: theme.palette.error.main,
-                      '&:hover': {
-                        bgcolor: alpha(theme.palette.error.main, 0.1)
-                      }
-                    }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                {/* Solo mostrar botones de edición y eliminación si NO es un gasto de sesión compartida */}
+                {!expense.isFromSharedSession && (
+                  <>
+                    <Tooltip title={t('edit')}>
+                      <IconButton
+                        size="small"
+                        onClick={() => onEdit(expense)}
+                        sx={{ 
+                          color: theme.palette.primary.main,
+                          '&:hover': {
+                            bgcolor: alpha(theme.palette.primary.main, 0.1)
+                          }
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={t('delete')}>
+                      <IconButton
+                        size="small"
+                        onClick={() => onDelete(expense.id)}
+                        sx={{ 
+                          color: theme.palette.error.main,
+                          '&:hover': {
+                            bgcolor: alpha(theme.palette.error.main, 0.1)
+                          }
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </>
+                )}
               </Box>
             </Stack>
           </CardContent>
@@ -384,28 +389,33 @@ const ExpensesTable = ({
                         <InfoIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title={t('edit')}>
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(expense);
-                        }}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title={t('delete')}>
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(expense.id);
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    {/* Solo mostrar botones de edición y eliminación si NO es un gasto de sesión compartida */}
+                    {!expense.isFromSharedSession && (
+                      <>
+                        <Tooltip title={t('edit')}>
+                          <IconButton 
+                            size="small" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit(expense);
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={t('delete')}>
+                          <IconButton 
+                            size="small" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(expense.id);
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </>
+                    )}
                     <Tooltip title={expandedRows[expense.id] ? t('collapse') : t('expand')}>
                       <IconButton 
                         size="small"

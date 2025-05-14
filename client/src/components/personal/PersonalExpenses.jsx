@@ -30,7 +30,8 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
-  Fab
+  Fab,
+  Divider
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -53,7 +54,9 @@ import {
   Close as CloseIcon,
   Refresh as RefreshIcon,
   FiberManualRecord as FiberManualRecordIcon,
-  Remove as RemoveIcon
+  Remove as RemoveIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import format from 'date-fns/format';
@@ -63,6 +66,21 @@ import { alpha } from '@mui/material/styles';
 import useRealTimeUpdates from '../../hooks/useRealTimeUpdates';
 import { RealTimeContext } from '../../App';
 import { useTheme, useMediaQuery } from '@mui/material';
+import { useLocation } from 'react-router-dom';
+
+// Importar componentes y utilidades personalizadas
+import ExpenseCard from './ExpenseCard';
+import { 
+  EXPENSE_CATEGORIES, 
+  INCOME_CATEGORIES, 
+  CATEGORY_ICONS, 
+  CATEGORY_COLORS, 
+  MONTH_NAMES,
+  formatAmount,
+  isSharedExpense,
+  generateExpenseKey,
+  getCategoryColor
+} from '../../utils/expenseUtils';
 
 // Renombrando variables no utilizadas para evitar advertencias
 const _Dialog = Dialog;
@@ -82,55 +100,6 @@ const _Switch = Switch;
 const _ExpenseIcon = ExpenseIcon;
 const _CloseIcon = CloseIcon;
 
-// Constantes
-const _EXPENSE_CATEGORIES = [
-  'Alquiler',
-  'Gasolina',
-  'Gastos hijo',
-  'Ocio',
-  'Otros',
-  'Tarjetas',
-  'Préstamos',
-  'Comida',
-  'Transporte',
-  'Servicios'
-];
-
-const _INCOME_CATEGORIES = ['Nómina', 'Otros'];
-
-const CATEGORY_ICONS = {
-  'Alquiler': <HomeIcon fontSize="small" />,
-  'Gasolina': <DirectionsCarIcon fontSize="small" />,
-  'Gastos hijo': <MoreHorizIcon fontSize="small" />,
-  'Ocio': <SportsEsportsIcon fontSize="small" />,
-  'Otros': <MoreHorizIcon fontSize="small" />,
-  'Tarjetas': <EuroSymbolIcon fontSize="small" />,
-  'Préstamos': <EuroSymbolIcon fontSize="small" />,
-  'Comida': <RestaurantIcon fontSize="small" />,
-  'Transporte': <DirectionsCarIcon fontSize="small" />,
-  'Servicios': <EuroSymbolIcon fontSize="small" />,
-  'Nómina': <WorkIcon fontSize="small" />
-};
-
-const CATEGORY_COLORS = {
-  'Alquiler': '#4caf50',
-  'Gasolina': '#f44336',
-  'Gastos hijo': '#2196f3',
-  'Ocio': '#ff9800',
-  'Otros': '#9e9e9e',
-  'Tarjetas': '#e91e63',
-  'Préstamos': '#9c27b0',
-  'Comida': '#8bc34a',
-  'Transporte': '#3f51b5',
-  'Servicios': '#00bcd4',
-  'Nómina': '#4caf50'
-};
-
-const MONTH_NAMES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-];
-
 const INITIAL_EXPENSE_DATA = {
   amount: '',
   name: '',
@@ -142,189 +111,11 @@ const INITIAL_EXPENSE_DATA = {
   recurringDay: ''
 };
 
-// Funciones auxiliares
-const formatAmount = (amount) => {
-  if (!amount && amount !== 0) return '0,00 €';
-  return amount.toLocaleString('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2
-  });
-};
-
-const getCategoryColor = (category) => CATEGORY_COLORS[category] || '#9e9e9e';
-
-// Componente de tarjeta para móviles
-const ExpenseCard = ({ expense, onView, onEdit, onDelete }) => {
-  const date = new Date(expense.date);
-  const formattedDate = format(date, 'dd MMM yyyy', { locale: es });
-  const icon = CATEGORY_ICONS[expense.category] || <MoreHorizIcon fontSize="small" />;
-  const isIncome = expense.type === 'income';
-  const isShared = !!expense.sessionReference;
-  
-  return (
-    <Paper 
-      sx={{ 
-        p: 1.5, 
-        mb: 1, 
-        borderRadius: 1.5,
-        border: '1px solid',
-        borderColor: 'divider',
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: 1,
-        cursor: 'pointer',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          bottom: 0,
-          width: 4,
-          backgroundColor: isIncome 
-            ? '#4caf50' 
-            : isShared 
-              ? '#2196f3' 
-              : getCategoryColor(expense.category),
-        }
-      }}
-      onClick={(e) => {
-        // Evitar que el click de los botones de acción se propague
-        if (e.defaultPrevented) return;
-        onView(expense);
-      }}
-    >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-          <Chip 
-            size="small"
-            icon={isIncome ? <IncomeIcon fontSize="small" /> : icon}
-            label={expense.category}
-            sx={{ 
-              backgroundColor: isIncome 
-                ? 'rgba(76, 175, 80, 0.1)' 
-                : isShared 
-                  ? 'rgba(33, 150, 243, 0.1)' 
-                  : `${getCategoryColor(expense.category)}20`,
-              color: isIncome 
-                ? '#4caf50' 
-                : isShared 
-                  ? '#2196f3' 
-                  : getCategoryColor(expense.category),
-              fontSize: '0.7rem',
-              height: 22
-            }}
-          />
-          <Typography 
-            variant="caption" 
-            color="text.secondary" 
-            sx={{ ml: 1, fontSize: '0.7rem', display: 'flex', alignItems: 'center' }}
-          >
-            <CalendarTodayIcon sx={{ fontSize: '0.85rem', mr: 0.5 }} />
-            {formattedDate}
-          </Typography>
-        </Box>
-
-        <Box sx={{ display: 'flex' }}>
-          <Tooltip title="Editar">
-            <IconButton 
-              size="small" 
-              onClick={(e) => {
-                e.preventDefault();
-                onEdit(expense);
-              }} 
-              sx={{ p: 0.5 }}
-            >
-              <EditIcon sx={{ fontSize: '1rem' }} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Eliminar">
-            <IconButton 
-              size="small" 
-              onClick={(e) => {
-                e.preventDefault();
-                onDelete(expense._id);
-              }} 
-              sx={{ p: 0.5 }}
-            >
-              <DeleteIcon sx={{ fontSize: '1rem' }} />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Box>
-
-      {/* Nombre/Descripción del gasto */}
-      <Box sx={{ 
-        fontWeight: 600, 
-        mb: 0.5, 
-        fontSize: '0.8rem',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        display: 'flex',
-        alignItems: 'center'
-      }}>
-        <Box component="span" sx={{ maxWidth: 'calc(100% - 70px)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {expense.name || expense.description}
-        </Box>
-        {(isIncome || isShared) && (
-          <Box sx={{ ml: 1, display: 'flex' }}>
-            {isIncome && (
-              <Chip
-                size="small"
-                label="Ingreso"
-                color="success"
-                sx={{ height: 18, fontSize: '0.6rem' }}
-              />
-            )}
-            {isShared && !isIncome && (
-              <Chip
-                size="small"
-                label="Compartido"
-                color="info"
-                sx={{ height: 18, fontSize: '0.6rem' }}
-              />
-            )}
-          </Box>
-        )}
-      </Box>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography 
-          variant="body1" 
-          sx={{ 
-            fontWeight: 700, 
-            color: isIncome ? 'success.main' : 'error.main',
-            fontSize: '0.9rem'
-          }}
-        >
-          {isIncome ? '+' : '-'}{formatAmount(expense.amount)}
-        </Typography>
-        
-        {expense.isRecurring && (
-          <Tooltip title="Gasto recurrente">
-            <Chip
-              icon={<TimerIcon fontSize="small" />}
-              label="Recurrente"
-              size="small"
-              sx={{ 
-                height: 20, 
-                fontSize: '0.6rem',
-                backgroundColor: 'rgba(25, 118, 210, 0.1)',
-                color: 'primary.main'
-              }}
-            />
-          </Tooltip>
-        )}
-      </Box>
-    </Paper>
-  );
-};
-
 const PersonalExpenses = () => {
   const { t } = useTranslation();
   const currentDate = new Date();
   const theme = useTheme();
+  const location = useLocation();
   
   // Añadir el contexto de tiempo real
   const { showNotification } = React.useContext(RealTimeContext);
@@ -661,7 +452,13 @@ const PersonalExpenses = () => {
       // Verificar si el gasto proviene de una sesión compartida
       const expenseToDelete = expenses.find(expense => expense._id === id);
       
-      if (expenseToDelete?.sessionReference?.sessionId) {
+      if (!expenseToDelete) {
+        setError('No se pudo encontrar el gasto a eliminar');
+        return;
+      }
+      
+      // Verificar si es un gasto de sesión compartida con isFromSharedSession
+      if (expenseToDelete.isFromSharedSession) {
         setError('No se pueden eliminar gastos que provienen de una sesión compartida');
         return;
       }
@@ -671,13 +468,14 @@ const PersonalExpenses = () => {
       
       // Si es un gasto recurrente, preguntar si quiere eliminar todas las instancias
       if (expenseToDelete?.isRecurring) {
+        const isIncome = expenseToDelete.type === 'income';
         const confirmRecurring = window.confirm(
-          '¿Deseas eliminar este gasto recurrente y todas sus instancias futuras?'
+          `¿Deseas eliminar este ${isIncome ? 'ingreso' : 'gasto'} recurrente y todas sus instancias futuras?`
         );
         
         if (confirmRecurring) {
           deleteAllRecurring = true;
-          confirmMessage = '¿Estás seguro? Esto eliminará este gasto y todas sus instancias futuras.';
+          confirmMessage = `¿Estás seguro? Esto eliminará este ${isIncome ? 'ingreso' : 'gasto'} y todas sus instancias futuras.`;
         }
       }
       
@@ -747,6 +545,22 @@ const PersonalExpenses = () => {
     fetchExpenses();
   }, [selectedMonth, selectedYear]);
 
+  // Comprobar si hay que abrir un diálogo al cargar (desde el Dashboard)
+  useEffect(() => {
+    if (location.state?.openExpenseDialog && location.state?.expenseType) {
+      const expenseType = location.state.expenseType;
+      console.log(`Abriendo formulario desde navegación para: ${expenseType}`);
+      
+      // Pequeño delay para que renderice primero la UI
+      setTimeout(() => {
+        _openNewExpense(expenseType);
+      }, 300);
+      
+      // Limpiar el estado para evitar que se abra de nuevo si se recarga la página
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, _openNewExpense]);
+
   // Cálculos derivados
   const _totals = expenses.reduce((acc, expense) => {
     const amount = Number(expense.amount || 0);
@@ -758,6 +572,124 @@ const PersonalExpenses = () => {
     acc.balance = acc.income - acc.expenses;
     return acc;
   }, { income: 0, expenses: 0, balance: 0 });
+
+  // Renombrar totals para usarlo en la UI
+  const totals = _totals;
+
+  // Función para renderizar el panel de resumen financiero
+  const renderFinancialSummary = () => {
+    return (
+      <Paper 
+        elevation={0}
+        sx={{ 
+          p: { xs: 2, sm: 3 }, 
+          mb: 2, 
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper'
+        }}
+      >
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={4}>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'row', md: 'column' },
+                alignItems: { xs: 'center', md: 'flex-start' },
+                justifyContent: { xs: 'space-between', md: 'flex-start' },
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.success.main, 0.1),
+                height: '100%',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: { xs: 0, md: 1 } }}>
+                <ArrowUpwardIcon color="success" sx={{ mr: 1 }} />
+                <Typography variant="subtitle1" color="text.secondary" fontWeight="medium">
+                  Total Ingresos
+                </Typography>
+              </Box>
+              <Typography 
+                variant={isMobile ? "h6" : "h5"} 
+                sx={{ fontWeight: 'bold', color: 'success.main', mt: { xs: 0, md: 1 } }}
+              >
+                {formatAmount(totals.income)}
+              </Typography>
+            </Box>
+          </Grid>
+          
+          <Grid item xs={12} md={4}>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'row', md: 'column' },
+                alignItems: { xs: 'center', md: 'flex-start' },
+                justifyContent: { xs: 'space-between', md: 'flex-start' },
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.error.main, 0.1),
+                height: '100%',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: { xs: 0, md: 1 } }}>
+                <ArrowDownwardIcon color="error" sx={{ mr: 1 }} />
+                <Typography variant="subtitle1" color="text.secondary" fontWeight="medium">
+                  Total Gastos
+                </Typography>
+              </Box>
+              <Typography 
+                variant={isMobile ? "h6" : "h5"} 
+                sx={{ fontWeight: 'bold', color: 'error.main', mt: { xs: 0, md: 1 } }}
+              >
+                {formatAmount(totals.expenses)}
+              </Typography>
+            </Box>
+          </Grid>
+          
+          <Grid item xs={12} md={4}>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'row', md: 'column' },
+                alignItems: { xs: 'center', md: 'flex-start' },
+                justifyContent: { xs: 'space-between', md: 'flex-start' },
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: alpha(
+                  totals.balance >= 0 ? theme.palette.info.main : theme.palette.warning.main, 
+                  0.1
+                ),
+                height: '100%',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: { xs: 0, md: 1 } }}>
+                <EuroSymbolIcon 
+                  sx={{ 
+                    mr: 1, 
+                    color: totals.balance >= 0 ? 'info.main' : 'warning.main'
+                  }} 
+                />
+                <Typography variant="subtitle1" color="text.secondary" fontWeight="medium">
+                  Balance
+                </Typography>
+              </Box>
+              <Typography 
+                variant={isMobile ? "h6" : "h5"} 
+                sx={{ 
+                  fontWeight: 'bold', 
+                  color: totals.balance >= 0 ? 'info.main' : 'warning.main',
+                  mt: { xs: 0, md: 1 }
+                }}
+              >
+                {formatAmount(totals.balance)}
+              </Typography>
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
+    );
+  };
 
   // Función para renderizar la tabla o las tarjetas según el dispositivo
   const renderExpensesList = () => {
@@ -789,10 +721,10 @@ const PersonalExpenses = () => {
               if (a.type === 'income' && b.type !== 'income') return -1;
               if (a.type !== 'income' && b.type === 'income') return 1;
               
-              // Prioridad 2: Gastos compartidos (si tiene sessionReference es compartido)
+              // Prioridad 2: Gastos compartidos (usando isFromSharedSession)
               if (a.type !== 'income' && b.type !== 'income') {
-                const aIsShared = !!a.sessionReference;
-                const bIsShared = !!b.sessionReference;
+                const aIsShared = a.isFromSharedSession === true;
+                const bIsShared = b.isFromSharedSession === true;
                 if (aIsShared && !bIsShared) return -1;
                 if (!aIsShared && bIsShared) return 1;
               }
@@ -834,10 +766,10 @@ const PersonalExpenses = () => {
                 if (a.type === 'income' && b.type !== 'income') return -1;
                 if (a.type !== 'income' && b.type === 'income') return 1;
                 
-                // Prioridad 2: Gastos compartidos (si tiene sessionReference es compartido)
+                // Prioridad 2: Gastos compartidos (usando isFromSharedSession)
                 if (a.type !== 'income' && b.type !== 'income') {
-                  const aIsShared = !!a.sessionReference;
-                  const bIsShared = !!b.sessionReference;
+                  const aIsShared = a.isFromSharedSession === true;
+                  const bIsShared = b.isFromSharedSession === true;
                   if (aIsShared && !bIsShared) return -1;
                   if (!aIsShared && bIsShared) return 1;
                 }
@@ -850,7 +782,7 @@ const PersonalExpenses = () => {
                 const formattedDate = format(date, 'dd MMM yyyy', { locale: es });
                 const icon = CATEGORY_ICONS[expense.category] || <MoreHorizIcon fontSize="small" />;
                 const isIncome = expense.type === 'income';
-                const isShared = !!expense.sessionReference;
+                const isShared = expense.isFromSharedSession === true;
 
                 return (
                   <TableRow 
@@ -873,23 +805,6 @@ const PersonalExpenses = () => {
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         {expense.name || expense.description}
-                        {isIncome && (
-                          <Chip
-                            size="small"
-                            icon={<IncomeIcon fontSize="small" />}
-                            label="Ingreso"
-                            color="success"
-                            sx={{ fontSize: '0.7rem', ml: 1 }}
-                          />
-                        )}
-                        {isShared && !isIncome && (
-                          <Chip
-                            size="small"
-                            label="Compartido"
-                            color="info"
-                            sx={{ fontSize: '0.7rem', ml: 1 }}
-                          />
-                        )}
                       </Box>
                     </TableCell>
                     <TableCell align="center">
@@ -934,28 +849,33 @@ const PersonalExpenses = () => {
                       )}
                     </TableCell>
                     <TableCell align="center">
-                      <Tooltip title="Editar">
-                        <IconButton 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(expense);
-                          }}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Eliminar">
-                        <IconButton 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(expense._id);
-                          }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      {/* Solo mostrar botones si no es un gasto de sesión compartida */}
+                      {!isShared && (
+                        <>
+                          <Tooltip title="Editar">
+                            <IconButton 
+                              size="small" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(expense);
+                              }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Eliminar">
+                            <IconButton 
+                              size="small" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(expense._id);
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -985,6 +905,194 @@ const PersonalExpenses = () => {
     console.log(`Abriendo formulario para: ${type}`);
     _openNewExpense(type);
   }, [_openNewExpense]);
+
+  // Componente para mostrar detalles de un gasto
+  const renderExpenseDetails = () => {
+    if (!selectedExpense) return null;
+    
+    const isIncome = selectedExpense.type === 'income';
+    const isShared = selectedExpense.isFromSharedSession === true;
+    const date = new Date(selectedExpense.date);
+    
+    return (
+      <Dialog 
+        open={openViewDialog} 
+        onClose={() => setOpenViewDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6">
+            Detalle del {isIncome ? 'Ingreso' : isShared ? 'Gasto Compartido' : 'Gasto'}
+          </Typography>
+          {selectedExpense.date && (
+            <Chip 
+              icon={<CalendarTodayIcon />} 
+              label={format(date, 'dd MMM yyyy', { locale: es })}
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+          )}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h5" sx={{ mb: 1, fontWeight: 500 }}>
+              {selectedExpense.name}
+              {isShared && (
+                <Chip 
+                  label="Compartido" 
+                  size="small" 
+                  color="info" 
+                  sx={{ ml: 1, fontSize: '0.7rem' }}
+                />
+              )}
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+              {selectedExpense.description}
+            </Typography>
+            
+            <Divider sx={{ my: 2 }} />
+            
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Categoría
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                  <Chip 
+                    size="small"
+                    label={selectedExpense.category}
+                    sx={{
+                      backgroundColor: `${getCategoryColor(selectedExpense.category)}20`,
+                      color: getCategoryColor(selectedExpense.category)
+                    }}
+                    icon={CATEGORY_ICONS[selectedExpense.category]}
+                  />
+                </Box>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Monto
+                </Typography>
+                <Typography 
+                  variant="h6" 
+                  sx={{ 
+                    fontWeight: 'bold', 
+                    color: isIncome ? 'success.main' : 'error.main',
+                    mt: 0.5
+                  }}
+                >
+                  {isIncome ? '+' : '-'}{formatAmount(selectedExpense.amount)}
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Tipo
+                </Typography>
+                <Typography variant="body1" sx={{ mt: 0.5 }}>
+                  {isIncome ? 'Ingreso' : 'Gasto'}
+                </Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Fecha
+                </Typography>
+                <Typography variant="body1" sx={{ mt: 0.5 }}>
+                  {format(date, 'dd MMMM yyyy', { locale: es })}
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Recurrente
+                </Typography>
+                <Typography variant="body1" sx={{ mt: 0.5 }}>
+                  {selectedExpense.isRecurring ? 'Sí' : 'No'}
+                </Typography>
+              </Grid>
+              
+              {isShared && selectedExpense.sessionReference && (
+                <>
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="subtitle1" fontWeight="medium" sx={{ mt: 1 }}>
+                      Información de Gasto Compartido
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Sesión
+                    </Typography>
+                    <Typography variant="body1" sx={{ mt: 0.5 }}>
+                      {selectedExpense.sessionReference.sessionName || 'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Porcentaje
+                    </Typography>
+                    <Typography variant="body1" sx={{ mt: 0.5 }}>
+                      {selectedExpense.sessionReference.percentage?.toFixed(2) || 0}%
+                    </Typography>
+                  </Grid>
+                  {selectedExpense.sessionReference.totalAmount && (
+                    <>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Monto Total de la Sesión
+                        </Typography>
+                        <Typography variant="body1" sx={{ mt: 0.5 }}>
+                          {formatAmount(selectedExpense.sessionReference.totalAmount)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Tu Parte (calculada)
+                        </Typography>
+                        <Typography variant="body1" sx={{ mt: 0.5, fontWeight: 'medium' }}>
+                          {formatAmount(selectedExpense.amount)} ({selectedExpense.sessionReference.percentage?.toFixed(2) || 0}%)
+                        </Typography>
+                      </Grid>
+                    </>
+                  )}
+                  {selectedExpense.sessionReference.year && selectedExpense.sessionReference.month !== undefined && (
+                    <Grid item xs={6}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Período
+                      </Typography>
+                      <Typography variant="body1" sx={{ mt: 0.5 }}>
+                        {format(new Date(selectedExpense.sessionReference.year, selectedExpense.sessionReference.month, 1), 'MMMM yyyy', { locale: es })}
+                      </Typography>
+                    </Grid>
+                  )}
+                </>
+              )}
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          {/* Solo mostrar botón de editar si NO es un gasto compartido */}
+          {!isShared && (
+            <Button 
+              onClick={() => handleEdit(selectedExpense)} 
+              color="primary"
+              startIcon={<EditIcon />}
+            >
+              Editar
+            </Button>
+          )}
+          <Button 
+            onClick={() => setOpenViewDialog(false)} 
+            color="inherit"
+          >
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 0.5, sm: 1 }, px: { xs: 0, sm: 0.5 } }}>
@@ -1145,391 +1253,245 @@ const PersonalExpenses = () => {
             </Box>
           )}
         </Box>
-      </Box>
+        
+        {/* Panel de resumen financiero */}
+        {!loading && expenses.length > 0 && renderFinancialSummary()}
       
-      {renderExpensesList()}
+        {renderExpensesList()}
 
-      {/* Diálogo para crear/editar gastos */}
-      <Dialog
-        open={openExpenseDialog}
-        onClose={() => !submitting && closeDialog()}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            boxShadow: '0px 8px 24px rgba(0,0,0,0.15)',
-            overflow: 'visible'
-          }
-        }}
-      >
-        <DialogTitle
-          sx={{
-            py: 2,
-            px: 3, 
-            bgcolor: expenseData.type === 'income' ? 'success.light' : 'primary.main',
-            color: 'white',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
+        {/* Diálogo para crear/editar gastos */}
+        <Dialog
+          open={openExpenseDialog}
+          onClose={() => !submitting && closeDialog()}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 2,
+              boxShadow: '0px 8px 24px rgba(0,0,0,0.15)',
+              overflow: 'visible'
+            }
           }}
         >
-          <Typography variant="h6" component="div">{selectedExpense ? 'Editar' : 'Añadir'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}</Typography>
-          <IconButton
-            aria-label="close"
-            onClick={() => !submitting && closeDialog()}
+          <DialogTitle
             sx={{
+              py: 2,
+              px: 3, 
+              bgcolor: expenseData.type === 'income' ? 'success.light' : 'primary.main',
               color: 'white',
-              width: 32,
-              height: 32
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
             }}
-            disabled={submitting}
           >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ p: 3, pt: 4 }}>
-          <Box component="form" onSubmit={_handleSubmit} ref={_formRef} sx={{ pt: 2 }}>
-            <Grid container spacing={3}>
-              {/* Importe */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  name="amount"
-                  type="number"
-                  value={expenseData.amount}
-                  onChange={_handleExpenseChange}
-                  disabled={submitting}
-                  required
-                  placeholder="Importe *"
-                  InputProps={{
-                    startAdornment: <InputAdornment position="start">€</InputAdornment>
-                  }}
-                  inputProps={{
-                    step: "0.01",
-                    min: 0
-                  }}
-                  sx={{ marginBottom: { xs: 2, sm: 0 } }}
-                />
-              </Grid>
-              
-              {/* Categoría */}
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth variant="outlined" sx={{ marginBottom: { xs: 2, sm: 0 } }}>
-                  <InputLabel 
-                    id="category-label" 
-                    required
-                    shrink={true}
-                    style={{ display: 'none' }} // Ocultar label visualmente
-                  >
-                    Categoría *
-                  </InputLabel>
-                  <Select
-                    labelId="category-label"
-                    value={expenseData.category}
-                    name="category"
-                    onChange={_handleExpenseChange}
-                    disabled={submitting}
-                    required
-                    displayEmpty
-                    renderValue={selected => selected || "Categoría *"}
-                  >
-                    <MenuItem value="" disabled>
-                      <em>Categoría *</em>
-                    </MenuItem>
-                    {expenseData.type === 'income' ? (
-                      _INCOME_CATEGORIES.map(cat => (
-                        <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                      ))
-                    ) : (
-                      _EXPENSE_CATEGORIES.map(cat => (
-                        <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                      ))
-                    )}
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              {/* Nombre */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  name="name"
-                  value={expenseData.name}
-                  onChange={_handleExpenseChange}
-                  disabled={submitting}
-                  placeholder="Nombre"
-                  sx={{ marginBottom: { xs: 2, sm: 0 } }}
-                />
-              </Grid>
-              
-              {/* Fecha */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  name="date"
-                  type="date"
-                  value={expenseData.date}
-                  onChange={_handleExpenseChange}
-                  disabled={submitting}
-                  required
-                  placeholder="Fecha *"
-                  inputProps={{
-                    style: { height: isMobile ? '24px' : 'auto' }
-                  }}
-                  sx={{ marginBottom: { xs: 2, sm: 0 } }}
-                />
-              </Grid>
-              
-              {/* Switch para gasto recurrente */}
-              <Grid item xs={12} sm={6}>
-                <Paper 
-                  variant="outlined" 
-                  sx={{ 
-                    p: 1.5, 
-                    display: 'flex', 
-                    alignItems: 'center',
-                    height: '56px',
-                    mb: { xs: 2, sm: 0 }
-                  }}
-                >
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={expenseData.isRecurring}
-                        onChange={_handleRecurringChange}
-                        name="isRecurring"
-                        color="primary"
-                        disabled={submitting}
-                      />
-                    }
-                    label="Es un gasto recurrente"
-                    sx={{ m: 0 }}
-                  />
-                </Paper>
-                
-                {expenseData.isRecurring && (
+            <Typography variant="h6" component="div">{selectedExpense ? 'Editar' : 'Añadir'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}</Typography>
+            <IconButton
+              aria-label="close"
+              onClick={() => !submitting && closeDialog()}
+              sx={{
+                color: 'white',
+                width: 32,
+                height: 32
+              }}
+              disabled={submitting}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent sx={{ p: 3, pt: 4 }}>
+            <Box component="form" onSubmit={_handleSubmit} ref={_formRef} sx={{ pt: 2 }}>
+              <Grid container spacing={3}>
+                {/* Importe */}
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     variant="outlined"
-                    margin="normal"
-                    name="recurringDay"
+                    name="amount"
                     type="number"
-                    value={expenseData.recurringDay}
+                    value={expenseData.amount}
                     onChange={_handleExpenseChange}
                     disabled={submitting}
-                    placeholder="Día del mes para recurrencia"
+                    required
+                    placeholder="Importe *"
                     InputProps={{
-                      endAdornment: <InputAdornment position="end">del mes</InputAdornment>,
+                      startAdornment: <InputAdornment position="start">€</InputAdornment>
                     }}
                     inputProps={{
-                      min: 1,
-                      max: 31,
+                      step: "0.01",
+                      min: 0
                     }}
-                    helperText="Día del mes en que se repetirá este gasto"
-                    sx={{ mt: 2 }}
+                    sx={{ marginBottom: { xs: 2, sm: 0 } }}
                   />
-                )}
-              </Grid>
-              
-              {/* Descripción */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  name="description"
-                  value={expenseData.description}
-                  onChange={_handleExpenseChange}
-                  disabled={submitting}
-                  multiline
-                  rows={3}
-                  placeholder="Descripción"
-                />
-              </Grid>
-            </Grid>
-          </Box>
-          
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-          <Button 
-            onClick={closeDialog} 
-            disabled={submitting}
-            color="inherit"
-            variant="outlined"
-          >
-            Cancelar
-          </Button>
-          <Button 
-            onClick={_handleSubmit} 
-            variant="contained" 
-            disabled={submitting}
-            startIcon={submitting ? <CircularProgress size={20} /> : null}
-            color={expenseData.type === 'income' ? 'success' : 'primary'}
-            sx={{ ml: 1 }}
-          >
-            {submitting ? 'Guardando...' : 'Guardar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Diálogo para visualizar detalles del gasto */}
-      <Dialog
-        open={openViewDialog}
-        onClose={() => setOpenViewDialog(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            boxShadow: '0px 8px 24px rgba(0,0,0,0.15)',
-          }
-        }}
-      >
-        {selectedExpense && (
-          <>
-            <DialogTitle sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              borderBottom: '1px solid',
-              borderColor: 'divider',
-              p: 2,
-              bgcolor: selectedExpense.type === 'income' ? 'success.light' : 'error.light',
-              color: 'white'
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }} component="div">
-                {selectedExpense.type === 'income' ? (
-                  <IncomeIcon sx={{ mr: 1 }} />
-                ) : (
-                  <ExpenseIcon sx={{ mr: 1 }} />
-                )}
-                {selectedExpense.type === 'income' ? 'Detalle del Ingreso' : 'Detalle del Gasto'}
-              </Box>
-              <IconButton
-                aria-label="close"
-                onClick={() => setOpenViewDialog(false)}
-                sx={{
-                  color: 'white'
-                }}
-              >
-                <CloseIcon />
-              </IconButton>
-            </DialogTitle>
-            <DialogContent sx={{ p: 3 }}>
-              <Box sx={{ p: 1 }}>
-                <Grid container spacing={3}>
-                  {/* Nombre */}
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" color="text.secondary">Nombre</Typography>
-                    <Typography variant="body1" sx={{ fontWeight: 'medium', mt: 0.5 }}>
-                      {selectedExpense.name || '-'}
-                    </Typography>
-                  </Grid>
-                  
-                  {/* Monto */}
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Importe</Typography>
-                    <Typography 
-                      variant="body1" 
-                      sx={{ 
-                        fontWeight: 'bold',
-                        color: selectedExpense.type === 'income' ? 'success.main' : 'error.main',
-                        mt: 0.5,
-                        fontSize: '1.1rem'
-                      }}
-                    >
-                      {selectedExpense.type === 'income' ? '+' : '-'}{formatAmount(selectedExpense.amount)}
-                    </Typography>
-                  </Grid>
-                  
-                  {/* Categoría */}
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Categoría</Typography>
-                    <Box sx={{ mt: 0.5 }}>
-                      <Chip
-                        icon={CATEGORY_ICONS[selectedExpense.category] || <MoreHorizIcon fontSize="small" />}
-                        label={selectedExpense.category}
-                        sx={{
-                          backgroundColor: `${getCategoryColor(selectedExpense.category)}20`,
-                          color: getCategoryColor(selectedExpense.category)
-                        }}
-                      />
-                    </Box>
-                  </Grid>
-                  
-                  {/* Fecha */}
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Fecha</Typography>
-                    <Typography variant="body1" sx={{ mt: 0.5, display: 'flex', alignItems: 'center' }}>
-                      <CalendarTodayIcon sx={{ fontSize: '1rem', mr: 0.5 }} />
-                      {format(new Date(selectedExpense.date), 'dd MMM yyyy', { locale: es })}
-                    </Typography>
-                  </Grid>
-                  
-                  {/* Es recurrente */}
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Recurrente</Typography>
-                    <Box sx={{ mt: 0.5 }}>
-                      {selectedExpense.isRecurring ? (
-                        <Chip
-                          icon={<TimerIcon fontSize="small" />}
-                          label="Sí"
-                          color="primary"
-                          variant="outlined"
-                        />
-                      ) : (
-                        <Chip
-                          label="No"
-                          variant="outlined"
-                          color="default"
-                        />
-                      )}
-                    </Box>
-                  </Grid>
-                  
-                  {/* Día recurrente */}
-                  {selectedExpense.isRecurring && (
-                    <Grid item xs={12}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Día del mes para recurrencia
-                      </Typography>
-                      <Typography variant="body1" sx={{ mt: 0.5 }}>
-                        {selectedExpense.recurringDay || 'No especificado'}
-                      </Typography>
-                    </Grid>
-                  )}
-                  
-                  {/* Descripción */}
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" color="text.secondary">Descripción</Typography>
-                    <Paper variant="outlined" sx={{ p: 1.5, mt: 0.5, whiteSpace: 'pre-wrap', minHeight: '60px' }}>
-                      <Typography variant="body2">
-                        {selectedExpense.description || '-'}
-                      </Typography>
-                    </Paper>
-                  </Grid>
                 </Grid>
-              </Box>
-            </DialogContent>
-            <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-              <Button onClick={() => handleEdit(selectedExpense)} color="primary" startIcon={<EditIcon />} variant="outlined">
-                Editar
-              </Button>
-              <Button onClick={() => setOpenViewDialog(false)} color="inherit" sx={{ ml: 1 }}>
-                Cerrar
-              </Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
+                
+                {/* Categoría */}
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth variant="outlined" sx={{ marginBottom: { xs: 2, sm: 0 } }}>
+                    <InputLabel 
+                      id="category-label" 
+                      required
+                      shrink={true}
+                      style={{ display: 'none' }} // Ocultar label visualmente
+                    >
+                      Categoría *
+                    </InputLabel>
+                    <Select
+                      labelId="category-label"
+                      value={expenseData.category}
+                      name="category"
+                      onChange={_handleExpenseChange}
+                      disabled={submitting}
+                      required
+                      displayEmpty
+                      renderValue={selected => selected || "Categoría *"}
+                    >
+                      <MenuItem value="" disabled>
+                        <em>Categoría *</em>
+                      </MenuItem>
+                      {expenseData.type === 'income' ? (
+                        INCOME_CATEGORIES.map(cat => (
+                          <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                        ))
+                      ) : (
+                        EXPENSE_CATEGORIES.map(cat => (
+                          <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                {/* Nombre */}
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    name="name"
+                    value={expenseData.name}
+                    onChange={_handleExpenseChange}
+                    disabled={submitting}
+                    placeholder="Nombre"
+                    sx={{ marginBottom: { xs: 2, sm: 0 } }}
+                  />
+                </Grid>
+                
+                {/* Fecha */}
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    name="date"
+                    type="date"
+                    value={expenseData.date}
+                    onChange={_handleExpenseChange}
+                    disabled={submitting}
+                    required
+                    placeholder="Fecha *"
+                    inputProps={{
+                      style: { height: isMobile ? '24px' : 'auto' }
+                    }}
+                    sx={{ marginBottom: { xs: 2, sm: 0 } }}
+                  />
+                </Grid>
+                
+                {/* Switch para gasto recurrente */}
+                <Grid item xs={12} sm={6}>
+                  <Paper 
+                    variant="outlined" 
+                    sx={{ 
+                      p: 1.5, 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      height: '56px',
+                      mb: { xs: 2, sm: 0 }
+                    }}
+                  >
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={expenseData.isRecurring}
+                          onChange={_handleRecurringChange}
+                          name="isRecurring"
+                          color="primary"
+                          disabled={submitting}
+                        />
+                      }
+                      label={expenseData.type === 'income' ? "Es un ingreso recurrente" : "Es un gasto recurrente"}
+                      sx={{ m: 0 }}
+                    />
+                  </Paper>
+                  
+                  {expenseData.isRecurring && (
+                    <TextField
+                      fullWidth
+                      variant="outlined"
+                      margin="normal"
+                      name="recurringDay"
+                      type="number"
+                      value={expenseData.recurringDay}
+                      onChange={_handleExpenseChange}
+                      disabled={submitting}
+                      placeholder="Día del mes para recurrencia"
+                      InputProps={{
+                        endAdornment: <InputAdornment position="end">del mes</InputAdornment>,
+                      }}
+                      inputProps={{
+                        min: 1,
+                        max: 31,
+                      }}
+                      helperText={`Día del mes en que se repetirá este ${expenseData.type === 'income' ? 'ingreso' : 'gasto'}`}
+                      sx={{ mt: 2 }}
+                    />
+                  )}
+                </Grid>
+                
+                {/* Descripción */}
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    name="description"
+                    value={expenseData.description}
+                    onChange={_handleExpenseChange}
+                    disabled={submitting}
+                    multiline
+                    rows={3}
+                    placeholder="Descripción"
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+            
+            {error && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {error}
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Button 
+              onClick={closeDialog} 
+              disabled={submitting}
+              color="inherit"
+              variant="outlined"
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={_handleSubmit} 
+              variant="contained" 
+              disabled={submitting}
+              startIcon={submitting ? <CircularProgress size={20} /> : null}
+              color={expenseData.type === 'income' ? 'success' : 'primary'}
+              sx={{ ml: 1 }}
+            >
+              {submitting ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {renderExpenseDetails()}
+      </Box>
     </Container>
   );
 };

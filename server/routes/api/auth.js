@@ -11,49 +11,30 @@ const User = require('../../models/User');
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
-    console.log('Intento de login recibido. Headers:', req.headers);
-    console.log('Cuerpo de la solicitud:', req.body);
-    
-    // Verificar si el cuerpo de la solicitud contiene datos
-    if (!req.body || Object.keys(req.body).length === 0) {
-      console.error('Error: Cuerpo de la solicitud vacío');
-      return res.status(400).json({ msg: 'Datos de inicio de sesión no proporcionados' });
-    }
-    
+    console.log('Intento de login recibido:', req.body.email);
     const { email, password } = req.body;
 
     // Validar campos requeridos
     if (!email || !password) {
-      return res.status(400).json({ msg: 'Por favor, complete todos los campos' });
+      return res.status(400).json({ msg: 'Por favor, complete todos los campos obligatorios' });
     }
 
-    console.log('Buscando usuario con email:', email.toLowerCase());
-    
     // Verificar si el usuario existe
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      console.log('Usuario no encontrado:', email);
+      console.log('Usuario no encontrado en login:', email);
       return res.status(400).json({ msg: 'Credenciales inválidas' });
     }
 
-    console.log('Usuario encontrado, verificando contraseña...');
-    
-    // Verificar contraseña directamente con bcrypt
-    try {
-      const isMatch = await bcrypt.compare(password, user.password);
-      console.log('Resultado de verificación de contraseña:', isMatch ? 'Correcta' : 'Incorrecta');
-      
-      if (!isMatch) {
-        console.log('Contraseña incorrecta para:', email);
-        return res.status(400).json({ msg: 'Credenciales inválidas' });
-      }
-    } catch (err) {
-      console.error('Error al verificar contraseña:', err);
-      return res.status(500).json({ msg: 'Error al verificar credenciales' });
+    // Verificar contraseña
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      console.log('Contraseña incorrecta para:', email);
+      return res.status(400).json({ msg: 'Credenciales inválidas' });
     }
 
-    console.log('Contraseña correcta, generando token...');
-    
+    console.log('Login exitoso para:', email);
+
     // Crear y devolver token JWT
     const payload = {
       user: {
@@ -63,27 +44,56 @@ router.post('/login', async (req, res) => {
       }
     };
 
-    const token = jwt.sign(
+    jwt.sign(
       payload,
       config.jwtSecret,
-      { expiresIn: '7d' }  // Aumentado a 7 días para evitar expiración frecuente
-    );
-    
-    console.log('Login exitoso. Token generado para:', email);
-    console.log('Token ejemplo:', token.substring(0, 20) + '...');
-    
-    // Retornar respuesta exitosa
-    return res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        name: user.name,
-        last_name: user.last_name,
-        settings: user.settings
+      { expiresIn: '24h' },
+      (err, token) => {
+        if (err) {
+          console.error('Error al generar token en login:', err);
+          throw err;
+        }
+        
+        // Asegurarnos de enviar la fecha correcta
+        const userData = user.toObject();
+        
+        // Asegurar que se envía la fecha de registro
+        console.log('Fecha de registro del usuario (createdAt):', user.createdAt);
+        console.log('Fecha de registro del usuario (fecha):', user.fecha);
+        
+        // Si no hay fecha, usar createdAt
+        if (!userData.fecha) {
+          userData.fecha = user.createdAt;
+          
+          // Actualizar el campo fecha en la base de datos de forma segura
+          try {
+            User.findByIdAndUpdate(user._id, { fecha: user.createdAt }).exec();
+          } catch (error) {
+            console.error('Error al actualizar el campo fecha:', error);
+          }
+        }
+        
+        // Eliminar fecha del campo settings si existe para evitar confusiones
+        if (userData.settings && userData.settings.fecha) {
+          delete userData.settings.fecha;
+        }
+        
+        // Enviar respuesta con token y datos del usuario
+        res.json({
+          token,
+          user: {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            last_name: user.last_name,
+            email: user.email,
+            settings: user.settings,
+            fecha: user.fecha || user.createdAt, // Usar cualquiera que esté disponible
+            createdAt: user.createdAt
+          }
+        });
       }
-    });
+    );
   } catch (err) {
     console.error('Error en login:', err.message, err.stack);
     return res.status(500).json({ 
@@ -105,7 +115,32 @@ router.get('/user', auth, async (req, res) => {
       return res.status(404).json({ msg: 'Usuario no encontrado' });
     }
     console.log('Datos de usuario enviados correctamente');
-    res.json(user);
+    
+    // Asegurar que se envía la fecha correcta de creación del usuario
+    let userData = user.toObject();
+    
+    // Asegurar que siempre tenemos una fecha de registro
+    console.log('Fecha de registro del usuario (createdAt):', user.createdAt);
+    console.log('Fecha de registro del usuario (fecha):', user.fecha);
+    
+    // Si no hay fecha, usar createdAt
+    if (!userData.fecha) {
+      userData.fecha = user.createdAt;
+      
+      // Actualizar el campo fecha en la base de datos de forma segura
+      try {
+        User.findByIdAndUpdate(user._id, { fecha: user.createdAt }).exec();
+      } catch (error) {
+        console.error('Error al actualizar el campo fecha:', error);
+      }
+    }
+    
+    // Eliminar fecha del campo settings si existe para evitar confusiones
+    if (userData.settings && userData.settings.fecha) {
+      delete userData.settings.fecha;
+    }
+    
+    res.json(userData);
   } catch (err) {
     console.error('Error al obtener usuario:', err.message);
     res.status(500).send('Error del servidor');
@@ -194,7 +229,9 @@ router.get('/verify', async (req, res) => {
           username: user.username,
           name: user.name,
           last_name: user.last_name,
-          settings: user.settings
+          settings: user.settings,
+          fecha: user.fecha || user.createdAt, // Usar cualquiera que esté disponible
+          createdAt: user.createdAt
         }
       });
     } catch (err) {
