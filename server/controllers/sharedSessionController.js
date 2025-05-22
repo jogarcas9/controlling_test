@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { SharedSession, PersonalExpense, ParticipantAllocation, User } = require('../models');
-const { allocationService, syncService } = require('../services');
+const allocationService = require('../services/allocationService');
+const syncService = require('../services/syncService');
 const allocationSyncService = require('../services/allocationSyncService');
 const { ObjectId } = mongoose.Types;
 const crypto = require('crypto');
@@ -388,28 +389,58 @@ exports.createSession = async (req, res) => {
 
     // Filtrar participantes únicos y válidos
     const emailsSet = new Set();
-    const uniqueParticipants = participants.filter(participant => {
+    const validParticipants = [];
+    const invalidParticipants = [];
+
+    for (const participant of participants) {
       if (!participant.email || typeof participant.email !== 'string') {
-        return false;
+        continue;
       }
       const email = participant.email.toLowerCase().trim();
       
       // No incluir al creador como participante adicional
       if (email === creatorEmail) {
         console.log(`Excluyendo al creador ${creatorEmail} de la lista de participantes invitados`);
-        return false;
+        continue;
       }
       
       // No duplicar emails
       if (emailsSet.has(email)) {
-        return false;
+        continue;
+      }
+      
+      // Buscar si el usuario existe
+      const existingUser = await User.findOne({ 
+        $or: [
+          { email: email },
+          { email: email.replace(/([^@]+)@/, '$1e@') }, // Intentar con una 'e' adicional
+          { email: email.replace(/([^@]+)e@/, '$1@') }  // Intentar sin la 'e'
+        ]
+      }).session(dbSession);
+
+      if (!existingUser) {
+        console.log(`Usuario no encontrado para el email: ${email}`);
+        invalidParticipants.push({
+          email: email,
+          reason: 'Usuario no registrado en el sistema'
+        });
+        continue;
       }
       
       emailsSet.add(email);
-      return true;
-    });
+      validParticipants.push({
+        ...participant,
+        email: email,
+        userId: existingUser._id,
+        name: existingUser.name || existingUser.nombre || email
+      });
+    }
 
-    console.log(`Procesados ${uniqueParticipants.length} participantes únicos`);
+    if (invalidParticipants.length > 0) {
+      console.log('Participantes inválidos encontrados:', invalidParticipants);
+    }
+
+    console.log(`Procesados ${validParticipants.length} participantes válidos`);
 
     // Crear la sesión compartida
     const newSession = new SharedSession({
@@ -419,46 +450,38 @@ exports.createSession = async (req, res) => {
       sessionType,
       status: 'active',
       // Bloquear solo si hay otros participantes
-      isLocked: uniqueParticipants.length > 0,
+      isLocked: validParticipants.length > 0,
       participants: [],
       // Establecer fechas a null o a valores constantes
       date: null,
       startDate: null,
-      endDate: null
+      endDate: null,
+      yearlyExpenses: [] // Inicializar array de gastos anuales
     });
 
     // Añadir al creador como primer participante con estado aceptado
     newSession.participants.push({
       userId: req.user.id,
-      name: creator.nombre || creator.email,
+      name: creator.nombre || creator.name || creator.email,
       email: creatorEmail,
-      status: 'accepted', // El creador siempre acepta automáticamente
+      status: 'accepted',
       role: 'admin',
       canEdit: true,
       canDelete: true,
-      responseDate: new Date() // Establecer fecha de respuesta para el creador
+      responseDate: new Date()
     });
 
-    console.log(`Creador añadido como participante aceptado`);
-
-    // Procesar y añadir otros participantes
-    for (const participant of uniqueParticipants) {
-      const email = participant.email.toLowerCase().trim();
-      
-      // Buscar si ya existe un usuario con este email
-      const existingUser = await User.findOne({ email }).session(dbSession);
-      
-      console.log(`Añadiendo participante: ${email} (Usuario existente: ${existingUser ? 'Sí' : 'No'})`);
-      
+    // Procesar y añadir participantes válidos
+    for (const participant of validParticipants) {
       newSession.participants.push({
-        userId: existingUser ? existingUser._id : null,
-        name: existingUser ? (existingUser.nombre || existingUser.email) : email,
-        email: email,
+        userId: participant.userId,
+        name: participant.name,
+        email: participant.email,
         status: 'pending',
-        role: 'member', // Los participantes invitados tienen rol 'member'
+        role: 'member',
         canEdit: participant.canEdit || false,
         canDelete: participant.canDelete || false,
-        invitationDate: new Date() // Establecer fecha de invitación
+        invitationDate: new Date()
       });
     }
 
@@ -468,24 +491,22 @@ exports.createSession = async (req, res) => {
       newSession.isLocked = false;
     }
 
-    // Inicializar la asignación de porcentajes equitativamente entre los participantes
+    // Guardar la sesión
+    await newSession.save({ session: dbSession });
+
+    // Inicializar la asignación de porcentajes equitativamente
     const participantCount = newSession.participants.length;
     const equalPercentage = Math.floor(100 / participantCount);
     let remainingPercentage = 100 - (equalPercentage * participantCount);
     
-    console.log(`Inicializando distribución de gastos: ${participantCount} participantes con ${equalPercentage}% cada uno`);
-    
     newSession.allocations = newSession.participants.map((participant, index) => {
-      // Añadir el porcentaje sobrante al primer participante para asegurar que sume exactamente 100%
-      const percentage = index === 0 ? equalPercentage + remainingPercentage : equalPercentage;
       return {
         userId: participant.userId,
         name: participant.name,
-        percentage: percentage
+        percentage: index === 0 ? equalPercentage + remainingPercentage : equalPercentage
       };
     });
 
-    console.log(`Guardando nueva sesión con ${newSession.participants.length} participantes`);
     await newSession.save({ session: dbSession });
 
     const populatedSession = await SharedSession.findById(newSession._id)
@@ -493,81 +514,22 @@ exports.createSession = async (req, res) => {
       .populate('userId', 'nombre email')
       .populate('participants.userId', 'nombre email');
 
-    // Generar asignaciones iniciales para un año en el futuro
-    console.log('Generando asignaciones iniciales para un año en el futuro...');
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth();
-    const monthsToGenerate = 24; // Generar para 2 años (actual + 1 año futuro)
-
-    // Crear asignaciones para cada participante
-    for (const participant of newSession.participants) {
-      if (!participant.userId) continue;
-
-      for (let i = 0; i < monthsToGenerate; i++) {
-        const targetYear = currentYear + Math.floor((currentMonth + i) / 12);
-        const targetMonth = (currentMonth + i) % 12;
-
-        const allocation = new ParticipantAllocation({
-          sessionId: newSession._id,
-          userId: participant.userId,
-          username: participant.name,
-          name: participant.name,
-          amount: 0,
-          totalAmount: 0,
-          year: targetYear,
-          month: targetMonth,
-          currency: 'EUR',
-          percentage: newSession.allocations.find(a => 
-            a.userId && a.userId.toString() === participant.userId.toString()
-          )?.percentage || 50,
-          status: 'pending'
-        });
-
-        await allocation.save({ session: dbSession });
-        console.log(`Creada asignación para ${participant.name} - ${targetYear}/${targetMonth + 1}`);
-      }
-    }
-
-    // Inicializar la estructura de yearlyExpenses para dos años
-    newSession.yearlyExpenses = [];
-    for (let yearOffset = 0; yearOffset < 2; yearOffset++) {
-      const year = currentYear + yearOffset;
-      newSession.yearlyExpenses.push({
-        year,
-        months: Array.from({ length: 12 }, (_, monthIndex) => ({
-          month: monthIndex,
-          expenses: [],
-          totalAmount: 0
-        }))
-      });
-    }
-
-    // Guardar la sesión actualizada con la estructura de años
-    await newSession.save({ session: dbSession });
-
-    console.log(`Sesión creada con éxito. ID: ${populatedSession._id}`);
     await dbSession.commitTransaction();
-    
-    console.log(`Enviando respuesta con la sesión creada`);
-    
-    res.status(201).json(populatedSession);
 
+    // Devolver la sesión con información sobre participantes inválidos
+    res.status(201).json({
+      session: populatedSession,
+      warnings: invalidParticipants.length > 0 ? {
+        invalidParticipants,
+        message: 'Algunos participantes no pudieron ser agregados porque no están registrados en el sistema'
+      } : null
+    });
   } catch (error) {
     await dbSession.abortTransaction();
     console.error('Error al crear sesión:', error);
-    
-    if (error.message.includes('duplicados')) {
-      return res.status(400).json({ msg: 'No se permiten participantes duplicados' });
-    }
-    
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ msg: Object.values(error.errors).map(err => err.message).join(', ') });
-    }
-    
     res.status(500).json({ 
-      msg: error.message || 'Error del servidor al crear la sesión',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      msg: 'Error al crear la sesión compartida',
+      error: error.message 
     });
   } finally {
     dbSession.endSession();
@@ -830,7 +792,7 @@ exports.addExpense = async (req, res) => {
     try {
         const { description, amount, date, paidBy, name = 'Gasto', category = 'Otros', isRecurring = false } = req.body;
         
-        // Buscar la sesión con los campos mínimos necesarios
+        // Buscar la sesión con los campos necesarios
         const session = await SharedSession.findOne({
             _id: req.params.id,
             $or: [
@@ -838,7 +800,7 @@ exports.addExpense = async (req, res) => {
                 { 'participants.userId': req.user.id }
             ]
         })
-        .select('_id participants yearlyExpenses userId currency')
+        .select('_id participants yearlyExpenses userId currency name allocations')
         .session(dbSession);
 
         if (!session) {
@@ -871,100 +833,44 @@ exports.addExpense = async (req, res) => {
         const currentYear = expenseDate.getFullYear();
         const currentMonth = expenseDate.getMonth();
 
-        // Si es recurrente, solo crear para los próximos 3 meses inicialmente
-        const monthsToCreate = isRecurring ? 3 : 1;
-        
-        console.log(`Creando gasto ${isRecurring ? 'recurrente' : 'único'} para ${monthsToCreate} meses`);
-
-        // Preparar las actualizaciones en lote
-        const bulkOps = [];
-        let monthsProcessed = 0;
-
-        while (monthsProcessed < monthsToCreate) {
-            let targetYear = currentYear;
-            let targetMonth = currentMonth + monthsProcessed;
-
-            // Ajustar año si el mes se desborda
-            if (targetMonth > 11) {
-                targetYear += Math.floor(targetMonth / 12);
-                targetMonth = targetMonth % 12;
-            }
-
-            // Crear el gasto para este mes
-            const monthlyExpense = {
-                ...baseExpense,
-                date: new Date(targetYear, targetMonth, expenseDate.getDate()),
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            // Preparar la operación de actualización para este mes
-            bulkOps.push({
-                updateOne: {
-                    filter: {
-                        _id: session._id,
-                        'yearlyExpenses.year': targetYear
-                    },
-                    update: {
-                        $push: {
-                            'yearlyExpenses.$[year].months.$[month].expenses': monthlyExpense
-                        },
-                        $inc: {
-                            'yearlyExpenses.$[year].months.$[month].totalAmount': monthlyExpense.amount
-                        }
-                    },
-                    arrayFilters: [
-                        { 'year.year': targetYear },
-                        { 'month.month': targetMonth }
-                    ],
-                    upsert: true
-                }
-            });
-
-            monthsProcessed++;
-        }
-
-        // Ejecutar las actualizaciones en lote
-        if (bulkOps.length > 0) {
-            await SharedSession.bulkWrite(bulkOps, { session: dbSession });
-        }
-
-        // Obtener todos los años y meses que tienen datos
-        const yearsWithData = session.yearlyExpenses.map(yearData => ({
-            year: yearData.year,
-            months: yearData.months.filter(month => month.expenses && month.expenses.length > 0)
-                                .map(month => month.month)
-        })).filter(yearData => yearData.months.length > 0);
-
-        console.log('Años y meses con datos:', yearsWithData);
-
-        // Actualizar las asignaciones para todos los meses que tienen datos
-        const allocationService = require('../services/allocationService');
-        const allocationSyncService = require('../services/allocationSyncService');
-
-        for (const yearData of yearsWithData) {
-            for (const month of yearData.months) {
-                try {
-                    console.log(`Actualizando asignaciones para ${yearData.year}-${month+1}`);
-                    await allocationSyncService.syncMonthlyAllocations(session._id, yearData.year, month, dbSession);
-                } catch (error) {
-                    console.error(`Error al sincronizar asignaciones para ${yearData.year}-${month+1}:`, error);
-                }
+        // Si es recurrente, obtener la fecha final de la sesión o usar 3 años por defecto
+        let endDate;
+        if (isRecurring) {
+            // Buscar la fecha más lejana en yearlyExpenses
+            const maxYear = Math.max(...session.yearlyExpenses.map(y => y.year));
+            endDate = new Date(maxYear, 11, 31); // Último día del año más lejano
+            
+            // Si no hay yearlyExpenses o la fecha es menor que 3 años, usar 3 años
+            const threeYearsFromNow = new Date();
+            threeYearsFromNow.setFullYear(threeYearsFromNow.getFullYear() + 3);
+            
+            if (!maxYear || endDate < threeYearsFromNow) {
+                endDate = threeYearsFromNow;
             }
         }
+
+        // Agregar el gasto al mes actual
+        await session.addExpense(baseExpense, expenseDate, endDate);
+
+        // Actualizar las asignaciones para reflejar el nuevo gasto
+        await allocationService.distributeAmount(session);
 
         await dbSession.commitTransaction();
-        
-        // Recargar la sesión con los datos actualizados
-        const updatedSession = await SharedSession.findById(session._id)
-            .populate('userId', 'nombre email')
-            .populate('participants.userId', 'nombre email');
 
-        return res.json(updatedSession);
+        // Sincronizar con gastos personales en segundo plano
+        process.nextTick(async () => {
+            try {
+                await syncService.syncSessionToPersonal(session._id);
+            } catch (syncError) {
+                console.error('Error en sincronización:', syncError);
+            }
+        });
+
+        res.json({ msg: 'Gasto agregado correctamente' });
     } catch (error) {
         await dbSession.abortTransaction();
-        console.error('Error al añadir gasto:', error);
-        return res.status(500).json({ msg: 'Error al añadir gasto', error: error.message });
+        console.error('Error al agregar gasto:', error);
+        res.status(500).json({ msg: 'Error al agregar el gasto', error: error.message });
     } finally {
         dbSession.endSession();
     }
@@ -1452,12 +1358,18 @@ exports.syncToPersonal = async (req, res) => {
 
 // Actualizar la distribución de gastos
 exports.updateDistribution = async (req, res) => {
+  const dbSession = await mongoose.startSession();
+  dbSession.startTransaction();
+
   try {
     const sessionId = req.params.id;
     const userId = req.user.id;
     const { distribution } = req.body;
     
+    console.log(`Iniciando actualización de distribución para sesión ${sessionId}`);
+    
     if (!distribution || !Array.isArray(distribution)) {
+      await dbSession.abortTransaction();
       return res.status(400).json({ 
         msg: 'Formato de distribución inválido',
         details: 'La distribución debe ser un array de objetos con userId y percentage'
@@ -1467,6 +1379,7 @@ exports.updateDistribution = async (req, res) => {
     // Validar que la suma de porcentajes sea 100
     const totalPercentage = distribution.reduce((sum, item) => sum + (item.percentage || 0), 0);
     if (Math.abs(totalPercentage - 100) > 0.01) {
+      await dbSession.abortTransaction();
       return res.status(400).json({ 
         msg: 'La suma de porcentajes debe ser 100',
         details: `El total actual es ${totalPercentage}`
@@ -1480,9 +1393,10 @@ exports.updateDistribution = async (req, res) => {
         { userId: userId },
         { 'participants.userId': userId }
       ]
-    });
+    }).session(dbSession);
     
     if (!session) {
+      await dbSession.abortTransaction();
       return res.status(404).json({ 
         msg: 'Sesión no encontrada',
         details: 'La sesión especificada no existe o no tienes acceso a ella'
@@ -1495,7 +1409,7 @@ exports.updateDistribution = async (req, res) => {
     for (const item of distribution) {
       try {
         // Buscar el usuario para obtener su nombre real
-        const user = await User.findById(item.userId);
+        const user = await User.findById(item.userId).session(dbSession);
         
         // Usar el nombre real si está disponible, de lo contrario usar el nombre proporcionado o "Usuario"
         const realName = user ? 
@@ -1523,37 +1437,62 @@ exports.updateDistribution = async (req, res) => {
     // Actualizar la distribución con los nombres reales
     session.allocations = updatedDistribution;
     
-    await session.save();
+    await session.save({ session: dbSession });
     
     // Calcular y distribuir montos entre participantes
     try {
+      // Importar servicios de manera segura
+      let allocationService, syncService;
+      try {
+        allocationService = require('../services/allocationService');
+        syncService = require('../services/syncService');
+      } catch (importError) {
+        console.error('Error al importar servicios:', importError);
+        throw new Error('Error interno del servidor: servicios no disponibles');
+      }
+      
+      // Verificar que los servicios necesarios estén disponibles
+      if (!allocationService || typeof allocationService.distributeAmount !== 'function') {
+        throw new Error('Servicio de asignación no disponible');
+      }
+      
       // Usar el servicio de asignación para distribuir montos
       const allocations = await allocationService.distributeAmount(session);
       console.log(`Distribución de montos actualizada para sesión ${sessionId}`);
       
-      // Eliminar duplicados después de actualizar la distribución
-      await syncService.fixDuplicateAllocations(sessionId);
+      // Eliminar duplicados y actualizar nombres solo si los servicios están disponibles
+      if (syncService) {
+        if (typeof syncService.fixDuplicateAllocations === 'function') {
+          await syncService.fixDuplicateAllocations(sessionId);
+        }
+        if (typeof syncService.updateUserNamesInAllocations === 'function') {
+          await syncService.updateUserNamesInAllocations(sessionId);
+        }
+      }
       
-      // Actualizar los nombres de usuario en las asignaciones
-      await syncService.updateUserNamesInAllocations(sessionId);
+      await dbSession.commitTransaction();
       
       res.json({
         msg: 'Distribución actualizada correctamente',
         allocations: session.allocations
       });
-    } catch (allocError) {
-      console.error('Error al distribuir montos:', allocError);
+    } catch (serviceError) {
+      await dbSession.abortTransaction();
+      console.error('Error en servicios de asignación:', serviceError);
       res.status(500).json({ 
         msg: 'Error al distribuir montos entre participantes',
-        details: allocError.message
+        details: serviceError.message
       });
     }
   } catch (error) {
+    await dbSession.abortTransaction();
     console.error('Error al actualizar distribución:', error);
     res.status(500).json({ 
       msg: 'Error del servidor al actualizar distribución',
       details: error.message
     });
+  } finally {
+    dbSession.endSession();
   }
 };
 

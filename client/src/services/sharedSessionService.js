@@ -180,9 +180,20 @@ export const createSession = async (sessionData) => {
     console.log('Creando nueva sesión compartida');
     const response = await api.post('/api/shared-sessions', sessionData);
     console.log('Sesión creada:', response.data);
+    
     // Invalidar caché después de crear una sesión
     invalidateSessionsCache();
-    return response.data;
+    
+    // La respuesta del servidor incluye la sesión en response.data.session
+    if (response.data && response.data.session) {
+      // Si hay advertencias, las agregamos a la sesión para mostrarlas en la UI
+      if (response.data.warnings) {
+        response.data.session.warnings = response.data.warnings;
+      }
+      return response.data.session;
+    } else {
+      throw new Error('La respuesta del servidor no tiene el formato esperado');
+    }
   } catch (error) {
     return handleApiError('createSession', error);
   }

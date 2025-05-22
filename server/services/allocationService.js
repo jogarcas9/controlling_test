@@ -36,99 +36,179 @@ const validatePercentages = (allocations) => {
  * @returns {Array} Lista de asignaciones creadas
  */
 const distributeAmount = async (session) => {
-  const { _id: sessionId, totalAmount, currency = 'EUR', allocations } = session;
-  
-  // Validaciones
-  if (!sessionId) {
-    throw new Error('ID de sesión no válido');
+  // Verificar que la sesión existe y tiene el formato correcto
+  if (!session || !session._id) {
+    throw new Error('Sesión no proporcionada o inválida');
   }
-  
-  if (!totalAmount || totalAmount <= 0) {
-    throw new Error('El monto total debe ser mayor que cero');
-  }
-  
-  validatePercentages(allocations);
-  
-  console.log(`Iniciando distribución de montos para sesión ${sessionId}, total: ${totalAmount} ${currency}`);
-  
-  // Iniciar transacción de MongoDB
-  const session_db = await mongoose.startSession();
-  session_db.startTransaction();
+
+  // Obtener datos necesarios de la sesión
+  const sessionId = session._id.toString();
+  const allocations = session.allocations || [];
   
   try {
-    // Primero eliminar asignaciones existentes para esta sesión
-    await ParticipantAllocation.deleteMany({ sessionId }, { session: session_db });
+    // Buscar el último mes con datos en yearlyExpenses
+    let lastYear = 0;
+    let lastMonth = 0;
     
-    // Crear asignaciones para cada participante
-    const allocationsToInsert = allocations.map(participant => {
-      // Calcular monto asignado con 2 decimales
-      const amount = parseFloat((totalAmount * (participant.percentage / 100)).toFixed(2));
-      
-      return {
-        sessionId,
-        userId: participant.userId,
-        name: participant.name || 'Participante',
-        amount,
-        currency,
-        percentage: participant.percentage,
-        status: 'pending'
-      };
-    });
-    
-    // Verificar suma total después del redondeo
-    const totalAllocated = allocationsToInsert.reduce((sum, alloc) => sum + alloc.amount, 0);
-    
-    // Ajustar por diferencias de redondeo (asignar a primer participante)
-    if (Math.abs(totalAllocated - totalAmount) > 0.01 && allocationsToInsert.length > 0) {
-      const diff = totalAmount - totalAllocated;
-      allocationsToInsert[0].amount = parseFloat((allocationsToInsert[0].amount + diff).toFixed(2));
-      console.log(`Ajuste por redondeo: ${diff.toFixed(2)} ${currency} asignado al primer participante`);
+    if (session.yearlyExpenses && Array.isArray(session.yearlyExpenses)) {
+      session.yearlyExpenses.forEach(yearData => {
+        if (yearData.year > lastYear) {
+          lastYear = yearData.year;
+          if (yearData.months && Array.isArray(yearData.months)) {
+            yearData.months.forEach(monthData => {
+              if (monthData.month > lastMonth) {
+                lastMonth = monthData.month;
+              }
+            });
+          }
+        }
+      });
     }
     
-    console.log(`Insertando ${allocationsToInsert.length} asignaciones`);
+    // Si no hay datos en yearlyExpenses, usar la fecha actual
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
     
-    // Insertar las asignaciones en la base de datos
-    const createdAllocations = await ParticipantAllocation.insertMany(allocationsToInsert, { session: session_db });
+    lastYear = lastYear || currentYear;
+    lastMonth = lastMonth || currentMonth;
     
-    // Confirmar transacción
-    await session_db.commitTransaction();
-    session_db.endSession();
-    
-    console.log(`Asignaciones creadas correctamente. Iniciando sincronización con gastos personales...`);
-    
-    // Sincronizar las asignaciones con gastos personales
-    // Esto se hace fuera de la transacción para no bloquear la respuesta principal
-    const syncResults = [];
-    for (const allocation of createdAllocations) {
-      try {
-        const result = await syncService.processNewAllocation(allocation);
-        syncResults.push({
-          allocationId: allocation._id,
-          userId: allocation.userId,
-          success: true,
-          personalExpenseId: result.personalExpense?._id
-        });
-      } catch (error) {
-        console.error(`Error al sincronizar asignación ${allocation._id}:`, error);
-        syncResults.push({
-          allocationId: allocation._id,
-          userId: allocation.userId,
-          success: false,
-          error: error.message
-        });
-        // No interrumpimos el flujo principal si falla la sincronización
+    // Validar las asignaciones
+    if (!Array.isArray(allocations) || allocations.length === 0) {
+      throw new Error('No hay asignaciones definidas para esta sesión');
+    }
+
+    // Validar que cada asignación tenga los campos necesarios
+    for (const alloc of allocations) {
+      if (!alloc.userId || typeof alloc.percentage !== 'number') {
+        throw new Error('Asignación inválida: falta userId o percentage');
       }
     }
-    
-    console.log(`Resultados de sincronización:`, JSON.stringify(syncResults));
-    
-    return createdAllocations;
+
+    validatePercentages(allocations);
+
+    // Iniciar transacción de MongoDB
+    const session_db = await mongoose.startSession();
+    session_db.startTransaction();
+
+    try {
+      // Eliminar solo las asignaciones del mes actual y futuros
+      await ParticipantAllocation.deleteMany({
+        sessionId,
+        $or: [
+          { year: { $gt: currentYear } },
+          { year: currentYear, month: { $gte: currentMonth } }
+        ]
+      }, { session: session_db });
+
+      // Crear nuevas asignaciones para cada mes hasta el último mes con datos
+      const allocationsToInsert = [];
+      
+      // Calcular cuántos meses procesar
+      const totalMonths = ((lastYear - currentYear) * 12) + (lastMonth - currentMonth) + 1;
+      
+      console.log(`Procesando asignaciones desde ${currentYear}-${currentMonth+1} hasta ${lastYear}-${lastMonth+1} (${totalMonths} meses)`);
+
+      for (let monthOffset = 0; monthOffset < totalMonths; monthOffset++) {
+        const targetYear = currentYear + Math.floor((currentMonth + monthOffset) / 12);
+        const targetMonth = (currentMonth + monthOffset) % 12;
+
+        // Buscar el monto total para el mes objetivo
+        let monthTotalAmount = 0;
+        const yearData = session.yearlyExpenses?.find(y => y.year === targetYear);
+        if (yearData) {
+          const monthData = yearData.months?.find(m => m.month === targetMonth);
+          if (monthData) {
+            monthTotalAmount = monthData.totalAmount || 0;
+            console.log(`Monto total encontrado para ${targetYear}-${targetMonth+1}: ${monthTotalAmount}`);
+          }
+        }
+
+        // Si no hay monto específico para el mes, usar el monto total de la sesión
+        if (monthTotalAmount <= 0 && session.totalAmount) {
+          monthTotalAmount = session.totalAmount;
+          console.log(`Usando monto total de la sesión: ${monthTotalAmount}`);
+        }
+
+        // Solo crear asignaciones si hay un monto total mayor que 0
+        if (monthTotalAmount > 0) {
+          for (const participant of allocations) {
+            const userId = participant.userId.toString();
+            const amount = parseFloat((monthTotalAmount * (participant.percentage / 100)).toFixed(2));
+
+            allocationsToInsert.push({
+              sessionId,
+              userId,
+              username: participant.name || 'Usuario',
+              name: participant.name || 'Usuario',
+              amount,
+              totalAmount: monthTotalAmount,
+              currency: session.currency || 'EUR',
+              percentage: participant.percentage,
+              status: 'pending',
+              year: targetYear,
+              month: targetMonth,
+              updatedAt: new Date()
+            });
+          }
+        }
+      }
+
+      // Verificar y ajustar diferencias por redondeo para cada mes
+      const monthlyGroups = {};
+      allocationsToInsert.forEach(alloc => {
+        const key = `${alloc.year}-${alloc.month}`;
+        if (!monthlyGroups[key]) {
+          monthlyGroups[key] = [];
+        }
+        monthlyGroups[key].push(alloc);
+      });
+
+      Object.values(monthlyGroups).forEach(monthAllocations => {
+        const monthTotalAmount = monthAllocations[0].totalAmount;
+        const totalAllocated = monthAllocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+        if (Math.abs(totalAllocated - monthTotalAmount) > 0.01 && monthAllocations.length > 0) {
+          const diff = monthTotalAmount - totalAllocated;
+          monthAllocations[0].amount = parseFloat((monthAllocations[0].amount + diff).toFixed(2));
+        }
+      });
+
+      // Insertar las nuevas asignaciones
+      if (allocationsToInsert.length > 0) {
+        console.log(`Insertando ${allocationsToInsert.length} asignaciones`);
+        const createdAllocations = await ParticipantAllocation.insertMany(allocationsToInsert, { session: session_db });
+
+        // Confirmar transacción
+        await session_db.commitTransaction();
+        session_db.endSession();
+
+        // Sincronizar con gastos personales en segundo plano
+        process.nextTick(async () => {
+          try {
+            const syncService = require('./syncService');
+            for (const allocation of createdAllocations) {
+              if (syncService && typeof syncService.processNewAllocation === 'function') {
+                await syncService.processNewAllocation(allocation);
+              }
+            }
+          } catch (syncError) {
+            console.error('Error en sincronización de gastos personales:', syncError);
+          }
+        });
+
+        return createdAllocations;
+      }
+
+      await session_db.commitTransaction();
+      session_db.endSession();
+      return [];
+    } catch (error) {
+      await session_db.abortTransaction();
+      session_db.endSession();
+      throw error;
+    }
   } catch (error) {
-    // Revertir transacción en caso de error
-    await session_db.abortTransaction();
-    session_db.endSession();
-    console.error(`Error en distributeAmount:`, error);
-    throw error;
+    throw new Error(`Error al distribuir montos: ${error.message}`);
   }
 };
 

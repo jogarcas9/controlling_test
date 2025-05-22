@@ -310,74 +310,29 @@ const processUpdatedAllocation = async (allocation) => {
  * @returns {Object} Resultado de la operación con asignaciones actualizadas
  */
 const updateUserNamesInAllocations = async (sessionId) => {
-  console.log(`Iniciando actualización de nombres de usuario para sesión: ${sessionId}`);
-  
   try {
     // Buscar todas las asignaciones para esta sesión
     const allocations = await ParticipantAllocation.find({ sessionId });
     
-    if (!allocations || allocations.length === 0) {
-      console.log(`No se encontraron asignaciones para la sesión: ${sessionId}`);
-      return { success: false, message: 'No se encontraron asignaciones', count: 0 };
-    }
-    
-    console.log(`Encontradas ${allocations.length} asignaciones para actualizar nombres`);
-    
-    let updatedCount = 0;
-    
-    // Para cada asignación, buscar el usuario real y actualizar su nombre
+    // Actualizar el nombre de cada asignación
     for (const allocation of allocations) {
       try {
-        // Buscar usuario por ID
         const user = await User.findById(allocation.userId);
-        
-        if (!user) {
-          console.warn(`No se encontró el usuario con ID: ${allocation.userId} para asignación: ${allocation._id}`);
-          continue;
-        }
-        
-        // Obtener el nombre real del usuario
-        const realName = user.nombre || user.name || user.username || user.email || 'Usuario';
-        
-        // Verificar si el nombre actual es diferente
-        if (allocation.name !== realName || allocation.username !== realName) {
-          // Actualizar el nombre
-          await ParticipantAllocation.findByIdAndUpdate(
-            allocation._id,
-            { 
-              name: realName,
-              username: realName
-            }
-          );
+        if (user) {
+          const realName = user.nombre || user.name || user.username || user.email || "Usuario";
           
-          console.log(`Nombre actualizado para asignación ${allocation._id}: ${allocation.name || allocation.username} -> ${realName}`);
-          updatedCount++;
-          
-          // También actualizar el gasto personal asociado si existe
-          if (allocation.personalExpenseId) {
-            const personalExpense = await PersonalExpense.findById(allocation.personalExpenseId);
-            
-            if (personalExpense && personalExpense.sessionReference) {
-              personalExpense.sessionReference.participantName = realName;
-              await personalExpense.save();
-              console.log(`Nombre actualizado en gasto personal: ${personalExpense._id}`);
-            }
+          if (realName !== allocation.name) {
+            allocation.name = realName;
+            allocation.username = realName;
+            await allocation.save();
           }
-        } else {
-          console.log(`El nombre ya está actualizado para la asignación: ${allocation._id}`);
         }
-      } catch (error) {
-        console.error(`Error actualizando nombre para asignación ${allocation._id}:`, error);
-        // Continuar con la siguiente asignación
+      } catch (userError) {
+        console.warn(`Error al actualizar nombre de usuario para asignación ${allocation._id}:`, userError.message);
       }
     }
-    
-    console.log(`Actualización completa. Nombres actualizados: ${updatedCount}/${allocations.length}`);
-    return { success: true, updatedCount, totalCount: allocations.length };
-    
   } catch (error) {
-    console.error(`Error en actualización masiva de nombres:`, error);
-    throw error;
+    throw new Error(`Error al actualizar nombres de usuario: ${error.message}`);
   }
 };
 
@@ -387,110 +342,38 @@ const updateUserNamesInAllocations = async (sessionId) => {
  * @returns {Object} Resultado con estadísticas de la corrección
  */
 const fixDuplicateAllocations = async (sessionId) => {
-  if (!sessionId) {
-    throw new Error('ID de sesión requerido');
-  }
-  
-  console.log(`Iniciando corrección de asignaciones duplicadas para sesión: ${sessionId}`);
-  
   try {
-    // Obtener todas las asignaciones para esta sesión
-    const allAllocations = await ParticipantAllocation.find({ sessionId })
-      .sort({ updatedAt: -1 }); // Ordenar por fecha de actualización descendente
+    // Buscar todas las asignaciones para esta sesión
+    const allocations = await ParticipantAllocation.find({ sessionId });
     
-    if (!allAllocations || allAllocations.length === 0) {
-      return { success: false, message: 'No se encontraron asignaciones', count: 0 };
-    }
-    
-    console.log(`Encontradas ${allAllocations.length} asignaciones para verificar duplicados`);
-    
-    // Agrupar por combinación de userId + year + month
+    // Agrupar por userId y mes/año
     const groupedAllocations = {};
-    const duplicates = [];
-    const toKeep = [];
-    
-    allAllocations.forEach(allocation => {
-      const key = `${allocation.userId}_${allocation.year}_${allocation.month}`;
-      
+    allocations.forEach(alloc => {
+      const key = `${alloc.userId}-${alloc.year}-${alloc.month}`;
       if (!groupedAllocations[key]) {
         groupedAllocations[key] = [];
       }
-      
-      groupedAllocations[key].push(allocation);
+      groupedAllocations[key].push(alloc);
     });
     
-    // Identificar duplicados en cada grupo
+    // Eliminar duplicados manteniendo la asignación más reciente
     for (const key in groupedAllocations) {
-      const allocations = groupedAllocations[key];
-      
-      if (allocations.length > 1) {
-        // Ordenar por fecha de actualización (más reciente primero)
-        allocations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      const duplicates = groupedAllocations[key];
+      if (duplicates.length > 1) {
+        // Ordenar por fecha de actualización, el más reciente primero
+        duplicates.sort((a, b) => b.updatedAt - a.updatedAt);
         
-        // Mantener la más reciente, marcar las demás como duplicadas
-        toKeep.push(allocations[0]);
-        for (let i = 1; i < allocations.length; i++) {
-          duplicates.push(allocations[i]);
-        }
-      } else {
-        // No hay duplicados, guardar la única asignación
-        toKeep.push(allocations[0]);
+        // Mantener el más reciente y eliminar el resto
+        const [keep, ...remove] = duplicates;
+        const removeIds = remove.map(d => d._id);
+        
+        await ParticipantAllocation.deleteMany({
+          _id: { $in: removeIds }
+        });
       }
     }
-    
-    if (duplicates.length === 0) {
-      console.log(`No se encontraron asignaciones duplicadas para la sesión: ${sessionId}`);
-      return { success: true, message: 'No hay duplicados', removed: 0 };
-    }
-    
-    console.log(`Se encontraron ${duplicates.length} asignaciones duplicadas para eliminar`);
-    
-    // Eliminar las asignaciones duplicadas
-    let removedCount = 0;
-    
-    for (const duplicate of duplicates) {
-      try {
-        // Verificar si tiene un gasto personal asociado
-        if (duplicate.personalExpenseId) {
-          // No eliminar la asignación, solo actualizar sus datos
-          // Buscar la asignación que se mantendrá (más reciente)
-          const keyToFind = `${duplicate.userId}_${duplicate.year}_${duplicate.month}`;
-          const keepAllocation = groupedAllocations[keyToFind][0];
-          
-          // Actualizar el gasto personal para que apunte a la asignación que se mantiene
-          await PersonalExpense.findByIdAndUpdate(
-            duplicate.personalExpenseId,
-            { allocationId: keepAllocation._id }
-          );
-          
-          console.log(`Actualizado gasto personal ${duplicate.personalExpenseId} para que apunte a asignación ${keepAllocation._id}`);
-          
-          // Y actualizar la asignación que se mantiene para que apunte al gasto personal
-          if (!keepAllocation.personalExpenseId) {
-            await ParticipantAllocation.findByIdAndUpdate(
-              keepAllocation._id,
-              { personalExpenseId: duplicate.personalExpenseId }
-            );
-            
-            console.log(`Actualizada asignación ${keepAllocation._id} para que apunte a gasto personal ${duplicate.personalExpenseId}`);
-          }
-        }
-        
-        // Ahora sí eliminar la asignación duplicada
-        await ParticipantAllocation.findByIdAndDelete(duplicate._id);
-        console.log(`Eliminada asignación duplicada: ${duplicate._id}`);
-        removedCount++;
-      } catch (error) {
-        console.error(`Error al procesar duplicado ${duplicate._id}:`, error);
-      }
-    }
-    
-    console.log(`Eliminadas ${removedCount} asignaciones duplicadas para la sesión: ${sessionId}`);
-    return { success: true, removed: removedCount, total: allAllocations.length, kept: toKeep.length };
-    
   } catch (error) {
-    console.error(`Error al corregir asignaciones duplicadas:`, error);
-    throw error;
+    throw new Error(`Error al eliminar duplicados: ${error.message}`);
   }
 };
 

@@ -43,13 +43,20 @@ export const useSessions = () => {
       if (data && data._id) {
         // Actualizar la lista completa en lugar de añadir solo la nueva
         await fetchSessions(true);
+        
+        // Si hay advertencias, mostrarlas
+        if (data.warnings) {
+          console.warn('Advertencias al crear la sesión:', data.warnings);
+          // Aquí podrías manejar las advertencias de alguna manera específica
+        }
+        
         return data;
       } else {
         throw new Error('La respuesta del servidor no contiene un ID válido');
       }
     } catch (err) {
       console.error('Error al crear la sesión:', err);
-      const errorMessage = err.userMessage || 'Error al crear la sesión';
+      const errorMessage = err.response?.data?.msg || err.message || 'Error al crear la sesión';
       setError(errorMessage);
       throw err;
     } finally {

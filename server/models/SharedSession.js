@@ -583,54 +583,24 @@ sharedSessionSchema.methods.getOrCreateYear = function() {
   return yearData;
 };
 
-// Método para añadir un gasto (puntual o recurrente) a yearlyExpenses
-sharedSessionSchema.methods.addExpense = async function(expense) {
-  // Asegurar que la fecha sea un objeto Date válido
-  let expenseDate;
-  if (expense.date) {
-    // Parsear la fecha en formato ISO o string
-    if (typeof expense.date === 'string') {
-      // Si es un string ISO, extraer los componentes de fecha explícitamente
-      // para evitar problemas de zona horaria
-      const dateParts = expense.date.split('T')[0].split('-');
-      if (dateParts.length === 3) {
-        const year = parseInt(dateParts[0]);
-        const month = parseInt(dateParts[1]) - 1; // Meses en JS son 0-indexed
-        const day = parseInt(dateParts[2]);
-        expenseDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-        console.log(`Fecha ISO parseada: ${expense.date} -> ${expenseDate.toISOString()}`);
-      } else {
-        // Si no podemos parsear el formato ISO, intentar con el constructor Date normal
-        expenseDate = new Date(expense.date);
-      }
-    } else if (expense.date instanceof Date) {
-      expenseDate = new Date(expense.date);
-    } else {
-      expenseDate = new Date();
-    }
-  } else {
-    expenseDate = new Date();
+// Método para agregar un gasto
+sharedSessionSchema.methods.addExpense = async function(expense, expenseDate, endDate) {
+  // Validar y limpiar la fecha del gasto
+  const date = expenseDate instanceof Date ? expenseDate : new Date(expenseDate);
+  if (isNaN(date.getTime())) {
+    throw new Error('Fecha de gasto inválida');
   }
-  
-  // Verificar si la fecha es válida
-  if (isNaN(expenseDate.getTime())) {
-    console.error('Fecha inválida, usando fecha actual');
-    expenseDate = new Date();
-  }
-  
-  // Extraer año y mes explícitamente desde la fecha original
-  // en lugar de depender de una conversión que pueda ser afectada por la zona horaria
-  const year = expenseDate.getUTCFullYear();
-  const month = expenseDate.getUTCMonth(); // 0-indexed (0-11)
-  
-  console.log(`Añadiendo gasto para fecha: ${expenseDate.toISOString()}, año: ${year}, mes: ${month}`);
+
+  // Obtener año y mes del gasto
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed (0-11)
 
   // Limpiar y asegurar los campos del gasto
   const cleanExpense = {
     name: expense.name || 'Gasto',
     description: expense.description || '',
     amount: typeof expense.amount === 'number' ? expense.amount : Number(expense.amount) || 0,
-    date: expenseDate,
+    date: date,
     category: expense.category || 'Otros',
     paidBy: expense.paidBy,
     isRecurring: !!expense.isRecurring
@@ -660,18 +630,15 @@ sharedSessionSchema.methods.addExpense = async function(expense) {
     console.error(`No se encontró el mes ${month} en el año ${year}`);
   }
 
-  // Si es recurrente, crear instancias futuras hasta 3 años
-  if (cleanExpense.isRecurring) {
+  // Si es recurrente, crear instancias futuras hasta la fecha final
+  if (cleanExpense.isRecurring && endDate) {
+    const finalEndDate = endDate instanceof Date ? endDate : new Date(endDate);
+    
     // Usar UTC para evitar problemas de zona horaria
     const originalDate = new Date(Date.UTC(
-      expenseDate.getUTCFullYear(),
-      expenseDate.getUTCMonth(),
-      expenseDate.getUTCDate()
-    ));
-    const endDate = new Date(Date.UTC(
-      expenseDate.getUTCFullYear() + 3,
-      expenseDate.getUTCMonth(),
-      expenseDate.getUTCDate()
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate()
     ));
     
     let i = 1;
@@ -683,7 +650,7 @@ sharedSessionSchema.methods.addExpense = async function(expense) {
         originalDate.getUTCDate()
       ));
       
-      if (futureDate > endDate) break;
+      if (futureDate > finalEndDate) break;
       
       const futureYear = futureDate.getUTCFullYear();
       const futureMonth = futureDate.getUTCMonth(); // 0-indexed (0-11)

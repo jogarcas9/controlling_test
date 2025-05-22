@@ -407,8 +407,22 @@ const SharedSessions = () => {
         console.log('Creando nueva sesión');
         const newSession = await createSession(processedSessionData);
         
-        // Si la creación fue exitosa, seleccionar la nueva sesión
+        // Si la creación fue exitosa y tenemos una sesión válida
         if (newSession && newSession._id) {
+          // Mostrar advertencias si existen
+          if (newSession.warnings) {
+            setMessage({
+              type: 'warning',
+              text: newSession.warnings.message || 'Algunos participantes no pudieron ser agregados'
+            });
+          } else {
+            setMessage({
+              type: 'success',
+              text: 'Sesión creada exitosamente'
+            });
+          }
+          
+          // Seleccionar la nueva sesión
           handleSelectSession(newSession);
         }
       }
@@ -418,8 +432,11 @@ const SharedSessions = () => {
       setEditingSession(null);
     } catch (error) {
       console.error('Error al guardar la sesión:', error);
-      const errorMessage = error.userMessage || error.message || 'Error desconocido';
-      alert(`Error al guardar la sesión: ${errorMessage}`);
+      const errorMessage = error.response?.data?.msg || error.message || 'Error desconocido';
+      setMessage({
+        type: 'error',
+        text: `Error al guardar la sesión: ${errorMessage}`
+      });
     }
   };
 
