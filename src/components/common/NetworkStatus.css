@@ -1,0 +1,35 @@
+.network-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 8px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.network-status.offline {
+  background-color: #ff4444;
+  color: white;
+}
+
+.network-status.server-error {
+  background-color: #ff8800;
+  color: white;
+}
+
+.network-status-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.network-status-icon {
+  font-size: 1.2em;
+}
+
+.network-status-message {
+  font-weight: 500;
+} 

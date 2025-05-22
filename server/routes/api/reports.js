@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../../middleware/auth');
-const Expense = require('../../models/Expense');
+const { PersonalExpense } = require('../../models');
 
 // @route   GET api/reports
 // @desc    Ruta base de reportes
@@ -19,16 +19,16 @@ router.get('/summary', auth, async (req, res) => {
     
     // Obtener el mes actual
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
+    const currentMonth = now.getMonth(); // 0-indexed
     const currentYear = now.getFullYear();
     
     // Calcular rango de fechas para el mes actual
-    const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1);
-    const lastDayOfMonth = new Date(currentYear, currentMonth, 0);
+    const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
     
     // Obtener gastos del mes
-    const expenses = await Expense.find({
-      userId,
+    const expenses = await PersonalExpense.find({
+      user: userId,
       date: {
         $gte: firstDayOfMonth,
         $lte: lastDayOfMonth
@@ -42,7 +42,7 @@ router.get('/summary', auth, async (req, res) => {
       success: true,
       data: {
         totalExpenses,
-        month: currentMonth,
+        month: currentMonth + 1, // Convertir a 1-indexed para la respuesta
         year: currentYear,
         expenseCount: expenses.length
       }
@@ -82,13 +82,13 @@ router.get('/monthly-summary', auth, async (req, res) => {
       });
     }
     
-    // Calcular rango de fechas
+    // Calcular rango de fechas (convertir month a 0-indexed para Date)
     const firstDayOfMonth = new Date(yearNum, monthNum - 1, 1);
     const lastDayOfMonth = new Date(yearNum, monthNum, 0);
     
     // Obtener gastos del mes
-    const expenses = await Expense.find({
-      userId,
+    const expenses = await PersonalExpense.find({
+      user: userId,
       date: {
         $gte: firstDayOfMonth,
         $lte: lastDayOfMonth
@@ -167,8 +167,8 @@ router.get('/yearly-summary', auth, async (req, res) => {
     const lastDayOfYear = new Date(yearNum, 11, 31, 23, 59, 59);
     
     // Obtener gastos del año
-    const expenses = await Expense.find({
-      userId,
+    const expenses = await PersonalExpense.find({
+      user: userId,
       date: {
         $gte: firstDayOfYear,
         $lte: lastDayOfYear

@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../../middleware/auth');
 const { check, validationResult } = require('express-validator');
 const sharedSessionController = require('../../controllers/sharedSessionController');
+const SharedSession = require('../../models/SharedSession');
 
 // @route   GET api/shared-sessions
 // @desc    Obtener todas las sesiones del usuario
@@ -128,5 +129,114 @@ router.post('/admin/generate-all-allocations', auth, sharedSessionController.gen
 // @desc    Generar asignaciones mensuales para una sesión específica
 // @access  Private
 router.post('/:id/generate-allocations', auth, sharedSessionController.generateMonthlyAllocations);
+
+// Ruta de prueba para validar la eliminación de gastos
+router.get('/test-delete-expense/:id/:expenseId', auth, async (req, res) => {
+  try {
+    // Mantener consistencia con el controlador deleteExpense
+    const { id, expenseId } = req.params;
+    const sessionId = id; // Para compatibilidad con código existente
+    const userId = req.user.id;
+    
+    console.log(`Probando eliminación de gasto - SessionID: ${sessionId}, ExpenseID: ${expenseId}, UserID: ${userId}`);
+    
+    const session = await SharedSession.findOne({
+      _id: sessionId,
+      $or: [
+        { userId: userId },
+        { 'participants.userId': userId }
+      ]
+    });
+
+    if (!session) {
+      return res.status(404).json({ msg: 'Sesión no encontrada o no autorizada' });
+    }
+
+    // Buscar el gasto
+    let gastoEncontrado = false;
+    let isRecurringExpense = false;
+    let expenseName = '';
+    let expenseYear, expenseMonth;
+    
+    for (const yearData of session.yearlyExpenses || []) {
+      for (const monthData of yearData.months || []) {
+        const expense = (monthData.expenses || []).find(exp => 
+          exp && exp._id && exp._id.toString() === expenseId
+        );
+        
+        if (expense) {
+          gastoEncontrado = true;
+          isRecurringExpense = expense.isRecurring;
+          expenseName = expense.name;
+          expenseYear = yearData.year;
+          expenseMonth = monthData.month;
+          break;
+        }
+      }
+      if (gastoEncontrado) break;
+    }
+
+    if (!gastoEncontrado) {
+      return res.status(404).json({ msg: 'Gasto no encontrado en la sesión' });
+    }
+    
+    // Determinar qué gastos se eliminarían
+    const gastosAEliminar = [];
+    
+    if (isRecurringExpense) {
+      for (const yearData of session.yearlyExpenses || []) {
+        if (yearData.year < expenseYear) continue;
+        
+        for (const monthData of yearData.months || []) {
+          if (yearData.year === expenseYear && monthData.month < expenseMonth) continue;
+          
+          const recurrentExpenses = (monthData.expenses || []).filter(exp => 
+            exp && exp.name === expenseName && exp.isRecurring
+          );
+          
+          if (recurrentExpenses.length > 0) {
+            gastosAEliminar.push({
+              year: yearData.year,
+              month: monthData.month,
+              expenses: recurrentExpenses.map(e => ({
+                _id: e._id.toString(),
+                name: e.name,
+                amount: e.amount,
+                date: e.date
+              }))
+            });
+          }
+        }
+      }
+    } else {
+      // Para gasto normal, solo incluir el gasto específico
+      gastosAEliminar.push({
+        year: expenseYear,
+        month: expenseMonth,
+        expenses: [{
+          _id: expenseId,
+          name: expenseName
+        }]
+      });
+    }
+    
+    res.json({
+      sessionId,
+      expenseId,
+      isRecurring: isRecurringExpense,
+      expenseName,
+      year: expenseYear,
+      month: expenseMonth,
+      gastosAEliminar
+    });
+    
+  } catch (err) {
+    console.error('Error en prueba de eliminación:', err);
+    res.status(500).json({ 
+      msg: 'Error al probar la eliminación del gasto', 
+      error: err.message 
+    });
+  }
+});
 
 module.exports = router; 

@@ -90,9 +90,8 @@ const SharedSessions = () => {
     fetchExpenses,
     addExpense,
     updateExpense,
-    deleteExpense,
     calculateTotal
-  } = useExpenses(currentSession?._id, selectedMonth, selectedYear);
+  } = useExpenses(currentSession?._id || null, selectedMonth, selectedYear);
 
   const {
     distributions,
@@ -167,8 +166,34 @@ const SharedSessions = () => {
   useEffect(() => {
     if (currentSession) {
       fetchExpenses();
+      
+      // Precargamos la información de los usuarios participantes
+      const preloadParticipantData = async () => {
+        try {
+          const participantEmails = new Set();
+          
+          // Recopilar todos los emails de participantes sin duplicados
+          if (currentSession.participants && Array.isArray(currentSession.participants)) {
+            currentSession.participants.forEach(p => {
+              if (p.email) {
+                participantEmails.add(p.email.toLowerCase().trim());
+              }
+            });
+          }
+          
+          // Precargar información de usuarios en segundo plano
+          participantEmails.forEach(email => {
+            sharedSessionService.getUserByEmail(email)
+              .catch(err => console.warn(`Error precargando datos de ${email}:`, err));
+          });
+        } catch (error) {
+          console.warn('Error al precargar datos de usuarios:', error);
+        }
+      };
+      
+      preloadParticipantData();
     }
-  }, [currentSession, fetchExpenses, selectedMonth, selectedYear]);
+  }, [currentSession, fetchExpenses]);
 
   // Nuevo efecto para gestionar invitaciones pendientes
   const [showPendingInvitations, setShowPendingInvitations] = useState(false);
@@ -296,48 +321,63 @@ const SharedSessions = () => {
   };
 
   // Modificar getUserNameByEmail para usar el servicio correctamente
-  const getUserNameByEmail = async (email) => {
+  const getUserNameByEmail = useCallback(async (email) => {
     if (!email) return null;
     
     try {
-      console.log(`Obteniendo información para el usuario con email: ${email}`);
+      // Usar la función del servicio que ahora incluye caché
       const result = await sharedSessionService.getUserByEmail(email);
       
       if (result && result.user) {
-        console.log(`Nombre obtenido para ${email}: ${result.user.name}`);
         return result.user.name || email.split('@')[0];
       } else {
-        console.warn(`No se encontró información para el usuario con email: ${email}`);
         return email.split('@')[0];
       }
     } catch (error) {
       console.error(`Error al obtener información para el usuario con email ${email}:`, error);
       return email.split('@')[0];
     }
-  };
+  }, []);
 
   // Modificar handleSessionSubmit para incluir la obtención de nombres reales
   const handleSubmitSession = async (sessionData) => {
     try {
       // Procesar participantes para obtener nombres reales
       console.log('Procesando participantes para obtener nombres reales...');
+      
+      // Crear un mapa para evitar solicitudes duplicadas por email
+      const processedUserMap = new Map();
+      
       const processedParticipants = await Promise.all(
         sessionData.participants.map(async (participant) => {
           if (!participant.email) return participant;
+          
+          const email = participant.email.toLowerCase();
+          
+          // Comprobar si ya hemos procesado este email antes
+          if (processedUserMap.has(email)) {
+            console.log(`Usando nombre en caché para ${email}`);
+            return {
+              ...participant,
+              name: processedUserMap.get(email)
+            };
+          }
           
           try {
             // Obtener nombre del usuario por email
             const userName = await getUserNameByEmail(participant.email);
             
+            // Guardar en nuestro mapa local para esta sesión
+            processedUserMap.set(email, userName);
+            
             console.log(`Participante ${participant.email} - Nombre obtenido: ${userName}`);
             
             return {
               ...participant,
-              name: userName || participant.email.split('@')[0] // Usar el nombre real obtenido o parte del email como fallback
+              name: userName || participant.email.split('@')[0]
             };
           } catch (error) {
             console.error(`Error al obtener nombre para ${participant.email}:`, error);
-            // En caso de error, usar el email como nombre
             return {
               ...participant,
               name: participant.email.split('@')[0]
@@ -418,6 +458,72 @@ const SharedSessions = () => {
     }
   };
 
+  const handleDeleteExpense = async (expense) => {
+    // Verificar que el usuario sea participante de la sesión
+    const userId = localStorage.getItem('userId');
+    
+    if (!userId) {
+      console.error('No se encontró el userId en localStorage');
+      alert('Error al verificar permisos: información de usuario no disponible');
+      return;
+    }
+    
+    // Comprobar que existe una sesión seleccionada
+    if (!currentSession) {
+      console.error('No hay una sesión seleccionada');
+      return;
+    }
+    
+    // Comprobar que el usuario es participante de la sesión
+    const isParticipant = currentSession.participants?.some(
+      p => p.userId?._id === userId || p.userId === userId
+    );
+    
+    if (!isParticipant) {
+      alert('No tienes permiso para eliminar gastos en esta sesión.');
+      return;
+    }
+
+    // Confirmar antes de eliminar
+    const messageText = expense.isRecurring 
+      ? '¿Estás seguro de que quieres eliminar este gasto recurrente? Se eliminarán todos los gastos futuros asociados.'
+      : '¿Estás seguro de que quieres eliminar este gasto?';
+      
+    if (!window.confirm(messageText)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await sharedSessionService.deleteSessionExpense(currentSession._id, expense._id);
+      
+      // Después de eliminar un gasto, asegurarse de que la lista está actualizada
+      await fetchExpenses();
+      
+      // Mostrar mensaje de éxito
+      setMessage({
+        type: 'success',
+        text: 'Gasto eliminado correctamente'
+      });
+      
+      // Sincronizar después de eliminar el gasto
+      try {
+        await sharedSessionService.syncToPersonal(currentSession._id);
+      } catch (syncError) {
+        console.error('Error en la sincronización después de eliminar:', syncError);
+        // No mostrar error al usuario ya que el gasto se eliminó correctamente
+      }
+    } catch (error) {
+      console.error('Error al eliminar el gasto:', error);
+      setMessage({
+        type: 'error',
+        text: 'Error al eliminar el gasto: ' + (error.response?.data?.msg || error.message)
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleExpenseSubmit = async (expenseData) => {
     try {
       if (editingExpense) {
@@ -441,37 +547,6 @@ const SharedSessions = () => {
     } catch (error) {
       console.error('Error al guardar el gasto:', error);
       alert('Error al guardar el gasto: ' + (error.response?.data?.msg || error.message));
-    }
-  };
-
-  const handleDeleteExpense = async (expense) => {
-    if (!currentSession?._id) {
-      console.error('No hay una sesión seleccionada');
-      return;
-    }
-
-    const isIncome = expense.type === 'income';
-    const itemType = isIncome ? 'ingreso' : 'gasto';
-
-    if (window.confirm(`¿Estás seguro de que deseas eliminar este ${itemType}?` + 
-      (expense.isRecurring ? `\nEste es un ${itemType} recurrente. Se eliminarán todas las versiones futuras.` : ''))) {
-      try {
-        // Eliminar el gasto y dejar que el hook maneje la actualización del estado
-        await deleteExpense(expense._id);
-        
-        // Después de eliminar un gasto, asegurarse de que la lista está actualizada
-        await fetchExpenses();
-        
-        // Sincronizar después de eliminar el gasto
-        try {
-          await sharedSessionService.syncToPersonal(currentSession._id);
-        } catch (syncError) {
-          console.error('Error en la sincronización después de eliminar:', syncError);
-        }
-      } catch (error) {
-        console.error(`Error al eliminar el ${itemType}:`, error);
-        alert(`Error al eliminar el ${itemType}: ` + (error.response?.data?.msg || error.message));
-      }
     }
   };
 
@@ -825,33 +900,55 @@ const SharedSessions = () => {
                   participants={(() => {
                     const participantsList = [];
                     const addedUserIds = new Set(); // Para evitar duplicados
+                    // Cache local para nombres de usuarios durante esta renderización
+                    const nameCache = new Map();
 
                     // Función para obtener el mejor nombre disponible
                     const getBestName = (participant) => {
+                      // Primero verificar si ya tenemos este nombre en caché
+                      const userId = participant.userId ? 
+                        (typeof participant.userId === 'object' ? participant.userId._id : participant.userId) : 
+                        null;
+                      
+                      if (userId && nameCache.has(userId.toString())) {
+                        return nameCache.get(userId.toString());
+                      }
+                      
+                      let bestName;
+                      
                       // Si tenemos un objeto usuario completo
                       if (participant.userId && typeof participant.userId === 'object') {
                         const user = participant.userId;
                         
                         // Intentar obtener nombre+apellidos
                         if (user.nombre && user.apellidos) {
-                          return `${user.nombre} ${user.apellidos}`.trim();
+                          bestName = `${user.nombre} ${user.apellidos}`.trim();
                         } else if (user.nombre) {
-                          return user.nombre;
+                          bestName = user.nombre;
                         } else if (user.name) {
-                          return user.name;
+                          bestName = user.name;
                         }
                       }
                       
                       // Usar el nombre explícito del participante si existe y no es el email
-                      if (participant.name && 
+                      if (!bestName && participant.name && 
                           participant.email && 
                           participant.name !== participant.email && 
                           !participant.email.includes(participant.name)) {
-                        return participant.name;
+                        bestName = participant.name;
                       }
                       
                       // Si todo lo demás falla, usar la parte local del email
-                      return participant.email ? participant.email.split('@')[0] : 'Participante';
+                      if (!bestName) {
+                        bestName = participant.email ? participant.email.split('@')[0] : 'Participante';
+                      }
+                      
+                      // Guardar en caché
+                      if (userId) {
+                        nameCache.set(userId.toString(), bestName);
+                      }
+                      
+                      return bestName;
                     };
                     
                     // Procesar todos los participantes

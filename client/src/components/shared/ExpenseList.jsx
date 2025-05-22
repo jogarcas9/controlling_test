@@ -30,87 +30,84 @@ import {
 import { formatCurrency, formatDate } from '../../utils/helpers';
 
 // Componente de tarjeta de gasto para móviles
-const ExpenseCard = ({ expense, onEdit, onDelete, canEdit, canDelete }) => {
+const ExpenseCard = ({ expense, onEdit, onDelete, canEdit }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isIncome = expense.type === 'income';
+  
   return (
     <Paper 
       sx={{ 
-        p: 1.5, 
+        p: 2, 
         mb: 1.5, 
-        borderRadius: 1.5,
-        boxShadow: 1,
-        position: 'relative',
-        overflow: 'hidden',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          bottom: 0,
-          width: 4,
-          backgroundColor: expense.isRecurring ? '#2196f3' : '#9e9e9e',
-        }
+        borderRadius: 2,
+        borderLeft: isIncome ? `4px solid ${theme.palette.success.main}` : `4px solid ${theme.palette.primary.main}`
       }}
+      elevation={1}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Typography 
-          variant="subtitle1" 
-          sx={{ 
-            fontWeight: 600, 
-            fontSize: '0.9rem',
-            mb: 0.5,
-            flexGrow: 1,
-            pr: 1
-          }}
-        >
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        mb: 1
+      }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 'medium', fontSize: '0.95rem' }}>
           {expense.name}
         </Typography>
-        
-        <Box sx={{ display: 'flex' }}>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
           {canEdit && (
-            <Tooltip title="Editar">
-              <IconButton size="small" onClick={() => onEdit(expense)} sx={{ p: 0.5 }}>
-                <EditIcon sx={{ fontSize: '1.1rem' }} />
+            <>
+              <IconButton 
+                size="small" 
+                onClick={() => onEdit(expense)}
+                sx={{ 
+                  p: 0.5,
+                  '&:hover': {
+                    backgroundColor: 'action.selected'
+                  }
+                }}
+              >
+                <EditIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
-          )}
-          {canDelete && (
-            <Tooltip title="Eliminar">
-              <IconButton size="small" onClick={() => onDelete(expense)} sx={{ p: 0.5 }}>
-                <DeleteIcon sx={{ fontSize: '1.1rem' }} />
+              <IconButton 
+                size="small" 
+                onClick={() => onDelete(expense)}
+                sx={{ 
+                  p: 0.5,
+                  color: theme.palette.error.main,
+                  '&:hover': {
+                    backgroundColor: 'action.selected'
+                  }
+                }}
+              >
+                <DeleteIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </>
           )}
         </Box>
       </Box>
       
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-          <CategoryIcon sx={{ fontSize: '0.85rem', mr: 0.5, color: 'text.secondary' }} />
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-            {expense.category}
-          </Typography>
-        </Box>
-        
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <CalendarTodayIcon sx={{ fontSize: '0.85rem', mr: 0.5, color: 'text.secondary' }} />
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-            {formatDate(expense.date)}
-          </Typography>
-        </Box>
-      </Box>
-      
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography 
-          variant="body1" 
-          sx={{ 
-            fontWeight: 700, 
-            color: 'primary.main',
-            fontSize: '1rem'
-          }}
-        >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+          {expense.category || 'Sin categoría'}
+        </Typography>
+        <Typography variant="body2" sx={{ 
+          fontWeight: 'bold', 
+          color: isIncome ? 'success.main' : 'primary.main',
+          fontSize: '0.9rem'
+        }}>
           {formatCurrency(expense.amount)}
         </Typography>
-        
+      </Box>
+      
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+          {formatDate(expense.date)}
+        </Typography>
         {expense.isRecurring && (
           <Chip
             icon={<RefreshIcon fontSize="small" />}
@@ -156,10 +153,6 @@ const ExpenseList = ({
   };
 
   const canEditExpense = (expense) => {
-    return true;
-  };
-  
-  const canDeleteExpense = (expense) => {
     return true;
   };
 
@@ -220,7 +213,6 @@ const ExpenseList = ({
                 onEdit={onEditExpense}
                 onDelete={onDeleteExpense}
                 canEdit={canEditExpense(expense)}
-                canDelete={canDeleteExpense(expense)}
               />
             ))}
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
@@ -270,24 +262,25 @@ const ExpenseList = ({
                     </TableCell>
                     <TableCell align="right">
                       {canEditExpense(expense) && (
-                        <Tooltip title="Editar">
-                          <IconButton
-                            size="small"
-                            onClick={() => onEditExpense(expense)}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {canDeleteExpense(expense) && (
-                        <Tooltip title="Eliminar">
-                          <IconButton
-                            size="small"
-                            onClick={() => onDeleteExpense(expense)}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Tooltip>
+                        <>
+                          <Tooltip title="Editar">
+                            <IconButton
+                              size="small"
+                              onClick={() => onEditExpense(expense)}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Eliminar">
+                            <IconButton
+                              size="small"
+                              onClick={() => onDeleteExpense(expense)}
+                              sx={{ color: theme.palette.error.main }}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </>
                       )}
                     </TableCell>
                   </TableRow>

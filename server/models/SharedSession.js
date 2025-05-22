@@ -293,10 +293,126 @@ sharedSessionSchema.pre('save', async function(next) {
       }
     }
 
+    // Middleware pre-save para actualizar las asignaciones cuando cambia el totalAmount de un mes
+    const modifiedPaths = this.modifiedPaths();
+    
+    // Si hay cambios en yearlyExpenses, verificar si algún totalAmount cambió
+    if (modifiedPaths.some(path => path.startsWith('yearlyExpenses'))) {
+      // Meses modificados que requieren actualización
+      const monthsToSync = new Set();
+      
+      // Si el documento es nuevo, no necesitamos hacer nada especial
+      if (this.isNew) return;
+      
+      // Obtener el documento anterior para comparar
+      const oldDoc = await this.constructor.findById(this._id);
+      if (!oldDoc) return;
+      
+      // Comparar los totalAmount de cada mes
+      if (this.yearlyExpenses && oldDoc.yearlyExpenses) {
+        for (const yearData of this.yearlyExpenses) {
+          const year = yearData.year;
+          const oldYearData = oldDoc.yearlyExpenses.find(y => y.year === year);
+          
+          if (yearData.months && oldYearData && oldYearData.months) {
+            for (const monthData of yearData.months) {
+              const month = monthData.month;
+              const oldMonthData = oldYearData.months.find(m => m.month === month);
+              
+              // Si el totalAmount cambió o el mes es nuevo, programar sincronización
+              if (!oldMonthData || monthData.totalAmount !== oldMonthData.totalAmount) {
+                monthsToSync.add({ year, month });
+              }
+            }
+          }
+        }
+      }
+      
+      // Si hay meses que necesitan sincronización, programarla para después del guardado
+      if (monthsToSync.size > 0) {
+        // Guardar los meses que necesitan sincronización en el documento
+        this._monthsToSync = Array.from(monthsToSync);
+      }
+    }
+
     next();
   } catch (error) {
     console.error('Error en pre-save de SharedSession:', error);
     next(error);
+  }
+});
+
+// Middleware post-save para sincronizar las asignaciones
+sharedSessionSchema.post('save', async function() {
+  try {
+    // Si hay meses que necesitan sincronización, procesar
+    if (this._monthsToSync && this._monthsToSync.length > 0) {
+      const allocationSyncService = require('../services/allocationSyncService');
+      
+      console.log(`Sincronizando asignaciones para ${this._monthsToSync.length} meses modificados en la sesión ${this._id}`);
+      
+      for (const { year, month } of this._monthsToSync) {
+        try {
+          console.log(`Sincronizando asignaciones automáticamente para ${year}-${month+1}`);
+          await allocationSyncService.syncMonthlyAllocations(this._id, year, month);
+        } catch (syncError) {
+          console.error(`Error al sincronizar asignaciones para ${year}-${month+1}:`, syncError);
+        }
+      }
+      
+      // Limpiar la lista de meses pendientes
+      delete this._monthsToSync;
+    } else {
+      // Si no hay meses específicos a sincronizar, verificar si hay cambios en la estructura yearlyExpenses
+      // que requieran sincronización forzada
+      if (this.isModified('yearlyExpenses')) {
+        console.log(`Cambios detectados en yearlyExpenses sin meses específicos marcados. Verificando...`);
+        
+        // Recorrer todos los años/meses y forzar sincronización para los que tienen gastos
+        const allocationSyncService = require('../services/allocationSyncService');
+        const monthsToSync = [];
+        
+        if (this.yearlyExpenses && Array.isArray(this.yearlyExpenses)) {
+          for (const yearData of this.yearlyExpenses) {
+            if (!yearData.months || !Array.isArray(yearData.months)) continue;
+            
+            for (const monthData of yearData.months) {
+              // Solo sincronizar meses que tengan gastos
+              if (monthData.expenses && Array.isArray(monthData.expenses) && monthData.expenses.length > 0) {
+                monthsToSync.push({ year: yearData.year, month: monthData.month });
+              }
+            }
+          }
+        }
+        
+        if (monthsToSync.length > 0) {
+          console.log(`Forzando sincronización para ${monthsToSync.length} meses con gastos`);
+          
+          // Limitar a 5 meses para no sobrecargar el sistema
+          const limitedMonths = monthsToSync.slice(0, 5);
+          
+          for (const { year, month } of limitedMonths) {
+            try {
+              console.log(`Sincronizando forzadamente para ${year}-${month+1}`);
+              await allocationSyncService.syncMonthlyAllocations(this._id, year, month);
+            } catch (syncError) {
+              console.error(`Error al sincronizar asignaciones para ${year}-${month+1}:`, syncError);
+            }
+          }
+        }
+      }
+    }
+    
+    // En cualquier caso, verificar si hubo cambios en allocationService después del guardado
+    try {
+      const allocationService = require('../services/allocationService');
+      await allocationService.distributeAmount(this);
+      console.log(`Distribución de montos actualizada para sesión ${this._id}`);
+    } catch (allocError) {
+      console.error(`Error al distribuir montos en post-save: ${allocError.message}`);
+    }
+  } catch (error) {
+    console.error('Error en middleware post-save de SharedSession:', error);
   }
 });
 

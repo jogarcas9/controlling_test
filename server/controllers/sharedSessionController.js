@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { SharedSession, PersonalExpense, ParticipantAllocation, User } = require('../models');
 const { allocationService, syncService } = require('../services');
+const allocationSyncService = require('../services/allocationSyncService');
 const { ObjectId } = mongoose.Types;
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmail');
@@ -492,6 +493,59 @@ exports.createSession = async (req, res) => {
       .populate('userId', 'nombre email')
       .populate('participants.userId', 'nombre email');
 
+    // Generar asignaciones iniciales para un año en el futuro
+    console.log('Generando asignaciones iniciales para un año en el futuro...');
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
+    const monthsToGenerate = 24; // Generar para 2 años (actual + 1 año futuro)
+
+    // Crear asignaciones para cada participante
+    for (const participant of newSession.participants) {
+      if (!participant.userId) continue;
+
+      for (let i = 0; i < monthsToGenerate; i++) {
+        const targetYear = currentYear + Math.floor((currentMonth + i) / 12);
+        const targetMonth = (currentMonth + i) % 12;
+
+        const allocation = new ParticipantAllocation({
+          sessionId: newSession._id,
+          userId: participant.userId,
+          username: participant.name,
+          name: participant.name,
+          amount: 0,
+          totalAmount: 0,
+          year: targetYear,
+          month: targetMonth,
+          currency: 'EUR',
+          percentage: newSession.allocations.find(a => 
+            a.userId && a.userId.toString() === participant.userId.toString()
+          )?.percentage || 50,
+          status: 'pending'
+        });
+
+        await allocation.save({ session: dbSession });
+        console.log(`Creada asignación para ${participant.name} - ${targetYear}/${targetMonth + 1}`);
+      }
+    }
+
+    // Inicializar la estructura de yearlyExpenses para dos años
+    newSession.yearlyExpenses = [];
+    for (let yearOffset = 0; yearOffset < 2; yearOffset++) {
+      const year = currentYear + yearOffset;
+      newSession.yearlyExpenses.push({
+        year,
+        months: Array.from({ length: 12 }, (_, monthIndex) => ({
+          month: monthIndex,
+          expenses: [],
+          totalAmount: 0
+        }))
+      });
+    }
+
+    // Guardar la sesión actualizada con la estructura de años
+    await newSession.save({ session: dbSession });
+
     console.log(`Sesión creada con éxito. ID: ${populatedSession._id}`);
     await dbSession.commitTransaction();
     
@@ -565,16 +619,16 @@ exports.deleteSession = async (req, res) => {
   
   try {
     const sessionId = req.params.id;
-    console.log(`Intentando eliminar sesión: ${sessionId} por usuario: ${req.user.id}`);
+    console.log(`Iniciando proceso de eliminación para la sesión: ${sessionId} por usuario: ${req.user.id}`);
     
-    // Primero verificar si la sesión existe y pertenece al usuario
+    // Verificar si la sesión existe y pertenece al usuario
     const session = await SharedSession.findOne({
       _id: sessionId,
       $or: [
         { userId: req.user.id },
         { 'participants.userId': req.user.id, 'participants.role': 'admin' }
       ]
-    });
+    }).session(dbSession);
 
     if (!session) {
       console.log(`Sesión ${sessionId} no encontrada o no autorizada para usuario ${req.user.id}`);
@@ -582,46 +636,64 @@ exports.deleteSession = async (req, res) => {
     }
 
     // 1. Buscar todas las asignaciones vinculadas a esta sesión
-    const allocations = await ParticipantAllocation.find({ sessionId });
-    const allocationIds = allocations.map(allocation => allocation._id);
+    const allocations = await ParticipantAllocation.find({ 
+      sessionId 
+    }).session(dbSession);
     
+    const allocationIds = allocations.map(allocation => allocation._id);
     console.log(`Encontradas ${allocations.length} asignaciones relacionadas con la sesión ${sessionId}`);
 
-    // 2. Eliminar todos los gastos personales vinculados a las asignaciones
-    const deletePersonalExpensesByAllocation = await PersonalExpense.deleteMany({ 
-      allocationId: { $in: allocationIds } 
+    // 2. Eliminar todos los gastos personales vinculados a la sesión
+    const deletePersonalExpensesBySession = await PersonalExpense.deleteMany({ 
+      $or: [
+        { allocationId: { $in: allocationIds } },
+        { 'sessionReference.sessionId': sessionId }
+      ]
     }, { session: dbSession });
-    console.log(`Eliminados ${deletePersonalExpensesByAllocation.deletedCount} gastos personales por allocationId`);
+    
+    console.log(`Eliminados ${deletePersonalExpensesBySession.deletedCount} gastos personales relacionados con la sesión`);
 
     // 3. Eliminar todas las asignaciones vinculadas a esta sesión
-    const deleteAllocationResult = await ParticipantAllocation.deleteMany({ sessionId }, { session: dbSession });
+    const deleteAllocationResult = await ParticipantAllocation.deleteMany({ 
+      sessionId 
+    }, { session: dbSession });
+    
     console.log(`Eliminadas ${deleteAllocationResult.deletedCount} asignaciones relacionadas con la sesión ${sessionId}`);
 
     // 4. Eliminar la sesión compartida
     const deleteResult = await SharedSession.findByIdAndDelete(sessionId, { session: dbSession });
     
-    console.log(`Sesión ${sessionId} eliminada con éxito:`, deleteResult ? 'Sí' : 'No');
+    if (!deleteResult) {
+      throw new Error('Error al eliminar la sesión compartida');
+    }
+    
+    console.log(`Sesión ${sessionId} eliminada con éxito`);
     
     // Confirmar la transacción
     await dbSession.commitTransaction();
     
     res.json({ 
-      msg: 'Sesión eliminada exitosamente',
+      msg: 'Sesión y todos sus datos relacionados eliminados exitosamente',
       success: true,
-      deletedAllocations: deleteAllocationResult.deletedCount,
-      deletedPersonalExpenses: deletePersonalExpensesByAllocation.deletedCount
+      details: {
+        sessionId: sessionId,
+        deletedAllocations: deleteAllocationResult.deletedCount,
+        deletedPersonalExpenses: deletePersonalExpensesBySession.deletedCount
+      }
     });
   } catch (err) {
     // Revertir la transacción en caso de error
     await dbSession.abortTransaction();
     
-    console.error(`Error al eliminar sesión ${req.params.id}:`, err.message);
+    console.error(`Error al eliminar sesión ${req.params.id}:`, err);
+    
     if (err.name === 'CastError') {
       return res.status(400).json({ 
         msg: 'ID de sesión inválido',
         error: err.message
       });
     }
+    
     return res.status(500).json({ 
       msg: 'Error del servidor al eliminar sesión',
       error: err.message
@@ -752,19 +824,25 @@ exports.updateBudget = async (req, res) => {
 
 // Agregar un gasto a una sesión
 exports.addExpense = async (req, res) => {
+    const dbSession = await mongoose.startSession();
+    dbSession.startTransaction();
+
     try {
         const { description, amount, date, paidBy, name = 'Gasto', category = 'Otros', isRecurring = false } = req.body;
         
-        // Buscar la sesión
+        // Buscar la sesión con los campos mínimos necesarios
         const session = await SharedSession.findOne({
             _id: req.params.id,
             $or: [
                 { userId: req.user.id },
                 { 'participants.userId': req.user.id }
             ]
-        });
+        })
+        .select('_id participants yearlyExpenses userId currency')
+        .session(dbSession);
 
         if (!session) {
+            await dbSession.abortTransaction();
             return res.status(404).json({ msg: 'Sesión no encontrada o no autorizada' });
         }
 
@@ -774,514 +852,390 @@ exports.addExpense = async (req, res) => {
         );
 
         if (!isParticipant) {
+            await dbSession.abortTransaction();
             return res.status(400).json({ msg: 'Usuario no válido para el pago' });
         }
 
-        // Crear el objeto de gasto
-        const newExpense = {
+        // Crear el objeto de gasto base
+        const baseExpense = {
             name,
             description,
             amount: Number(amount) || 0,
-            date: date ? new Date(date) : new Date(),
             category,
             paidBy,
             isRecurring
         };
 
-        // Usar el método del modelo para añadir el gasto correctamente
-        await session.addExpense(newExpense);
+        // Obtener la fecha inicial del gasto
+        const expenseDate = date ? new Date(date) : new Date();
+        const currentYear = expenseDate.getFullYear();
+        const currentMonth = expenseDate.getMonth();
 
-        // Generar asignaciones para el mes actual
-        const expenseDate = newExpense.date;
-        const year = expenseDate.getFullYear();
-        const month = expenseDate.getMonth(); // 0-11
+        // Si es recurrente, solo crear para los próximos 3 meses inicialmente
+        const monthsToCreate = isRecurring ? 3 : 1;
+        
+        console.log(`Creando gasto ${isRecurring ? 'recurrente' : 'único'} para ${monthsToCreate} meses`);
 
-        try {
-            // Verificar que el servicio de asignaciones está disponible
-            if (typeof allocationService.generateMonthlyAllocations === 'function') {
-                console.log(`Generando asignaciones automáticamente para año=${year}, mes=${month} después de añadir gasto`);
-                await allocationService.generateMonthlyAllocations(session, year, month);
-                
-                // Después de generar asignaciones, ejecutar limpieza y actualización de datos
-                try {
-                    // Eliminar asignaciones duplicadas
-                    await syncService.fixDuplicateAllocations(session._id);
-                    console.log('Limpiadas asignaciones duplicadas');
-                    
-                    // Actualizar nombres de usuario en las asignaciones
-                    await syncService.updateUserNamesInAllocations(session._id);
-                    console.log('Actualizados nombres de usuario en asignaciones');
-                    
-                    // Sincronizar las asignaciones con los gastos personales
-                    const allocations = await ParticipantAllocation.find({ 
-                        sessionId: session._id,
-                        year,
-                        month
-                    });
-                    
-                    console.log(`Sincronizando ${allocations.length} asignaciones con gastos personales`);
-                    
-                    // Sincronizar cada asignación
-                    for (const allocation of allocations) {
-                        try {
-                            await syncService.syncAllocationToPersonalExpense(allocation);
-                        } catch (syncError) {
-                            console.warn(`Error al sincronizar asignación ${allocation._id}:`, syncError.message);
-                            // Continuar con las siguientes asignaciones
-                        }
-                    }
-                } catch (cleanupError) {
-                    console.error('Error en la limpieza de datos:', cleanupError.message);
-                    // No interrumpimos el flujo principal por errores en la limpieza
-                }
+        // Preparar las actualizaciones en lote
+        const bulkOps = [];
+        let monthsProcessed = 0;
+
+        while (monthsProcessed < monthsToCreate) {
+            let targetYear = currentYear;
+            let targetMonth = currentMonth + monthsProcessed;
+
+            // Ajustar año si el mes se desborda
+            if (targetMonth > 11) {
+                targetYear += Math.floor(targetMonth / 12);
+                targetMonth = targetMonth % 12;
             }
-        } catch (allocError) {
-            console.error(`Error al generar asignaciones para año=${year}, mes=${month}:`, allocError);
-            // No interrumpir el proceso principal si falla la generación de asignaciones
+
+            // Crear el gasto para este mes
+            const monthlyExpense = {
+                ...baseExpense,
+                date: new Date(targetYear, targetMonth, expenseDate.getDate()),
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            // Preparar la operación de actualización para este mes
+            bulkOps.push({
+                updateOne: {
+                    filter: {
+                        _id: session._id,
+                        'yearlyExpenses.year': targetYear
+                    },
+                    update: {
+                        $push: {
+                            'yearlyExpenses.$[year].months.$[month].expenses': monthlyExpense
+                        },
+                        $inc: {
+                            'yearlyExpenses.$[year].months.$[month].totalAmount': monthlyExpense.amount
+                        }
+                    },
+                    arrayFilters: [
+                        { 'year.year': targetYear },
+                        { 'month.month': targetMonth }
+                    ],
+                    upsert: true
+                }
+            });
+
+            monthsProcessed++;
         }
 
-        // Devolver la sesión actualizada
-        res.json(session);
+        // Ejecutar las actualizaciones en lote
+        if (bulkOps.length > 0) {
+            await SharedSession.bulkWrite(bulkOps, { session: dbSession });
+        }
+
+        // Obtener todos los años y meses que tienen datos
+        const yearsWithData = session.yearlyExpenses.map(yearData => ({
+            year: yearData.year,
+            months: yearData.months.filter(month => month.expenses && month.expenses.length > 0)
+                                .map(month => month.month)
+        })).filter(yearData => yearData.months.length > 0);
+
+        console.log('Años y meses con datos:', yearsWithData);
+
+        // Actualizar las asignaciones para todos los meses que tienen datos
+        const allocationService = require('../services/allocationService');
+        const allocationSyncService = require('../services/allocationSyncService');
+
+        for (const yearData of yearsWithData) {
+            for (const month of yearData.months) {
+                try {
+                    console.log(`Actualizando asignaciones para ${yearData.year}-${month+1}`);
+                    await allocationSyncService.syncMonthlyAllocations(session._id, yearData.year, month, dbSession);
+                } catch (error) {
+                    console.error(`Error al sincronizar asignaciones para ${yearData.year}-${month+1}:`, error);
+                }
+            }
+        }
+
+        await dbSession.commitTransaction();
+        
+        // Recargar la sesión con los datos actualizados
+        const updatedSession = await SharedSession.findById(session._id)
+            .populate('userId', 'nombre email')
+            .populate('participants.userId', 'nombre email');
+
+        return res.json(updatedSession);
     } catch (error) {
+        await dbSession.abortTransaction();
         console.error('Error al añadir gasto:', error);
-        res.status(500).json({ msg: 'Error al añadir gasto', error: error.message });
+        return res.status(500).json({ msg: 'Error al añadir gasto', error: error.message });
+    } finally {
+        dbSession.endSession();
     }
 };
 
 // Eliminar un gasto de una sesión
 exports.deleteExpense = async (req, res) => {
-    // Iniciar una sesión de transacción
-    const dbSession = await mongoose.startSession();
-    dbSession.startTransaction();
+  const dbSession = await mongoose.startSession();
+  dbSession.startTransaction();
+
+  try {
+    // Obtener los parámetros de la URL
+    const { id, expenseId } = req.params;
+    const sessionId = id; // Para mantener compatibilidad con el código existente
+    const userId = req.user.id;
     
+    console.log(`Iniciando eliminación de gasto - SessionID: ${sessionId}, ExpenseID: ${expenseId}, UserID: ${userId}`);
+    
+    // Validación básica de IDs
+    if (!sessionId || !expenseId) {
+      console.error('IDs de sesión o gasto no proporcionados');
+      await dbSession.abortTransaction();
+      return res.status(400).json({ msg: 'Se requieren IDs de sesión y gasto válidos' });
+    }
+
+    // Convertir los IDs a ObjectId y validar
+    let sessionObjectId, expenseObjectId;
     try {
-        const sessionId = req.params.id;
-        const expenseId = req.params.expenseId;
-        
-        console.log(`Iniciando eliminación del gasto ${expenseId} en la sesión ${sessionId}`);
-        
-        // Verificar que el usuario esté autenticado
-        if (!req.user || !req.user.id) {
-            console.error('Usuario no autenticado o ID de usuario no disponible');
-            await dbSession.abortTransaction();
-            return res.status(401).json({ msg: 'Usuario no autenticado' });
-        }
-        
-        const userId = req.user.id;
-        
-        console.log(`Usuario ${userId} intentando eliminar gasto ${expenseId} de la sesión ${sessionId}`);
-        
-        // Buscar la sesión
-        const session = await SharedSession.findOne({
-            _id: sessionId,
-            $or: [
-                { userId: userId },
-                { 'participants.userId': userId }
-            ]
-        }).session(dbSession);
+      sessionObjectId = new mongoose.Types.ObjectId(sessionId);
+      expenseObjectId = new mongoose.Types.ObjectId(expenseId);
+    } catch (error) {
+      console.error('Error al convertir IDs a ObjectId:', error);
+      await dbSession.abortTransaction();
+      return res.status(400).json({ msg: 'ID de sesión o gasto inválido' });
+    }
 
-        if (!session) {
-            console.log(`Sesión ${sessionId} no encontrada o usuario ${userId} no autorizado`);
-            await dbSession.abortTransaction();
-            return res.status(404).json({ msg: 'Sesión no encontrada o no autorizada' });
-        }
+    // Buscar la sesión incluyendo el usuario actual
+    const session = await SharedSession.findOne({
+      _id: sessionObjectId,
+      $or: [
+        { userId: userId },
+        { 'participants.userId': userId }
+      ]
+    }).session(dbSession);
 
-        // Variables para guardar información del gasto
-        let amountToSubtract = 0;
-        let isRecurring = false;
-        let expenseDescription = '';
-        let expenseCategory = '';
-        let expensePaidBy = null;
-        let expenseDate = new Date();
-        let gastoEncontrado = false;
+    if (!session) {
+      console.error(`Sesión ${sessionId} no encontrada o usuario ${userId} no autorizado`);
+      await dbSession.abortTransaction();
+      return res.status(404).json({ msg: 'Sesión no encontrada o no autorizada' });
+    }
 
-        // Buscar el gasto directamente en el array principal de expenses
-        let expense = null;
-        try {
-            expense = session.expenses.id(expenseId);
-        } catch (err) {
-            console.log(`Error al buscar el gasto en expenses: ${err.message}`);
-            expense = null;
-        }
+    // Verificar si el usuario es participante
+    const isParticipant = session.participants.some(p => 
+      p.userId && p.userId.toString() === userId.toString()
+    );
 
-        if (expense) {
-            console.log(`Gasto encontrado en el array principal de expenses`);
-            gastoEncontrado = true;
-            amountToSubtract = expense.amount || 0;
-            isRecurring = expense.isRecurring || false;
-            expenseDescription = expense.description || '';
-            expenseCategory = expense.category || '';
-            expensePaidBy = expense.paidBy ? expense.paidBy.toString() : null;
-            expenseDate = expense.date ? new Date(expense.date) : new Date();
-        } else {
-            console.log(`Gasto con ID ${expenseId} no encontrado en expenses principal. Buscando en yearlyExpenses...`);
-            
-            // Intentar buscar en la estructura yearlyExpenses
-            for (const yearData of session.yearlyExpenses || []) {
-                if (!yearData || !yearData.months) continue;
-                
-                for (const monthData of yearData.months || []) {
-                    if (!monthData || !monthData.expenses) continue;
-                    
-                    const matchingExpense = monthData.expenses.find(e => 
-                        e && e._id && e._id.toString && e._id.toString() === expenseId
-                    );
-                    
-                    if (matchingExpense) {
-                        console.log(`Gasto encontrado en yearlyExpenses: año=${yearData.year}, mes=${monthData.month}`);
-                        gastoEncontrado = true;
-                        amountToSubtract = matchingExpense.amount || 0;
-                        isRecurring = matchingExpense.isRecurring || false;
-                        expenseDescription = matchingExpense.description || '';
-                        expenseCategory = matchingExpense.category || '';
-                        expensePaidBy = matchingExpense.paidBy ? matchingExpense.paidBy.toString() : null;
-                        expenseDate = matchingExpense.date ? new Date(matchingExpense.date) : new Date();
-                        break;
-                    }
-                }
-                if (gastoEncontrado) break;
-            }
-        }
+    if (!isParticipant) {
+      console.error(`Usuario ${userId} no es participante de la sesión ${sessionId}`);
+      await dbSession.abortTransaction();
+      return res.status(403).json({ msg: 'No tienes permisos para eliminar este gasto' });
+    }
+
+    // Buscar el gasto en la estructura yearlyExpenses
+    let gastoEncontrado = false;
+    let amountToSubtract = 0;
+    let expenseYear, expenseMonth;
+    let isRecurringExpense = false;
+    let expenseName = '';
+
+    // Recorrer la estructura yearlyExpenses para encontrar el gasto
+    if (!session.yearlyExpenses) {
+      session.yearlyExpenses = [];
+    }
+
+    // Primero, encontrar el gasto para determinar si es recurrente y obtener sus datos
+    let targetExpense = null;
+    for (const yearData of session.yearlyExpenses) {
+      if (!yearData.months) continue;
+      
+      for (const monthData of yearData.months) {
+        if (!monthData.expenses) continue;
         
-        if (!gastoEncontrado) {
-            console.log(`Gasto ${expenseId} no encontrado en ninguna parte de la sesión ${sessionId}`);
-            await dbSession.abortTransaction();
-            return res.status(404).json({ msg: 'Gasto no encontrado' });
-        }
-        
-        // Verificar que el usuario sea participante
-        const isParticipant = session.participants.some(p => 
-            p.userId && p.userId.toString() === userId
+        const expense = monthData.expenses.find(exp => 
+          exp && exp._id && exp._id.toString() === expenseId
         );
         
-        if (!isParticipant) {
-            console.log(`Usuario ${userId} no es participante de la sesión ${sessionId}`);
-            await dbSession.abortTransaction();
-            return res.status(403).json({ msg: 'No tienes permisos para eliminar este gasto' });
+        if (expense) {
+          targetExpense = expense;
+          isRecurringExpense = expense.isRecurring;
+          expenseName = expense.name;
+          expenseYear = yearData.year;
+          expenseMonth = monthData.month;
+          console.log(`Gasto encontrado en año=${yearData.year}, mes=${monthData.month}, recurrente=${isRecurringExpense ? 'Sí' : 'No'}`);
+          break;
         }
-
-        console.log(`Gasto a eliminar: ID=${expenseId}, monto=${amountToSubtract}, recurrente=${isRecurring}`);
-        
-        // Eliminar el gasto del array principal de expenses (si existe)
-        try {
-            // Usar findByIdAndUpdate con un operador $pull directo sobre el array de gastos
-            const pullResult = await SharedSession.findByIdAndUpdate(
-                sessionId,
-                { 
-                    $pull: { expenses: { _id: mongoose.Types.ObjectId(expenseId) } },
-                    $inc: { totalAmount: -amountToSubtract },
-                    $set: { lastActivity: Date.now() }
-                },
-                { session: dbSession, new: true }  // Devolver el documento actualizado
-            );
-            
-            if (pullResult) {
-                const expenseStillExists = pullResult.expenses.some(e => 
-                    e._id && e._id.toString() === expenseId
-                );
-                
-                if (!expenseStillExists) {
-                    console.log(`✅ Gasto con ID ${expenseId} eliminado correctamente del array principal de expenses`);
-                } else {
-                    console.log(`⚠️ El gasto con ID ${expenseId} aún existe en el array principal después de la operación $pull`);
-                    
-                    // Intentar eliminar con método alternativo
-                    console.log(`Intentando eliminar con método alternativo mediante filtrado manual...`);
-                    pullResult.expenses = pullResult.expenses.filter(e => 
-                        !e._id || e._id.toString() !== expenseId
-                    );
-                    await pullResult.save({ session: dbSession });
-                    console.log(`Filtrado manual de expenses completado`);
-                }
-            } else {
-                console.log(`⚠️ No se recibió respuesta al eliminar el gasto del array principal`);
-            }
-        } catch (pullError) {
-            console.error(`❌ Error al eliminar el gasto del array principal: ${pullError.message}`);
-            // Continuar con el resto del proceso
-        }
-        
-        // Si NO es recurrente, eliminar solo la instancia específica de yearlyExpenses
-        if (!isRecurring) {
-            console.log(`El gasto ${expenseId} NO es recurrente, buscando y eliminando solo la instancia específica...`);
-            
-            // Buscar en qué año/mes está el gasto
-            const originalMonth = expenseDate.getMonth(); // 0-11
-            const originalYear = expenseDate.getFullYear();
-            
-            console.log(`Fecha original del gasto: ${expenseDate.toISOString()}, año=${originalYear}, mes=${originalMonth}`);
-            
-            let gastoEliminado = false;
-            
-            // Recorrer yearlyExpenses para encontrar y eliminar el gasto exacto
-            for (const yearData of session.yearlyExpenses || []) {
-                if (!yearData || !yearData.months || yearData.year !== originalYear) continue;
-                
-                const monthData = yearData.months.find(m => m && m.month === originalMonth);
-                if (!monthData || !monthData.expenses) continue;
-                
-                const expenseIndex = monthData.expenses.findIndex(e => 
-                    e && e._id && e._id.toString && e._id.toString() === expenseId
-                );
-                
-                if (expenseIndex !== -1) {
-                    console.log(`✅ Gasto normal encontrado en año=${originalYear}, mes=${originalMonth}, eliminándolo...`);
-                    const expenseToRemove = monthData.expenses[expenseIndex];
-                    monthData.totalAmount -= (expenseToRemove.amount || 0);
-                    monthData.expenses.splice(expenseIndex, 1);
-                    gastoEliminado = true;
-                    break;
-                }
-            }
-            
-            if (gastoEliminado) {
-                console.log(`✅ Gasto normal eliminado de yearlyExpenses`);
-                
-                // Actualizar la estructura en la base de datos
-                await SharedSession.findByIdAndUpdate(
-                    sessionId,
-                    { 
-                        $set: { 
-                            yearlyExpenses: session.yearlyExpenses,
-                            lastActivity: Date.now() 
-                        }
-                    },
-                    { session: dbSession }
-                );
-            } else {
-                console.log(`⚠️ No se encontró el gasto normal en yearlyExpenses para eliminarlo`);
-                
-                // Intentar eliminarlo en todos los meses posibles (por si la fecha es incorrecta)
-                console.log(`Buscando el gasto en todos los meses...`);
-                
-                let totalEliminaciones = 0;
-                
-                for (const yearData of session.yearlyExpenses || []) {
-                    if (!yearData || !yearData.months) continue;
-                    
-                    for (const monthData of yearData.months || []) {
-                        if (!monthData || !monthData.expenses) continue;
-                        
-                        const expenseIndex = monthData.expenses.findIndex(e => 
-                            e && e._id && e._id.toString && e._id.toString() === expenseId
-                        );
-                        
-                        if (expenseIndex !== -1) {
-                            console.log(`✅ Gasto encontrado en año=${yearData.year}, mes=${monthData.month}, eliminándolo...`);
-                            const expenseToRemove = monthData.expenses[expenseIndex];
-                            monthData.totalAmount -= (expenseToRemove.amount || 0);
-                            monthData.expenses.splice(expenseIndex, 1);
-                            totalEliminaciones++;
-                        }
-                    }
-                }
-                
-                if (totalEliminaciones > 0) {
-                    console.log(`✅ Se eliminaron ${totalEliminaciones} ocurrencias del gasto en yearlyExpenses`);
-                    
-                    // Actualizar la estructura en la base de datos
-                    await SharedSession.findByIdAndUpdate(
-                        sessionId,
-                        { 
-                            $set: { 
-                                yearlyExpenses: session.yearlyExpenses,
-                                lastActivity: Date.now() 
-                            }
-                        },
-                        { session: dbSession }
-                    );
-                } else {
-                    console.log(`❌ No se encontró el gasto en yearlyExpenses`);
-                }
-            }
-        } else {
-            // Si el gasto es recurrente, también eliminar todas las instancias futuras
-            console.log(`El gasto ${expenseId} es recurrente, eliminando todas las instancias futuras...`);
-            
-            // Obtener la fecha del gasto original para determinar mes/año inicial
-            const originalMonth = expenseDate.getMonth(); // 0-11
-            const originalYear = expenseDate.getFullYear();
-            
-            console.log(`Fecha original del gasto recurrente: ${expenseDate.toISOString()}, año=${originalYear}, mes=${originalMonth}`);
-            
-            // Modificación en memoria de yearlyExpenses
-            let totalGastosEliminados = 0;
-            
-            // Para cada año en yearlyExpenses
-            for (const yearData of session.yearlyExpenses || []) {
-                if (!yearData || !yearData.months) continue;
-                
-                // Para cada mes en el año
-                for (const monthData of yearData.months || []) {
-                    if (!monthData || !monthData.expenses) continue;
-                    
-                    // 1. Eliminar el gasto exacto si existe en este mes
-                    const originalExpenseIndex = monthData.expenses.findIndex(e => 
-                        e && e._id && e._id.toString && e._id.toString() === expenseId
-                    );
-                    
-                    if (originalExpenseIndex !== -1) {
-                        console.log(`✅ Eliminando gasto recurrente exacto en ${yearData.year}-${monthData.month+1}`);
-                        const expenseToRemove = monthData.expenses[originalExpenseIndex];
-                        monthData.totalAmount -= (expenseToRemove.amount || 0);
-                        monthData.expenses.splice(originalExpenseIndex, 1);
-                        totalGastosEliminados++;
-                    }
-                    
-                    // 2. Eliminar instancias recurrentes relacionadas (los generados para meses futuros)
-                    // Solo procesar meses actuales o futuros respecto a la fecha original
-                    if (yearData.year < originalYear || 
-                        (yearData.year === originalYear && monthData.month < originalMonth)) {
-                        continue;
-                    }
-                    
-                    // Filtrar para encontrar gastos recurrentes con características similares
-                    const gastosAntesDeEliminar = monthData.expenses.length;
-                    const gastosRecurrentes = monthData.expenses.filter(e => 
-                        e && e._id && e._id.toString() !== expenseId && // No es el gasto original
-                        e.isRecurring === true && 
-                        e.description === expenseDescription && 
-                        e.amount === amountToSubtract &&
-                        (e.paidBy ? e.paidBy.toString() : null) === expensePaidBy
-                    );
-                    
-                    if (gastosRecurrentes.length > 0) {
-                        console.log(`✅ Encontrados ${gastosRecurrentes.length} gastos recurrentes en ${yearData.year}-${monthData.month+1}`);
-                        
-                        // Reducir el monto total del mes
-                        for (const gasto of gastosRecurrentes) {
-                            monthData.totalAmount -= (gasto.amount || 0);
-                        }
-                        
-                        // Filtrar para eliminar estos gastos recurrentes
-                        monthData.expenses = monthData.expenses.filter(e => 
-                            !(e && e.isRecurring === true && 
-                              e.description === expenseDescription && 
-                              e.amount === amountToSubtract &&
-                              (e.paidBy ? e.paidBy.toString() : null) === expensePaidBy)
-                        );
-                        
-                        const gastosEliminados = gastosAntesDeEliminar - monthData.expenses.length;
-                        totalGastosEliminados += gastosEliminados;
-                        console.log(`✅ Eliminados ${gastosEliminados} gastos recurrentes en ${yearData.year}-${monthData.month+1}`);
-                    }
-                }
-            }
-            
-            console.log(`✅ Total de gastos recurrentes eliminados: ${totalGastosEliminados}`);
-            
-            // Actualizar la estructura yearlyExpenses en la base de datos
-            await SharedSession.findByIdAndUpdate(
-                sessionId,
-                { 
-                    $set: { 
-                        yearlyExpenses: session.yearlyExpenses,
-                        lastActivity: Date.now() 
-                    }
-                },
-                { session: dbSession }
-            );
-            
-            console.log(`✅ Estructura yearlyExpenses actualizada en la base de datos`);
-        }
-        
-        console.log(`Gasto ${expenseId} eliminado con éxito de la sesión ${sessionId}`);
-
-        // Obtener la sesión actualizada
-        const updatedSession = await SharedSession.findById(sessionId)
-            .populate('userId', 'nombre email')
-            .populate('participants.userId', 'nombre email')
-            .session(dbSession);
-
-        // Recalcular el totalAmount para asegurar consistencia
-        let calculatedTotal = 0;
-        try {
-            calculatedTotal = updatedSession.expenses.reduce((sum, exp) => 
-                sum + (exp.amount || 0), 0
-            );
-            updatedSession.totalAmount = calculatedTotal;
-            await updatedSession.save({ session: dbSession });
-            console.log(`Total de gastos recalculado: ${calculatedTotal}`);
-        } catch (err) {
-            console.error(`Error al recalcular el total: ${err.message}`);
-            // No interrumpir el proceso por este error
-        }
-
-        // Recalcular asignaciones y distribuciones
-        try {
-            // Eliminar las asignaciones y gastos personales previos
-            const deleteAllocationsResult = await ParticipantAllocation.deleteMany({ 
-                sessionId 
-            }).session(dbSession);
-            console.log(`Eliminadas ${deleteAllocationsResult.deletedCount} asignaciones previas`);
-
-            // Eliminar los gastos personales vinculados a la sesión
-            const deletePersonalExpensesResult = await PersonalExpense.deleteMany({ 
-                'sessionReference.sessionId': sessionId 
-            }).session(dbSession);
-            console.log(`Eliminados ${deletePersonalExpensesResult.deletedCount} gastos personales previos`);
-
-            // Regenerar asignaciones para el mes del gasto eliminado
-            const originalMonth = expenseDate.getMonth();
-            const originalYear = expenseDate.getFullYear();
-            
-            console.log(`Regenerando asignaciones para año=${originalYear}, mes=${originalMonth} después de eliminar gasto`);
-            
-            if (typeof allocationService.generateMonthlyAllocations === 'function') {
-                try {
-                    await allocationService.generateMonthlyAllocations(updatedSession, originalYear, originalMonth);
-                    console.log(`✅ Asignaciones regeneradas correctamente para ${originalYear}-${originalMonth+1}`);
-                } catch (allocError) {
-                    console.error(`❌ Error al regenerar asignaciones: ${allocError.message}`);
-                }
-            } else {
-                console.warn('Servicio de asignación no disponible, se omite la regeneración de asignaciones');
-            }
-        } catch (allocError) {
-            console.error('Error al redistribuir montos:', allocError);
-            // No interrumpir el proceso si falla la distribución
-        }
-
-        // Confirmar la transacción
-        await dbSession.commitTransaction();
-        console.log(`Transacción completada con éxito`);
-        
-        // Reorganizar los gastos por mes y año 
-        try {
-            if (typeof updatedSession.organizeExpenses === 'function') {
-                await updatedSession.organizeExpenses();
-                console.log('Reorganización de gastos completada con éxito');
-            } else {
-                console.warn('El método organizeExpenses no está disponible en la sesión');
-            }
-        } catch (err) {
-            console.error('Error al organizar gastos después de la eliminación:', err);
-        }
-        
-        res.json(updatedSession);
-    } catch (error) {
-        // Revertir transacción en caso de error
-        try {
-            await dbSession.abortTransaction();
-            console.log('Transacción abortada por error');
-        } catch (abortError) {
-            console.error('Error al abortar la transacción:', abortError);
-        }
-        
-        console.error('Error al eliminar el gasto:', error);
-        res.status(500).json({ 
-            msg: 'Error al eliminar el gasto',
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
-    } finally {
-        try {
-            dbSession.endSession();
-            console.log('Sesión de base de datos finalizada');
-        } catch (endError) {
-            console.error('Error al finalizar la sesión de DB:', endError);
-        }
+      }
+      if (targetExpense) break;
     }
+
+    if (!targetExpense) {
+      console.error(`Gasto ${expenseId} no encontrado en la sesión ${sessionId}`);
+      await dbSession.abortTransaction();
+      return res.status(404).json({ msg: 'Gasto no encontrado en la sesión' });
+    }
+
+    // Importar el servicio de sincronización de asignaciones
+    const allocationSyncService = require('../services/allocationSyncService');
+    
+    // Almacenar los meses que deben actualizarse
+    const monthsToSync = new Set();
+
+    // Si es un gasto normal (no recurrente), eliminar solo ese gasto
+    if (!isRecurringExpense) {
+      console.log(`Eliminando gasto normal: ${expenseName} (${expenseId})`);
+      
+      // Eliminar el gasto específico
+      for (const yearData of session.yearlyExpenses) {
+        if (!yearData.months) continue;
+        
+        for (const monthData of yearData.months) {
+          if (!monthData.expenses) continue;
+          
+          const expenseIndex = monthData.expenses.findIndex(exp => 
+            exp && exp._id && exp._id.toString() === expenseId
+          );
+          
+          if (expenseIndex !== -1) {
+            amountToSubtract = monthData.expenses[expenseIndex].amount || 0;
+            
+            // Eliminar el gasto del array de gastos del mes
+            monthData.expenses.splice(expenseIndex, 1);
+            // Actualizar el total del mes
+            monthData.totalAmount = Math.max(0, (monthData.totalAmount || 0) - amountToSubtract);
+            
+            // Añadir este mes a la lista para sincronizar
+            monthsToSync.add({year: yearData.year, month: monthData.month});
+            
+            gastoEncontrado = true;
+            break;
+          }
+        }
+        if (gastoEncontrado) break;
+      }
+    } 
+    // Si es un gasto recurrente, eliminar todas las instancias futuras
+    else {
+      console.log(`Eliminando gasto recurrente: ${expenseName} (${expenseId}) desde mes ${expenseMonth} año ${expenseYear} en adelante`);
+      
+      let totalEliminados = 0;
+      
+      // Eliminar instancias del mismo gasto recurrente desde el mes actual hacia adelante
+      // Necesitamos mantener expenseId como referencia, pero encontraremos gastos con el mismo nombre y monto
+      for (const yearData of session.yearlyExpenses) {
+        if (!yearData.months || yearData.year < expenseYear) continue;
+        
+        for (const monthData of yearData.months) {
+          if (!monthData.expenses) continue;
+          
+          // Si estamos en un año posterior al del gasto o 
+          // en el mismo año pero en un mes igual o posterior
+          if (yearData.year > expenseYear || (yearData.year === expenseYear && monthData.month >= expenseMonth)) {
+            // Buscar gastos con el mismo nombre que son recurrentes
+            const recurringExpenses = monthData.expenses.filter(exp => 
+              exp && exp.name === expenseName && exp.isRecurring === true
+            );
+            
+            if (recurringExpenses.length > 0) {
+              for (const recExp of recurringExpenses) {
+                const amountToRemove = recExp.amount || 0;
+                
+                // Filtrar los gastos para eliminar los recurrentes con el mismo nombre
+                monthData.expenses = monthData.expenses.filter(exp => 
+                  !(exp && exp.name === expenseName && exp.isRecurring === true)
+                );
+                
+                // Actualizar el total del mes
+                monthData.totalAmount = Math.max(0, (monthData.totalAmount || 0) - amountToRemove);
+                
+                // Añadir este mes a la lista para sincronizar
+                monthsToSync.add({year: yearData.year, month: monthData.month});
+                
+                totalEliminados++;
+              }
+            }
+          }
+        }
+      }
+      
+      gastoEncontrado = totalEliminados > 0;
+      console.log(`Total de gastos recurrentes eliminados: ${totalEliminados}`);
+    }
+
+    if (!gastoEncontrado) {
+      console.error(`No se pudieron eliminar gastos para ${expenseId} en la sesión ${sessionId}`);
+      await dbSession.abortTransaction();
+      return res.status(404).json({ msg: 'No se pudieron eliminar los gastos' });
+    }
+
+    // Guardar los cambios en la sesión
+    await session.save({ session: dbSession });
+    
+    // Sincronizar asignaciones para todos los meses afectados
+    console.log(`Sincronizando asignaciones para ${monthsToSync.size} meses afectados`);
+    for (const {year, month} of monthsToSync) {
+      try {
+        console.log(`Sincronizando asignaciones para ${year}-${month+1}`);
+        await allocationSyncService.syncMonthlyAllocations(sessionId, year, month, dbSession);
+      } catch (error) {
+        console.error(`Error al sincronizar asignaciones para ${year}-${month+1}:`, error);
+        // Continuar con los siguientes meses incluso si hay error
+      }
+    }
+
+    // Si es un gasto recurrente, eliminar todas las asignaciones relacionadas con este gasto desde el mes actual
+    if (isRecurringExpense) {
+      // Eliminar asignaciones desde el mes actual en adelante
+      const allocationsFilter = { 
+        sessionId: sessionObjectId,
+        $or: [
+          { year: { $gt: expenseYear } },
+          { year: expenseYear, month: { $gte: expenseMonth } }
+        ]
+      };
+      
+      // Eliminar los gastos personales relacionados con este gasto recurrente
+      await PersonalExpense.deleteMany(
+        {
+          'sessionReference.sessionId': sessionObjectId,
+          $or: [
+            { year: { $gt: expenseYear } },
+            { year: expenseYear, month: { $gte: expenseMonth } }
+          ]
+        },
+        { session: dbSession }
+      );
+    }
+
+    await dbSession.commitTransaction();
+    res.json({ msg: 'Gasto eliminado correctamente' });
+  } catch (error) {
+    await dbSession.abortTransaction();
+    console.error('Error al eliminar gasto:', error);
+    res.status(500).json({ msg: 'Error al eliminar el gasto' });
+  } finally {
+    dbSession.endSession();
+  }
+};
+
+// Método auxiliar para encontrar un gasto en la estructura yearlyExpenses
+exports._findExpenseInSession = function(session, expenseId) {
+  for (const yearData of session.yearlyExpenses) {
+    for (const monthData of yearData.months) {
+      const expense = monthData.expenses.find(exp => exp._id.toString() === expenseId);
+      if (expense) return expense;
+    }
+  }
+  return null;
+};
+
+// Método auxiliar para eliminar un gasto de la estructura yearlyExpenses
+exports._removeExpenseFromSession = function(session, expenseId) {
+  for (const yearData of session.yearlyExpenses) {
+    for (const monthData of yearData.months) {
+      const expenseIndex = monthData.expenses.findIndex(exp => exp._id.toString() === expenseId);
+      if (expenseIndex !== -1) {
+        monthData.expenses.splice(expenseIndex, 1);
+        return true;
+      }
+    }
+  }
+  return false;
 };
 
 // Eliminar una sesión compartida
@@ -1614,169 +1568,65 @@ exports.inviteParticipants = async (req, res) => {
 
 // Actualizar un gasto en una sesión
 exports.updateExpense = async (req, res) => {
-    // Iniciar una sesión de transacción
-    const dbSession = await mongoose.startSession();
-    dbSession.startTransaction();
-    
-    try {
-        const sessionId = req.params.id;
-        const expenseId = req.params.expenseId;
-        const { name, description, amount, date, category, paidBy } = req.body;
-        const userId = req.user.id;
-        
-        console.log(`Intentando actualizar gasto ${expenseId} en sesión ${sessionId}`);
-        console.log(`Datos recibidos:`, { name, description, amount, date, category, paidBy });
+  const dbSession = await mongoose.startSession();
+  dbSession.startTransaction();
 
-        // Buscar la sesión
-        const session = await SharedSession.findOne({
-            _id: sessionId,
-            $or: [
-                { userId: userId },
-                { 'participants.userId': userId }
-            ]
-        }).session(dbSession);
+  try {
+    const { sessionId, expenseId } = req.params;
+    const { amount, date, category, paidBy } = req.body;
 
-        if (!session) {
-            console.log(`Sesión ${sessionId} no encontrada o usuario ${userId} no autorizado`);
-            return res.status(404).json({ msg: 'Sesión no encontrada o no autorizada' });
-        }
-
-        // Buscar el gasto específico
-        const expense = session.expenses.id(expenseId);
-        if (!expense) {
-            console.log(`Gasto ${expenseId} no encontrado en la sesión ${sessionId}`);
-            return res.status(404).json({ msg: 'Gasto no encontrado' });
-        }
-
-        // Verificar que el usuario sea participante (ya verificado en la consulta inicial)
-        
-        // Guardar el monto anterior para ajustar el total
-        const oldAmount = expense.amount;
-        const oldDate = expense.date ? new Date(expense.date) : new Date();
-        const oldYear = oldDate.getFullYear();
-        const oldMonth = oldDate.getMonth();
-        
-        // Actualizar campos del gasto
-        if (name) expense.name = name;
-        if (description !== undefined) expense.description = description;
-        if (amount) expense.amount = parseFloat(amount);
-        if (date) expense.date = new Date(date);
-        if (category) expense.category = category;
-        if (paidBy) expense.paidBy = paidBy;
-        
-        // Obtener la nueva fecha para determinar si cambió el mes/año
-        const newDate = expense.date ? new Date(expense.date) : new Date();
-        const newYear = newDate.getFullYear();
-        const newMonth = newDate.getMonth();
-        
-        // Ajustar el monto total de la sesión
-        if (amount && parseFloat(amount) !== oldAmount) {
-            const difference = parseFloat(amount) - oldAmount;
-            session.totalAmount = (session.totalAmount || 0) + difference;
-        }
-        
-        // Actualizar fecha de última actividad
-        session.lastActivity = Date.now();
-        
-        // Guardar la sesión
-        await session.save({ session: dbSession });
-        
-        console.log(`Gasto ${expenseId} actualizado. Monto anterior: ${oldAmount}, nuevo: ${expense.amount}`);
-        
-        // Buscar asignaciones relacionadas con este gasto para actualizarlas
-        const allocationsToUpdate = await ParticipantAllocation.find({ 
-            sessionId,
-            expenseId
-        }).session(dbSession);
-        
-        console.log(`Encontradas ${allocationsToUpdate.length} asignaciones relacionadas con el gasto ${expenseId}`);
-        
-        // Obtener la sesión con datos actualizados para recalcular asignaciones
-        const updatedSession = await SharedSession.findById(sessionId)
-            .populate('userId', 'nombre email')
-            .populate('participants.userId', 'nombre email')
-            .session(dbSession);
-
-        // Recalcular y aplicar nuevas asignaciones basadas en los cambios
-        try {
-            // Si cambió el mes o el año, necesitamos regenerar asignaciones para ambos meses
-            const monthChanged = (oldYear !== newYear || oldMonth !== newMonth);
-            
-            if (monthChanged) {
-                console.log(`La fecha del gasto cambió de ${oldYear}-${oldMonth+1} a ${newYear}-${newMonth+1}, regenerando asignaciones para ambos meses`);
-                
-                // Regenerar asignaciones para el mes anterior
-                await allocationService.generateMonthlyAllocations(updatedSession, oldYear, oldMonth);
-                console.log(`Regeneradas asignaciones para el mes anterior ${oldYear}-${oldMonth+1}`);
-                
-                // Regenerar asignaciones para el nuevo mes
-                await allocationService.generateMonthlyAllocations(updatedSession, newYear, newMonth);
-                console.log(`Regeneradas asignaciones para el nuevo mes ${newYear}-${newMonth+1}`);
-            } else {
-                // Si no cambió el mes, solo regeneramos las asignaciones del mes actual
-                console.log(`Regenerando asignaciones para ${newYear}-${newMonth+1}`);
-                await allocationService.generateMonthlyAllocations(updatedSession, newYear, newMonth);
-            }
-        } catch (allocError) {
-            console.error('Error al redistribuir montos:', allocError.message);
-            // No interrumpimos el flujo principal si falla la distribución
-        }
-        
-        // Ejecutar limpieza y actualización de datos
-        try {
-            // Eliminar asignaciones duplicadas
-            await syncService.fixDuplicateAllocations(sessionId);
-            console.log('Limpiadas asignaciones duplicadas');
-            
-            // Actualizar nombres de usuario en las asignaciones
-            await syncService.updateUserNamesInAllocations(sessionId);
-            console.log('Actualizados nombres de usuario en asignaciones');
-            
-            // Sincronizar las asignaciones con los gastos personales
-            const allocations = await ParticipantAllocation.find({ 
-                sessionId,
-                year: newYear,
-                month: newMonth
-            }).session(dbSession);
-            
-            console.log(`Sincronizando ${allocations.length} asignaciones con gastos personales`);
-            
-            // Sincronizar cada asignación
-            for (const allocation of allocations) {
-                try {
-                    await syncService.syncAllocationToPersonalExpense(allocation);
-                } catch (syncError) {
-                    console.warn(`Error al sincronizar asignación ${allocation._id}:`, syncError.message);
-                    // Continuar con las siguientes asignaciones
-                }
-            }
-        } catch (cleanupError) {
-            console.error('Error en la limpieza de datos:', cleanupError.message);
-            // No interrumpimos el flujo principal por errores en la limpieza
-        }
-        
-        // Confirmar transacción
-        await dbSession.commitTransaction();
-        
-        res.json(updatedSession);
-    } catch (error) {
-        // Revertir transacción en caso de error
-        await dbSession.abortTransaction();
-        
-        console.error('Error al actualizar gasto:', error);
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({ 
-                msg: 'Error de validación', 
-                details: Object.values(error.errors).map(err => err.message).join(', ') 
-            });
-        }
-        res.status(500).json({ 
-            msg: 'Error al actualizar el gasto',
-            error: error.message
-        });
-    } finally {
-        dbSession.endSession();
+    const session = await SharedSession.findById(sessionId).session(dbSession);
+    if (!session) {
+      await dbSession.abortTransaction();
+      return res.status(404).json({ msg: 'Sesión no encontrada' });
     }
+
+    // Encontrar y actualizar el gasto
+    const expense = exports._findExpenseInSession(session, expenseId);
+    if (!expense) {
+      await dbSession.abortTransaction();
+      return res.status(404).json({ msg: 'Gasto no encontrado' });
+    }
+
+    // Guardar valores anteriores para comparación
+    const oldDate = expense.date ? new Date(expense.date) : new Date();
+    const oldYear = oldDate.getFullYear();
+    const oldMonth = oldDate.getMonth();
+    const oldAmount = expense.amount;
+
+    // Actualizar campos del gasto
+    if (amount) expense.amount = parseFloat(amount);
+    if (date) expense.date = new Date(date);
+    if (category) expense.category = category;
+    if (paidBy) expense.paidBy = paidBy;
+
+    // Obtener nueva fecha para comparación
+    const newDate = expense.date ? new Date(expense.date) : new Date();
+    const newYear = newDate.getFullYear();
+    const newMonth = newDate.getMonth();
+
+    // Guardar la sesión actualizada
+    await session.save({ session: dbSession });
+
+    // Sincronizar asignaciones
+    if (oldYear !== newYear || oldMonth !== newMonth) {
+      // Si cambió el mes/año, sincronizar ambos períodos
+      await allocationSyncService.syncMonthlyAllocations(sessionId, oldYear, oldMonth, dbSession);
+      await allocationSyncService.syncMonthlyAllocations(sessionId, newYear, newMonth, dbSession);
+    } else {
+      // Si no cambió, solo sincronizar el mes actual
+      await allocationSyncService.syncMonthlyAllocations(sessionId, newYear, newMonth, dbSession);
+    }
+
+    await dbSession.commitTransaction();
+    res.json({ msg: 'Gasto actualizado correctamente' });
+  } catch (error) {
+    await dbSession.abortTransaction();
+    console.error('Error al actualizar gasto:', error);
+    res.status(500).json({ msg: 'Error al actualizar el gasto' });
+  } finally {
+    dbSession.endSession();
+  }
 };
 
 // Obtener asignaciones de montos por participante

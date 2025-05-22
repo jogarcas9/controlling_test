@@ -3,17 +3,46 @@ import axios from 'axios';
 
 // Configuración de Axios
 const API = axios.create({
-  baseURL: '/api'
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
 // Interceptor para añadir el token a todas las solicitudes
-API.interceptors.request.use(config => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
+API.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => {
+    return Promise.reject(error);
   }
-  return config;
-});
+);
+
+// Interceptor para manejar respuestas
+API.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response) {
+      // El servidor respondió con un código de estado fuera del rango 2xx
+      console.error('Error de respuesta:', error.response);
+      if (error.response.status === 401) {
+        localStorage.removeItem('token');
+      }
+    } else if (error.request) {
+      // La petición fue hecha pero no se recibió respuesta
+      console.error('Error de petición:', error.request);
+    } else {
+      // Algo sucedió en la configuración de la petición que causó el error
+      console.error('Error:', error.message);
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Tiempo de caché para las sesiones (en ms)
 const CACHE_TIME = 60000; // 1 minuto
@@ -22,6 +51,11 @@ const CACHE_TIME = 60000; // 1 minuto
 let sessionsCache = {
   data: null,
   timestamp: 0
+};
+
+// Caché para información de usuarios por email
+let userEmailCache = {
+  // Estructura: { [email]: { data: userObject, timestamp: time } }
 };
 
 // Función para manejar errores y logging consistente
@@ -93,6 +127,21 @@ export const invalidateSessionsCache = () => {
     data: null,
     timestamp: 0
   };
+};
+
+export const invalidateUserCache = (email = null) => {
+  if (email) {
+    // Invalidar un usuario específico
+    const normalizedEmail = email.toLowerCase().trim();
+    if (userEmailCache[normalizedEmail]) {
+      console.log(`Invalidando caché para usuario: ${email}`);
+      delete userEmailCache[normalizedEmail];
+    }
+  } else {
+    // Invalidar todos los usuarios
+    console.log('Invalidando caché de todos los usuarios');
+    userEmailCache = {};
+  }
 };
 
 export const fetchPendingInvitations = async () => {
@@ -203,71 +252,12 @@ export const updateSessionExpense = async (sessionId, expenseId, expenseData) =>
 export const deleteSessionExpense = async (sessionId, expenseId) => {
   try {
     console.log(`Eliminando gasto ${expenseId} de la sesión ${sessionId}`);
-    
-    // Verificar si hay token en localStorage
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No hay token JWT, el usuario debe iniciar sesión');
-      throw new Error(JSON.stringify({
-        response: { status: 401 },
-        message: 'No hay token de autenticación'
-      }));
-    }
-    
-    // Corrección de la ruta para que coincida con la API del servidor
+    // Corregir la ruta para que coincida con la API del servidor
     const response = await api.delete(`/api/shared-sessions/${sessionId}/expenses/${expenseId}`);
     console.log('Respuesta al eliminar gasto:', response.data);
     return response.data;
   } catch (error) {
-    // Manejar específicamente los errores más comunes
-    if (error.response) {
-      // El servidor respondió con un código de error
-      const { status, data } = error.response;
-      
-      if (status === 401) {
-        console.error('Error de autenticación: Token inválido o expirado');
-        localStorage.removeItem('token'); // Limpiar token inválido
-        throw new Error(JSON.stringify({
-          originalError: error,
-          userMessage: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.'
-        }));
-      } else if (status === 403) {
-        console.error('Error de permisos al eliminar gasto:', data);
-        throw new Error(JSON.stringify({
-          originalError: error,
-          userMessage: 'No tienes permisos para eliminar este gasto.'
-        }));
-      } else if (status === 404) {
-        console.error('Gasto o sesión no encontrados:', data);
-        throw new Error(JSON.stringify({
-          originalError: error,
-          userMessage: 'El gasto que intentas eliminar no existe o ha sido eliminado.'
-        }));
-      } else if (status === 500) {
-        console.error('Error del servidor al eliminar gasto:', data);
-        // Registrar información diagnóstica adicional
-        console.error('Detalles adicionales:', {
-          sessionId,
-          expenseId
-        });
-        throw new Error(JSON.stringify({
-          originalError: error,
-          userMessage: 'Error interno del servidor al eliminar el gasto.'
-        }));
-      }
-    }
-    
-    // Error genérico o de red
-    console.error('Error en deleteSessionExpense:', error);
-    
-    // Registrar información diagnóstica adicional
-    console.error('Detalles de la petición:', {
-      endpoint: `/api/shared-sessions/${sessionId}/expenses/${expenseId}`,
-      method: 'DELETE',
-      hasToken: !!localStorage.getItem('token')
-    });
-    
-    throw error;
+    return handleApiError('deleteSessionExpense', error);
   }
 };
 
@@ -337,71 +327,71 @@ export const listSessions = async (forceRefresh = false) => {
 };
 
 export const getUserByEmail = async (email) => {
+  if (!email) return null;
+  
   try {
-    // Realizar la consulta al backend para obtener el usuario por email
-    console.log(`Buscando usuario con email: ${email}`);
+    // Normalizar email para usar como clave de caché
+    const normalizedEmail = email.toLowerCase().trim();
     
-    // Verificar si hay token en localStorage para añadir autenticación
-    const token = localStorage.getItem('token');
-    const config = token ? { headers: { 'x-auth-token': token }, timeout: 3000 } : { timeout: 3000 };
+    // Comprobar si tenemos datos en caché y si son válidos
+    const now = Date.now();
+    const cachedUser = userEmailCache[normalizedEmail];
     
-    // Llamar al endpoint mejorado
-    const response = await api.get(`/api/users/by-email/${encodeURIComponent(email)}`, config);
+    if (cachedUser && (now - cachedUser.timestamp < CACHE_TIME)) {
+      console.log(`Usando datos en caché para el usuario con email: ${email}`);
+      return cachedUser.data;
+    }
     
-    // Verificar que hay una respuesta y contiene datos de usuario
-    if (response.data && response.data.user) {
-      const user = response.data.user;
+    console.log(`Obteniendo información para el usuario con email: ${email}`);
+    const result = await api.get(`/api/users/by-email/${encodeURIComponent(email)}`);
+    
+    if (result && result.data && result.data.user) {
+      console.log(`Nombre obtenido para ${email}: ${result.data.user.name}`);
       
-      // Intentar construir un nombre de visualización más amigable
-      let displayName = null;
+      // Guardar en caché
+      userEmailCache[normalizedEmail] = {
+        data: result.data,
+        timestamp: now
+      };
       
-      // Prioridad: nombre+apellidos > nombre > username > email
-      if (user.nombre && user.apellidos) {
-        displayName = `${user.nombre} ${user.apellidos}`.trim();
-      } else if (user.name && user.last_name) {
-        displayName = `${user.name} ${user.last_name}`.trim();
-      } else if (user.nombre) {
-        displayName = user.nombre;
-      } else if (user.name) {
-        displayName = user.name;
-      } else if (user.username) {
-        displayName = user.username;
-      }
+      return result.data;
+    } else {
+      console.warn(`No se encontró información para el usuario con email: ${email}`);
       
-      // Si no se encontró un nombre adecuado, usar parte del email
-      if (!displayName || displayName === email || email.includes(displayName)) {
-        displayName = email.split('@')[0];
-      }
-      
-      // Construir objeto de usuario enriquecido
-      const result = { 
-        user: { 
-          ...user,
-          name: displayName
+      // Crear un usuario básico como fallback
+      const fallbackData = { 
+        user: {
+          email: email,
+          name: email.split('@')[0]
         } 
       };
       
-      console.log(`Usuario encontrado para ${email}: ${displayName}`);
-      return result;
+      // Guardar en caché incluso el fallback
+      userEmailCache[normalizedEmail] = {
+        data: fallbackData,
+        timestamp: now
+      };
+      
+      return fallbackData;
     }
-    
-    // Si no se encuentra el usuario en la respuesta, crear uno básico
-    console.log(`No se encontró usuario con email: ${email}, creando uno básico`);
-    return { 
-      user: {
-        email: email,
-        name: email.split('@')[0]
-      } 
-    };
   } catch (error) {
     // Fallback inmediato: usar el email como nombre, sin reintentos ni throw
     console.warn(`Fallo getUserByEmail para ${email}, usando fallback local.`, error);
-    return { 
+    
+    const fallbackData = { 
       user: {
         email: email,
         name: email.split('@')[0]
       } 
     };
+    
+    // Guardar el fallback en caché para evitar más peticiones fallidas
+    userEmailCache[email.toLowerCase().trim()] = {
+      data: fallbackData,
+      timestamp: Date.now()
+    };
+    
+    return fallbackData;
   }
 };
 

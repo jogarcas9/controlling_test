@@ -11,20 +11,15 @@ const participantAllocationSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  username: {
-    type: String,
-    required: true
-  },
-  name: {
-    type: String
-  },
+  username: String,
+  name: String,
   amount: {
     type: Number,
-    required: true
+    default: 0
   },
   totalAmount: {
     type: Number,
-    required: true
+    default: 0
   },
   year: {
     type: Number,
@@ -42,7 +37,7 @@ const participantAllocationSchema = new mongoose.Schema({
   },
   percentage: {
     type: Number,
-    required: true,
+    default: 50,
     min: 0,
     max: 100
   },
@@ -51,10 +46,18 @@ const participantAllocationSchema = new mongoose.Schema({
     enum: ['pending', 'accepted', 'paid'],
     default: 'pending'
   },
+  expenses: [{
+    expenseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Expense'
+    },
+    amount: Number,
+    percentage: Number,
+    date: Date
+  }],
   personalExpenseId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'PersonalExpense',
-    default: null
+    ref: 'PersonalExpense'
   },
   createdAt: {
     type: Date,
@@ -68,12 +71,28 @@ const participantAllocationSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Índices para mejorar la eficiencia de las consultas
-participantAllocationSchema.index({ sessionId: 1, userId: 1 });
-participantAllocationSchema.index({ userId: 1, status: 1 });
-participantAllocationSchema.index({ year: 1, month: 1 });
+// Índices para optimizar consultas frecuentes
+participantAllocationSchema.index({ sessionId: 1, userId: 1, year: 1, month: 1 }, { unique: true });
+participantAllocationSchema.index({ userId: 1, year: 1, month: 1 });
 participantAllocationSchema.index({ sessionId: 1, year: 1, month: 1 });
-participantAllocationSchema.index({ personalExpenseId: 1 });
+
+// Método para recalcular montos basado en gastos
+participantAllocationSchema.methods.recalculateAmounts = function() {
+  if (!this.expenses || !this.expenses.length) {
+    this.amount = 0;
+    this.totalAmount = 0;
+    return;
+  }
+
+  this.amount = this.expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+  this.totalAmount = this.amount;
+};
+
+// Middleware para asegurar que los montos estén actualizados antes de guardar
+participantAllocationSchema.pre('save', function(next) {
+  this.recalculateAmounts();
+  next();
+});
 
 // Map of allocations currently being synchronized to prevent infinite loops
 const syncInProgress = new Map();

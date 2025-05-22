@@ -2,7 +2,9 @@ require('dotenv').config();
 
 module.exports = {
   // Configuración de la base de datos
-  mongoURI: process.env.MONGODB_URI || 'mongodb+srv://jogarcas29:7JAw4tGRRjos9I8d@homeexpenses.acabyfv.mongodb.net/controlling_app',
+  mongoURI: process.env.NODE_ENV === 'production' 
+    ? process.env.MONGODB_URI_PRODUCTION 
+    : process.env.MONGODB_URI_QUALITY || 'mongodb://localhost:27017/controlling_app',
   
   // Configuración del servidor
   port: process.env.PORT || 5000,

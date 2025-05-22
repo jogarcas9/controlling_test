@@ -8,23 +8,29 @@ export const useExpenses = (sessionId, month, year) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [currentSessionId, setCurrentSessionId] = useState(sessionId || null);
+
+  // Actualizar currentSessionId cuando cambia sessionId
+  useEffect(() => {
+    setCurrentSessionId(sessionId || null);
+  }, [sessionId]);
 
   const fetchExpenses = useCallback(async () => {
-    if (!sessionId || month === undefined || year === undefined) {
+    if (!currentSessionId || month === undefined || year === undefined) {
       console.log('No hay sessionId, mes o año, saltando fetchExpenses');
       return;
     }
     try {
       setLoading(true);
       setError(null);
-      console.log(`Obteniendo gastos para la sesión ${sessionId}, mes ${month} (${getMonthName(month)}), año ${year}...`);
+      console.log(`Obteniendo gastos para la sesión ${currentSessionId}, mes ${month} (${getMonthName(month)}), año ${year}...`);
       
       // Usar el nuevo endpoint del backend
       let response;
       try {
         // Asegurar que month se envía como 0-11 (donde 0 es enero y 11 es diciembre)
         const monthNum = Math.max(0, Math.min(11, parseInt(month)));
-        response = await sharedSessionService.getExpensesByMonth(sessionId, year, monthNum);
+        response = await sharedSessionService.getExpensesByMonth(currentSessionId, year, monthNum);
       } catch (err) {
         // Verificar si es un error de autenticación
         if (err.response && err.response.status === 401) {
@@ -46,18 +52,18 @@ export const useExpenses = (sessionId, month, year) => {
             // Primero intentar reparar la estructura
             try {
               console.log('Intentando reparar la estructura de datos de la sesión...');
-              await sharedSessionService.repairSessionStructure(sessionId);
+              await sharedSessionService.repairSessionStructure(currentSessionId);
             } catch (repairError) {
               console.warn('Error al reparar sesión:', repairError);
             }
             
             // Antes de reintentar, intentar obtener los detalles de la sesión para
             // asegurarse de que el servidor tiene los datos correctos
-            await sharedSessionService.getSessionDetails(sessionId);
+            await sharedSessionService.getSessionDetails(currentSessionId);
             
             // Asegurar que month se envía en formato 0-11
             const monthNum = Math.max(0, Math.min(11, parseInt(month)));
-            response = await sharedSessionService.getExpensesByMonth(sessionId, year, monthNum);
+            response = await sharedSessionService.getExpensesByMonth(currentSessionId, year, monthNum);
           } catch (retryErr) {
             // Verificar si es un error de autenticación en el reintento
             if (retryErr.response && retryErr.response.status === 401) {
@@ -102,30 +108,30 @@ export const useExpenses = (sessionId, month, year) => {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, month, year, retryCount]);
+  }, [currentSessionId, month, year, retryCount]);
 
   // Efecto para cargar gastos cuando cambian los parámetros
   useEffect(() => {
-    if (sessionId) {
-      console.log(`Ejecutando efecto para cargar gastos (sessionId: ${sessionId})`);
+    if (currentSessionId) {
+      console.log(`Ejecutando efecto para cargar gastos (sessionId: ${currentSessionId})`);
       fetchExpenses().catch(err => {
         console.error('Error no manejado en fetchExpenses:', err);
       });
     }
-  }, [fetchExpenses, sessionId]);
+  }, [fetchExpenses, currentSessionId]);
 
   const addExpense = useCallback(async (expenseData) => {
-    if (!sessionId) {
+    if (!currentSessionId) {
       throw new Error('No hay una sesión activa para añadir el gasto');
     }
     
     try {
       setLoading(true);
       setError(null);
-      console.log(`Añadiendo gasto a la sesión ${sessionId}:`, expenseData);
+      console.log(`Añadiendo gasto a la sesión ${currentSessionId}:`, expenseData);
       
       // Obtener los detalles de la sesión para verificar participantes
-      const sessionDetails = await sharedSessionService.getSessionDetails(sessionId);
+      const sessionDetails = await sharedSessionService.getSessionDetails(currentSessionId);
       console.log('Detalles de sesión obtenidos para validar paidBy:', sessionDetails);
       
       // Obtener IDs de los participantes
@@ -171,7 +177,7 @@ export const useExpenses = (sessionId, month, year) => {
       console.log(`Enviando gasto con paidBy validado:`, dataToSend);
       
       // Añadir gasto a la sesión compartida
-      const response = await sharedSessionService.addExpenseToSession(sessionId, dataToSend);
+      const response = await sharedSessionService.addExpenseToSession(currentSessionId, dataToSend);
       console.log('Respuesta al añadir gasto:', response);
       
       // Crear un nuevo gasto formateado con la respuesta y añadirlo inmediatamente al estado
@@ -226,17 +232,17 @@ export const useExpenses = (sessionId, month, year) => {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, month, year]);
+  }, [currentSessionId, month, year]);
 
   const updateExpense = useCallback(async (expenseId, expenseData) => {
-    if (!sessionId) {
+    if (!currentSessionId) {
       throw new Error('No hay una sesión activa para actualizar el gasto');
     }
     
     try {
       setLoading(true);
       setError(null);
-      console.log(`Actualizando gasto ${expenseId} en la sesión ${sessionId}:`, expenseData);
+      console.log(`Actualizando gasto ${expenseId} en la sesión ${currentSessionId}:`, expenseData);
       
       // Actualizar inmediatamente el estado para mostrar cambios en la UI
       // Guardar una copia del estado anterior para poder revertir si hay error
@@ -255,7 +261,7 @@ export const useExpenses = (sessionId, month, year) => {
       
       try {
         // Actualizar gasto en la sesión compartida
-        const response = await sharedSessionService.updateSessionExpense(sessionId, expenseId, expenseData);
+        const response = await sharedSessionService.updateSessionExpense(currentSessionId, expenseId, expenseData);
         console.log('Respuesta al actualizar gasto:', response);
         
         // Si la respuesta contiene la sesión completa actualizada
@@ -298,109 +304,7 @@ export const useExpenses = (sessionId, month, year) => {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, month, year, expenses]);
-
-  const deleteExpense = useCallback(async (expenseId) => {
-    if (!sessionId) {
-      throw new Error('No hay una sesión activa para eliminar el gasto');
-    }
-    
-    // Verificar si hay token en localStorage
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No hay token JWT, el usuario debe iniciar sesión');
-      setError('Se requiere iniciar sesión para eliminar gastos');
-      throw new Error('No hay token de autenticación');
-    }
-    
-    let retryCount = 0;
-    const maxRetries = 2;
-    
-    while (retryCount <= maxRetries) {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log(`Eliminando gasto ${expenseId} de la sesión ${sessionId} (intento ${retryCount + 1}/${maxRetries + 1})`);
-        
-        // Actualizar inmediatamente el estado para mostrar el cambio en la UI
-        // Guardar una copia del estado actual para poder revertir si hay error
-        const previousExpenses = [...expenses];
-        setExpenses(prev => prev.filter(expense => expense._id !== expenseId));
-        
-        try {
-          // Eliminar gasto de la sesión compartida
-          const response = await sharedSessionService.deleteSessionExpense(sessionId, expenseId);
-          console.log('Respuesta al eliminar gasto:', response);
-          
-          // Si la respuesta contiene la sesión completa actualizada
-          if (response && response.expenses) {
-            // Actualizar con todos los gastos de la sesión, filtrando por mes/año si es necesario
-            let updatedExpenses = response.expenses || [];
-            
-            // Si se filtran por mes/año, aplicar el mismo filtro
-            if (month !== undefined && year !== undefined && response.sessionType === 'permanent') {
-              // Asegurar que month esté en rango 0-11
-              const monthNum = Math.max(0, Math.min(11, parseInt(month)));
-              const startDate = getFirstDayOfMonth(year, monthNum);
-              const endDate = getLastDayOfMonth(year, monthNum);
-              
-              console.log(`Filtrando gastos entre ${startDate.toISOString()} y ${endDate.toISOString()}`);
-              
-              updatedExpenses = updatedExpenses.filter(expense => {
-                const expenseDate = new Date(expense.date);
-                return expenseDate >= startDate && expenseDate <= endDate;
-              });
-            }
-            
-            setExpenses(updatedExpenses);
-          }
-          // Si no hay respuesta detallada, ya actualizamos el estado al inicio
-        } catch (error) {
-          // Si hay un error al eliminar, revertir al estado anterior
-          console.error('Error al eliminar, revertiendo estado:', error);
-          setExpenses(previousExpenses);
-          throw error; // Propagar el error para que lo maneje el bloque catch externo
-        }
-        
-        setLoading(false);
-        return true; // Éxito, salir del bucle de reintentos
-      } catch (err) {
-        retryCount++;
-        
-        // Extraer mensaje de error más amigable si existe
-        const friendlyMessage = err.userMessage || 
-                              (err.response?.data?.msg) || 
-                              err.message || 
-                              'Error desconocido';
-        
-        console.error(`Error al eliminar gasto (intento ${retryCount}/${maxRetries + 1}):`, err);
-        console.error('Mensaje para usuario:', friendlyMessage);
-        
-        // Si es un error de autenticación, no seguir reintentando
-        if (err.response && err.response.status === 401) {
-          setError('Error de autenticación: Debes iniciar sesión nuevamente');
-          setLoading(false);
-          throw err;
-        }
-        
-        // Si se agotaron los reintentos, propagar el error
-        if (retryCount > maxRetries) {
-          setError(`Error al eliminar gasto: ${friendlyMessage}`);
-          setLoading(false);
-          throw err;
-        }
-        
-        // Esperar antes de reintentar (backoff exponencial)
-        const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 8000);
-        console.log(`Reintentando en ${backoffTime}ms...`);
-        
-        // Mostrar mensaje de reintento
-        setError(`Error al eliminar gasto (intento ${retryCount}/${maxRetries + 1}): ${friendlyMessage}. Reintentando...`);
-        
-        await new Promise(resolve => setTimeout(resolve, backoffTime));
-      }
-    }
-  }, [sessionId, month, year, expenses]);
+  }, [currentSessionId, month, year, expenses]);
 
   const calculateTotal = useCallback(() => {
     return expenses.reduce((total, expense) => total + expense.amount, 0);
@@ -414,7 +318,6 @@ export const useExpenses = (sessionId, month, year) => {
     fetchExpenses,
     addExpense,
     updateExpense,
-    deleteExpense,
     calculateTotal
   };
 };
