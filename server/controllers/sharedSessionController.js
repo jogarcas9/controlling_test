@@ -3,6 +3,7 @@ const { SharedSession, PersonalExpense, ParticipantAllocation, User } = require(
 const allocationService = require('../services/allocationService');
 const syncService = require('../services/syncService');
 const allocationSyncService = require('../services/allocationSyncService');
+const MonthGenerationService = require('../services/monthGenerationService');
 const { ObjectId } = mongoose.Types;
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmail');
@@ -360,179 +361,132 @@ exports.respondToInvitation = async (req, res) => {
 };
 
 // Crear una nueva sesión compartida
-exports.createSession = async (req, res) => {
+exports.createSharedSession = async (req, res) => {
   const dbSession = await mongoose.startSession();
   dbSession.startTransaction();
 
   try {
-    console.log(`Creando nueva sesión para el usuario ${req.user.id}`);
-    console.log('Datos recibidos:', JSON.stringify(req.body, null, 2));
-    
-    const { name, description, participants = [], sessionType = 'single' } = req.body;
+    console.log('[createSharedSession] Iniciando creación de sesión compartida');
+    const { name, description, participants = [], currency = 'EUR', sessionType = 'single' } = req.body;
+    console.log('[createSharedSession] Datos recibidos:', { name, description, participants, currency, sessionType });
 
-    if (!name || name.trim().length === 0) {
-      throw new Error('El nombre de la sesión es requerido');
+    // Validar datos básicos
+    if (!name) {
+      console.log('[createSharedSession] Error: Nombre no proporcionado');
+      await dbSession.abortTransaction();
+      return res.status(400).json({ msg: 'El nombre de la sesión es requerido' });
     }
 
-    if (!Array.isArray(participants)) {
-      throw new Error('El formato de participantes es inválido');
-    }
-
-    // Obtener información del creador desde la base de datos
+    // Obtener información del creador
     const creator = await User.findById(req.user.id).session(dbSession);
     if (!creator) {
-      throw new Error('Usuario creador no encontrado');
+      console.log('[createSharedSession] Error: Creador no encontrado');
+      await dbSession.abortTransaction();
+      return res.status(400).json({ msg: 'Usuario creador no encontrado' });
     }
 
-    console.log(`Creador: ${creator._id} (${creator.email})`);
     const creatorEmail = creator.email.toLowerCase();
+    console.log('[createSharedSession] Creador:', { id: creator._id, email: creatorEmail });
 
-    // Filtrar participantes únicos y válidos
-    const emailsSet = new Set();
+    // Validar y procesar participantes
     const validParticipants = [];
     const invalidParticipants = [];
 
     for (const participant of participants) {
-      if (!participant.email || typeof participant.email !== 'string') {
-        continue;
-      }
-      const email = participant.email.toLowerCase().trim();
-      
-      // No incluir al creador como participante adicional
-      if (email === creatorEmail) {
-        console.log(`Excluyendo al creador ${creatorEmail} de la lista de participantes invitados`);
-        continue;
-      }
-      
-      // No duplicar emails
-      if (emailsSet.has(email)) {
-        continue;
-      }
-      
-      // Buscar si el usuario existe
-      const existingUser = await User.findOne({ 
-        $or: [
-          { email: email },
-          { email: email.replace(/([^@]+)@/, '$1e@') }, // Intentar con una 'e' adicional
-          { email: email.replace(/([^@]+)e@/, '$1@') }  // Intentar sin la 'e'
-        ]
-      }).session(dbSession);
+      if (!participant.email) continue;
 
-      if (!existingUser) {
-        console.log(`Usuario no encontrado para el email: ${email}`);
-        invalidParticipants.push({
+      const email = participant.email.toLowerCase();
+      if (email === creatorEmail) continue;
+
+      const existingUser = await User.findOne({ email }).session(dbSession);
+      if (existingUser) {
+        validParticipants.push({
+          userId: existingUser._id,
+          name: existingUser.nombre || existingUser.name || existingUser.email,
           email: email,
-          reason: 'Usuario no registrado en el sistema'
+          canEdit: participant.canEdit || false,
+          canDelete: participant.canDelete || false,
+          status: 'pending'
         });
-        continue;
+        console.log('[createSharedSession] Participante válido:', { email, userId: existingUser._id });
+      } else {
+        invalidParticipants.push(email);
+        console.log('[createSharedSession] Participante inválido:', { email });
       }
-      
-      emailsSet.add(email);
-      validParticipants.push({
-        ...participant,
-        email: email,
-        userId: existingUser._id,
-        name: existingUser.name || existingUser.nombre || email
-      });
     }
 
-    if (invalidParticipants.length > 0) {
-      console.log('Participantes inválidos encontrados:', invalidParticipants);
-    }
-
-    console.log(`Procesados ${validParticipants.length} participantes válidos`);
-
-    // Crear la sesión compartida
+    // Crear la nueva sesión con la estructura exacta requerida
+    console.log('[createSharedSession] Creando nueva sesión');
     const newSession = new SharedSession({
+      name,
+      description,
       userId: req.user.id,
-      name: name.trim(),
-      description: description ? description.trim() : '',
-      sessionType,
-      status: 'active',
-      // Bloquear solo si hay otros participantes
-      isLocked: validParticipants.length > 0,
-      participants: [],
-      // Establecer fechas a null o a valores constantes
       date: null,
+      participants: [
+        {
+          userId: req.user.id,
+          name: creator.nombre || creator.name || creator.email,
+          email: creatorEmail,
+          status: 'accepted',
+          role: 'admin',
+          canEdit: true,
+          canDelete: true
+        },
+        ...validParticipants
+      ],
+      currency,
+      isActive: true,
       startDate: null,
       endDate: null,
-      yearlyExpenses: [] // Inicializar array de gastos anuales
+      sessionType,
+      status: 'active',
+      isLocked: validParticipants.length > 0,
+      yearlyExpenses: []
     });
-
-    // Añadir al creador como primer participante con estado aceptado
-    newSession.participants.push({
-      userId: req.user.id,
-      name: creator.nombre || creator.name || creator.email,
-      email: creatorEmail,
-      status: 'accepted',
-      role: 'admin',
-      canEdit: true,
-      canDelete: true,
-      responseDate: new Date()
-    });
-
-    // Procesar y añadir participantes válidos
-    for (const participant of validParticipants) {
-      newSession.participants.push({
-        userId: participant.userId,
-        name: participant.name,
-        email: participant.email,
-        status: 'pending',
-        role: 'member',
-        canEdit: participant.canEdit || false,
-        canDelete: participant.canDelete || false,
-        invitationDate: new Date()
-      });
-    }
-
-    // Si no hay otros participantes además del creador, desbloquear la sesión
-    if (newSession.participants.length === 1) {
-      console.log(`Solo hay un participante (el creador). Desbloqueando sesión.`);
-      newSession.isLocked = false;
-    }
 
     // Guardar la sesión
+    console.log('[createSharedSession] Guardando sesión inicial');
     await newSession.save({ session: dbSession });
+    console.log('[createSharedSession] Sesión guardada con ID:', newSession._id);
 
-    // Inicializar la asignación de porcentajes equitativamente
-    const participantCount = newSession.participants.length;
-    const equalPercentage = Math.floor(100 / participantCount);
-    let remainingPercentage = 100 - (equalPercentage * participantCount);
-    
-    newSession.allocations = newSession.participants.map((participant, index) => {
-      return {
-        userId: participant.userId,
-        name: participant.name,
-        percentage: index === 0 ? equalPercentage + remainingPercentage : equalPercentage
-      };
-    });
+    try {
+      // Generar los meses para la sesión
+      console.log('[createSharedSession] Iniciando generación de meses');
+      await MonthGenerationService.generateNextTwelveMonths(newSession._id, dbSession);
+      console.log('[createSharedSession] Meses generados exitosamente');
 
-    await newSession.save({ session: dbSession });
+      const populatedSession = await SharedSession.findById(newSession._id)
+        .session(dbSession)
+        .populate('userId', 'nombre email')
+        .populate('participants.userId', 'nombre email');
 
-    const populatedSession = await SharedSession.findById(newSession._id)
-      .session(dbSession)
-      .populate('userId', 'nombre email')
-      .populate('participants.userId', 'nombre email');
-
-    await dbSession.commitTransaction();
-
-    // Devolver la sesión con información sobre participantes inválidos
-    res.status(201).json({
-      session: populatedSession,
-      warnings: invalidParticipants.length > 0 ? {
-        invalidParticipants,
-        message: 'Algunos participantes no pudieron ser agregados porque no están registrados en el sistema'
-      } : null
-    });
+      console.log(`[createSharedSession] Sesión creada con éxito. ID: ${populatedSession._id}`);
+      await dbSession.commitTransaction();
+      
+      // Enviar la respuesta en el formato esperado por el cliente
+      res.status(201).json({
+        session: populatedSession,
+        warnings: invalidParticipants.length > 0 ? {
+          invalidEmails: invalidParticipants
+        } : null
+      });
+    } catch (monthError) {
+      console.error('[createSharedSession] Error al generar meses:', monthError);
+      await dbSession.abortTransaction();
+      return res.status(500).json({ 
+        msg: 'Error al generar los meses de la sesión',
+        error: monthError.message 
+      });
+    }
   } catch (error) {
+    console.error('[createSharedSession] Error al crear sesión compartida:', error);
     await dbSession.abortTransaction();
-    console.error('Error al crear sesión:', error);
     res.status(500).json({ 
       msg: 'Error al crear la sesión compartida',
       error: error.message 
     });
   } finally {
-    dbSession.endSession();
+    await dbSession.endSession();
   }
 };
 
@@ -1358,18 +1312,12 @@ exports.syncToPersonal = async (req, res) => {
 
 // Actualizar la distribución de gastos
 exports.updateDistribution = async (req, res) => {
-  const dbSession = await mongoose.startSession();
-  dbSession.startTransaction();
-
   try {
     const sessionId = req.params.id;
     const userId = req.user.id;
-    const { distribution } = req.body;
-    
-    console.log(`Iniciando actualización de distribución para sesión ${sessionId}`);
+    const { distribution, currentMonth, currentYear } = req.body;
     
     if (!distribution || !Array.isArray(distribution)) {
-      await dbSession.abortTransaction();
       return res.status(400).json({ 
         msg: 'Formato de distribución inválido',
         details: 'La distribución debe ser un array de objetos con userId y percentage'
@@ -1379,120 +1327,66 @@ exports.updateDistribution = async (req, res) => {
     // Validar que la suma de porcentajes sea 100
     const totalPercentage = distribution.reduce((sum, item) => sum + (item.percentage || 0), 0);
     if (Math.abs(totalPercentage - 100) > 0.01) {
-      await dbSession.abortTransaction();
       return res.status(400).json({ 
         msg: 'La suma de porcentajes debe ser 100',
         details: `El total actual es ${totalPercentage}`
       });
     }
     
-    // Buscar la sesión
+    // Buscar la sesión y poblar los datos necesarios
     const session = await SharedSession.findOne({
       _id: sessionId,
       $or: [
         { userId: userId },
         { 'participants.userId': userId }
       ]
-    }).session(dbSession);
+    }).populate('participants.userId', 'nombre email');
     
     if (!session) {
-      await dbSession.abortTransaction();
       return res.status(404).json({ 
         msg: 'Sesión no encontrada',
         details: 'La sesión especificada no existe o no tienes acceso a ella'
       });
     }
     
-    // Obtener los nombres reales de los usuarios para cada elemento de la distribución
-    const updatedDistribution = [];
+    // Verificar que todos los usuarios en la distribución sean participantes activos
+    const activeParticipants = session.participants.filter(p => p.status === 'accepted');
+    const activeParticipantIds = activeParticipants.map(p => 
+      p.userId._id ? p.userId._id.toString() : p.userId.toString()
+    );
     
-    for (const item of distribution) {
-      try {
-        // Buscar el usuario para obtener su nombre real
-        const user = await User.findById(item.userId).session(dbSession);
-        
-        // Usar el nombre real si está disponible, de lo contrario usar el nombre proporcionado o "Usuario"
-        const realName = user ? 
-                         (user.nombre || user.name || user.username || user.email || "Usuario") : 
-                         (item.name || "Usuario");
-        
-        updatedDistribution.push({
-          userId: item.userId,
-          name: realName,
-          percentage: item.percentage
-        });
-        
-        console.log(`Usuario ${item.userId}: nombre actualizado a "${realName}"`);
-      } catch (userError) {
-        console.warn(`Error al obtener información del usuario ${item.userId}:`, userError.message);
-        // Si hay error, usar el nombre proporcionado o "Usuario" como respaldo
-        updatedDistribution.push({
-          userId: item.userId,
-          name: item.name || "Usuario",
-          percentage: item.percentage
-        });
-      }
-    }
-    
-    // Actualizar la distribución con los nombres reales
-    session.allocations = updatedDistribution;
-    
-    await session.save({ session: dbSession });
-    
-    // Calcular y distribuir montos entre participantes
-    try {
-      // Importar servicios de manera segura
-      let allocationService, syncService;
-      try {
-        allocationService = require('../services/allocationService');
-        syncService = require('../services/syncService');
-      } catch (importError) {
-        console.error('Error al importar servicios:', importError);
-        throw new Error('Error interno del servidor: servicios no disponibles');
-      }
-      
-      // Verificar que los servicios necesarios estén disponibles
-      if (!allocationService || typeof allocationService.distributeAmount !== 'function') {
-        throw new Error('Servicio de asignación no disponible');
-      }
-      
-      // Usar el servicio de asignación para distribuir montos
-      const allocations = await allocationService.distributeAmount(session);
-      console.log(`Distribución de montos actualizada para sesión ${sessionId}`);
-      
-      // Eliminar duplicados y actualizar nombres solo si los servicios están disponibles
-      if (syncService) {
-        if (typeof syncService.fixDuplicateAllocations === 'function') {
-          await syncService.fixDuplicateAllocations(sessionId);
-        }
-        if (typeof syncService.updateUserNamesInAllocations === 'function') {
-          await syncService.updateUserNamesInAllocations(sessionId);
-        }
-      }
-      
-      await dbSession.commitTransaction();
-      
-      res.json({
-        msg: 'Distribución actualizada correctamente',
-        allocations: session.allocations
-      });
-    } catch (serviceError) {
-      await dbSession.abortTransaction();
-      console.error('Error en servicios de asignación:', serviceError);
-      res.status(500).json({ 
-        msg: 'Error al distribuir montos entre participantes',
-        details: serviceError.message
+    const invalidUsers = distribution.filter(d => !activeParticipantIds.includes(d.userId));
+    if (invalidUsers.length > 0) {
+      return res.status(400).json({
+        msg: 'Usuarios inválidos en la distribución',
+        details: `Los siguientes usuarios no son participantes activos: ${invalidUsers.map(u => u.userId).join(', ')}`
       });
     }
+    
+    // Actualizar las asignaciones
+    session.allocations = distribution.map(item => ({
+      userId: item.userId,
+      name: item.name || activeParticipants.find(p => 
+        (p.userId._id || p.userId).toString() === item.userId
+      )?.name || 'Usuario',
+      percentage: item.percentage
+    }));
+    
+    // Guardar los cambios
+    await session.save();
+    
+    // Devolver la sesión actualizada
+    const updatedSession = await SharedSession.findById(sessionId)
+      .populate('userId', 'nombre email')
+      .populate('participants.userId', 'nombre email');
+    
+    res.json(updatedSession);
   } catch (error) {
-    await dbSession.abortTransaction();
-    console.error('Error al actualizar distribución:', error);
+    console.error('Error al actualizar la distribución:', error);
     res.status(500).json({ 
-      msg: 'Error del servidor al actualizar distribución',
-      details: error.message
+      msg: 'Error al actualizar la distribución',
+      details: error.message 
     });
-  } finally {
-    dbSession.endSession();
   }
 };
 
@@ -2263,5 +2157,58 @@ exports.generateAllMonthlyAllocations = async (req, res) => {
   } catch (error) {
     console.error('Error al generar asignaciones mensuales:', error);
     res.status(500).json({ msg: 'Error del servidor: ' + error.message });
+  }
+};
+
+// Actualizar participantes y sincronizar distribución
+exports.updateParticipants = async (req, res) => {
+  const dbSession = await mongoose.startSession();
+  dbSession.startTransaction();
+
+  try {
+    const { sessionId } = req.params;
+    const { participants } = req.body;
+
+    // Validar que la sesión existe
+    const session = await SharedSession.findById(sessionId).session(dbSession);
+    if (!session) {
+      throw new Error('Sesión no encontrada');
+    }
+
+    // Validar que el usuario tiene permisos
+    const userIsAdmin = session.participants.some(p => 
+      p.userId?.toString() === req.user.id && p.role === 'admin'
+    );
+    if (!userIsAdmin) {
+      throw new Error('No tienes permisos para actualizar los participantes');
+    }
+
+    // Actualizar participantes
+    session.participants = participants;
+
+    // Guardar la sesión
+    await session.save({ session: dbSession });
+
+    // Actualizar la distribución en todos los meses
+    const MonthGenerationService = require('../services/monthGenerationService');
+    await MonthGenerationService.updateDistributionInAllMonths(sessionId, dbSession);
+
+    await dbSession.commitTransaction();
+
+    // Devolver la sesión actualizada
+    const updatedSession = await SharedSession.findById(sessionId)
+      .populate('userId', 'nombre email')
+      .populate('participants.userId', 'nombre email');
+
+    res.json(updatedSession);
+  } catch (error) {
+    await dbSession.abortTransaction();
+    console.error('Error al actualizar participantes:', error);
+    res.status(500).json({ 
+      message: 'Error al actualizar los participantes',
+      error: error.message 
+    });
+  } finally {
+    await dbSession.endSession();
   }
 };

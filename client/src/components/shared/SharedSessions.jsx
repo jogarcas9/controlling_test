@@ -568,30 +568,42 @@ const SharedSessions = () => {
   };
 
   // Manejador de distribución
-  const handleUpdateDistribution = async (percentages) => {
+  const handleUpdateDistribution = async (distribution, month, year) => {
+    if (!currentSession || !currentSession._id) {
+      console.error('No hay una sesión seleccionada para actualizar la distribución');
+      return;
+    }
+    
+    setLoading(true);
     try {
-      // Convertir los porcentajes al formato esperado por el backend
-      const distribution = Object.entries(percentages).map(([userId, percentage]) => ({
-        userId,
-        percentage: Number(percentage)
-      }));
-
-      // Actualizar en el backend
-      await sharedSessionService.updateDistribution(currentSession._id, distribution);
+      const result = await sharedSessionService.updateDistribution(
+        currentSession._id, 
+        distribution,
+        month,
+        year
+      );
       
-      // Actualizar el estado local con la sesión actualizada
-      setCurrentSession(prev => ({
-        ...prev,
-        allocations: distribution
+      // Actualizar la sesión actual con los nuevos datos
+      setCurrentSession(prevSession => ({
+        ...prevSession,
+        ...result.data
       }));
-
-      // Recargar la sesión para asegurar que tenemos los datos actualizados
-      const response = await sharedSessionService.getSessionDetails(currentSession._id);
-      setCurrentSession(response.data);
-
+      
+      // Recargar los gastos para reflejar los cambios
+      await fetchExpenses(currentSession._id, selectedMonth, selectedYear);
+      
+      setMessage({
+        type: 'success',
+        text: 'Distribución actualizada correctamente'
+      });
     } catch (error) {
       console.error('Error al actualizar la distribución:', error);
-      alert('Error al actualizar la distribución. Por favor, intenta de nuevo.');
+      setMessage({
+        type: 'error',
+        text: 'Error al actualizar la distribución. Por favor, intenta de nuevo.'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -914,108 +926,22 @@ const SharedSessions = () => {
             {currentSession.participants?.length > 0 && (
               <Box>
                 <DistributionTable
-                  participants={(() => {
-                    const participantsList = [];
-                    const addedUserIds = new Set(); // Para evitar duplicados
-                    // Cache local para nombres de usuarios durante esta renderización
-                    const nameCache = new Map();
-
-                    // Función para obtener el mejor nombre disponible
-                    const getBestName = (participant) => {
-                      // Primero verificar si ya tenemos este nombre en caché
-                      const userId = participant.userId ? 
-                        (typeof participant.userId === 'object' ? participant.userId._id : participant.userId) : 
-                        null;
-                      
-                      if (userId && nameCache.has(userId.toString())) {
-                        return nameCache.get(userId.toString());
-                      }
-                      
-                      let bestName;
-                      
-                      // Si tenemos un objeto usuario completo
-                      if (participant.userId && typeof participant.userId === 'object') {
-                        const user = participant.userId;
-                        
-                        // Intentar obtener nombre+apellidos
-                        if (user.nombre && user.apellidos) {
-                          bestName = `${user.nombre} ${user.apellidos}`.trim();
-                        } else if (user.nombre) {
-                          bestName = user.nombre;
-                        } else if (user.name) {
-                          bestName = user.name;
-                        }
-                      }
-                      
-                      // Usar el nombre explícito del participante si existe y no es el email
-                      if (!bestName && participant.name && 
-                          participant.email && 
-                          participant.name !== participant.email && 
-                          !participant.email.includes(participant.name)) {
-                        bestName = participant.name;
-                      }
-                      
-                      // Si todo lo demás falla, usar la parte local del email
-                      if (!bestName) {
-                        bestName = participant.email ? participant.email.split('@')[0] : 'Participante';
-                      }
-                      
-                      // Guardar en caché
-                      if (userId) {
-                        nameCache.set(userId.toString(), bestName);
-                      }
-                      
-                      return bestName;
-                    };
-                    
-                    // Procesar todos los participantes
-                    const allParticipants = currentSession.participants || [];
-                    
-                    allParticipants.forEach(participant => {
-                      // Obtener el ID del usuario
-                      let userId = participant.userId;
-                      
-                      // Si es un objeto, extraer su ID
-                      if (userId && typeof userId === 'object') {
-                        userId = userId._id || userId.id || userId.toString();
-                      }
-                      
-                      // Si no hay ID o ya fue agregado, saltar
-                      if (!userId || addedUserIds.has(userId.toString())) {
-                        return;
-                      }
-                      
-                      // Registrar este ID como procesado
-                      addedUserIds.add(userId.toString());
-                      
-                      // Obtener el mejor nombre disponible
-                      const name = getBestName(participant);
-                      
-                      // Obtener el porcentaje de asignación si existe
-                      const allocation = currentSession.allocations?.find(
-                        a => {
-                          const allocUserId = typeof a.userId === 'object' 
-                            ? (a.userId._id || a.userId.id || a.userId.toString()) 
-                            : a.userId;
-                          return allocUserId?.toString() === userId.toString();
-                        }
-                      );
-                      
-                      participantsList.push({
-                        userId: userId.toString(),
-                        name: name,
-                        email: participant.email,
-                        percentage: allocation?.percentage || 0
-                      });
-                    });
-                    
-                    console.log('Participantes procesados para distribución:', participantsList);
-                    return participantsList;
-                  })()}
+                  participants={currentSession.participants
+                    .filter(p => p.status === 'accepted')
+                    .map(p => ({
+                      userId: p.userId._id || p.userId,
+                      name: p.name || (p.userId && (p.userId.nombre || p.userId.email)) || p.email,
+                      email: p.email,
+                      percentage: currentSession.allocations?.find(a => 
+                        (a.userId._id || a.userId) === (p.userId._id || p.userId)
+                      )?.percentage || 0
+                    }))}
                   expenses={expenses}
                   onUpdateDistribution={handleUpdateDistribution}
                   loading={expensesLoading}
                   error={distributionError}
+                  currentMonth={selectedMonth}
+                  currentYear={selectedYear}
                 />
               </Box>
             )}

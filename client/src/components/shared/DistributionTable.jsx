@@ -34,7 +34,9 @@ const DistributionTable = ({
   expenses,
   onUpdateDistribution,
   loading,
-  error
+  error,
+  currentMonth,
+  currentYear
 }) => {
   // Eliminar duplicados basados en userId
   const uniqueParticipants = Array.from(new Map(
@@ -69,28 +71,18 @@ const DistributionTable = ({
       return;
     }
     
-    // Calcular el porcentaje equitativo (siempre debe sumar 100%)
+    // Distribuir los porcentajes equitativamente
     const equalPercentage = Math.floor(100 / totalParticipants);
-    let remainder = 100 - (equalPercentage * totalParticipants);
+    let remainingPercentage = 100 - (equalPercentage * totalParticipants);
     
     uniqueParticipants.forEach((participant, index) => {
-      // Usar el porcentaje definido si existe
-      if (participant.percentage !== undefined && participant.percentage !== null) {
-        newPercentages[participant.userId] = participant.percentage;
-      } else {
-        // Añadir el residuo al primer participante
-        const adjustedPercentage = index === 0 ? equalPercentage + remainder : equalPercentage;
-        newPercentages[participant.userId] = adjustedPercentage;
-      }
+      // El último participante recibe el porcentaje restante para asegurar que sume 100%
+      const adjustedPercentage = index === totalParticipants - 1 
+        ? equalPercentage + remainingPercentage 
+        : equalPercentage;
+      
+      newPercentages[participant.userId] = adjustedPercentage;
     });
-    
-    // Verificar que sume exactamente 100%
-    const sum = Object.values(newPercentages).reduce((a, b) => a + b, 0);
-    if (sum !== 100 && uniqueParticipants.length > 0) {
-      // Ajustar el primer participante
-      const firstId = uniqueParticipants[0].userId;
-      newPercentages[firstId] = newPercentages[firstId] + (100 - sum);
-    }
     
     console.log('Porcentajes calculados:', newPercentages);
     setPercentages(newPercentages);
@@ -206,10 +198,26 @@ const DistributionTable = ({
       
       // Validar de nuevo con los valores ajustados
       if (validatePercentages()) {
-        onUpdateDistribution(newPercentages);
+        const distribution = participantsWithNames.map(participant => ({
+          userId: participant.userId,
+          name: participant.name,
+          percentage: newPercentages[participant.userId]
+        }));
+        
+        console.log('Aplicando distribución:', distribution);
+        onUpdateDistribution(distribution, currentMonth, currentYear);
       }
-    } else if (validatePercentages()) {
-      onUpdateDistribution(percentages);
+    } else {
+      if (validatePercentages()) {
+        const distribution = participantsWithNames.map(participant => ({
+          userId: participant.userId,
+          name: participant.name,
+          percentage: percentages[participant.userId]
+        }));
+        
+        console.log('Aplicando distribución:', distribution);
+        onUpdateDistribution(distribution, currentMonth, currentYear);
+      }
     }
   };
 

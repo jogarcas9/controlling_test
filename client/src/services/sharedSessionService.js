@@ -292,10 +292,14 @@ export const syncToPersonal = async (sessionId) => {
   }
 };
 
-export const updateDistribution = async (sessionId, distribution) => {
+export const updateDistribution = async (sessionId, distribution, currentMonth, currentYear) => {
   try {
     console.log(`Actualizando distribución para la sesión ${sessionId}`);
-    const response = await api.put(`/api/shared-sessions/${sessionId}/update-distribution`, { distribution });
+    const response = await api.put(`/api/shared-sessions/${sessionId}/update-distribution`, {
+      distribution,
+      currentMonth,
+      currentYear
+    });
     return response.data;
   } catch (error) {
     return handleApiError('updateDistribution', error);
@@ -552,5 +556,17 @@ export const repairSessionStructure = async (sessionId) => {
   } catch (error) {
     console.error('Error al reparar la sesión:', error);
     throw error;
+  }
+};
+
+export const updateParticipants = async (sessionId, participants) => {
+  try {
+    console.log(`Actualizando participantes de la sesión ${sessionId}`);
+    const response = await api.put(`/api/shared-sessions/${sessionId}/participants`, { participants });
+    // Invalidar caché después de modificar participantes
+    invalidateSessionsCache();
+    return response.data;
+  } catch (error) {
+    return handleApiError('updateParticipants', error);
   }
 };

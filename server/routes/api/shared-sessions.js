@@ -27,7 +27,7 @@ router.post('/', [
     }
     next();
   }
-], sharedSessionController.createSession);
+], sharedSessionController.createSharedSession);
 
 // @route   GET api/shared-sessions/:id
 // @desc    Obtener detalles de una sesión
@@ -238,5 +238,10 @@ router.get('/test-delete-expense/:id/:expenseId', auth, async (req, res) => {
     });
   }
 });
+
+// @route   PUT api/shared-sessions/:id/participants
+// @desc    Actualizar participantes y sincronizar distribución
+// @access  Private
+router.put('/:id/participants', auth, sharedSessionController.updateParticipants);
 
 module.exports = router; 

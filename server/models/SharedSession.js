@@ -88,7 +88,7 @@ const expenseSchema = new mongoose.Schema({
   timestamps: true
 });
 
-const allocationSchema = new mongoose.Schema({
+const distributionSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -104,7 +104,7 @@ const allocationSchema = new mongoose.Schema({
     min: 0,
     max: 100
   }
-});
+}, { _id: true });
 
 const monthlyExpensesSchema = new mongoose.Schema({
   month: {
@@ -113,12 +113,41 @@ const monthlyExpensesSchema = new mongoose.Schema({
     min: 0,
     max: 11
   },
-  expenses: [expenseSchema],
+  expenses: [{
+    description: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    date: {
+      type: Date,
+      required: true
+    },
+    category: {
+      type: String,
+      required: true
+    },
+    paidBy: {
+      type: String,
+      required: true
+    },
+    attachments: [{
+      url: String,
+      name: String,
+      type: String
+    }]
+  }],
   totalAmount: {
     type: Number,
     default: 0
-  }
-});
+  },
+  Distribution: [distributionSchema]
+}, { _id: true });
 
 const yearlyExpensesSchema = new mongoose.Schema({
   year: {
@@ -126,7 +155,7 @@ const yearlyExpensesSchema = new mongoose.Schema({
     required: true
   },
   months: [monthlyExpensesSchema]
-});
+}, { _id: true });
 
 const sharedSessionSchema = new mongoose.Schema({
   name: {
@@ -181,8 +210,7 @@ const sharedSessionSchema = new mongoose.Schema({
   isLocked: {
     type: Boolean,
     default: true
-  },
-  allocations: [allocationSchema]
+  }
 }, {
   timestamps: true,
   toJSON: { 
@@ -769,7 +797,7 @@ sharedSessionSchema.methods.getExpensesByMonth = function(year, month) {
     // Verificar que el mes corresponda (usando 0-indexed)
     const expenseDate = new Date(expense.date);
     if (isNaN(expenseDate.getTime())) {
-      console.warn('Gasto con fecha inválida encontrado');
+      console.log(`Fecha inválida encontrada en gasto: ${expense._id}`);
       return false;
     }
     
@@ -871,79 +899,44 @@ sharedSessionSchema.methods.fixExpenseDates = async function() {
         
         const expenseDate = new Date(expense.date);
         if (isNaN(expenseDate.getTime())) {
-          console.log(`Gasto con fecha inválida encontrado en ${yearData.year}/${getMonthName(monthData.month)}`);
+          console.log(`Fecha inválida encontrada en gasto: ${expense._id}`);
           continue;
         }
         
         const expenseYear = expenseDate.getFullYear();
         const expenseMonth = expenseDate.getMonth(); // 0-indexed (0-11)
         
-        // Si está en el mes/año correcto, mantenerlo
-        if (expenseYear === yearData.year && expenseMonth === monthData.month) {
+        if (expenseYear !== yearData.year || expenseMonth !== monthData.month) {
+          console.log(`Gasto con fecha incorrecta: esperado año=${yearData.year}, mes=${monthData.month} (${getMonthName(monthData.month)}), encontrado año=${expenseYear}, mes=${expenseMonth} (${getMonthName(expenseMonth)})`);
+          incorrectExpenses.push(expense);
+        } else {
           correctedExpenses.push(expense);
-        } else {
-          // Si no, marcarlo para moverlo al mes/año correcto
-          console.log(`Gasto ${expense._id} con fecha incorrecta: esperado ${yearData.year}/${getMonthName(monthData.month)}, encontrado ${expenseYear}/${getMonthName(expenseMonth)}`);
-          incorrectExpenses.push({
-            expense,
-            correctYear: expenseYear,
-            correctMonth: expenseMonth
-          });
-          totalFixed++;
         }
       }
       
-      // Reemplazar los gastos del mes con los correctos
+      // Actualizar el array de gastos en la estructura de años y meses
       monthData.expenses = correctedExpenses;
-      monthData.totalAmount = correctedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      monthData.totalAmount = correctedExpenses.reduce((total, expense) => total + expense.amount, 0);
       
-      // Mover los gastos incorrectos a sus meses correctos
-      for (const { expense, correctYear, correctMonth } of incorrectExpenses) {
-        // Buscar o crear el año correcto
-        let correctYearData = this.yearlyExpenses.find(y => y.year === correctYear);
-        if (!correctYearData) {
-          correctYearData = {
-            year: correctYear,
-            months: Array.from({ length: 12 }, (_, i) => ({
-              month: i, // 0-indexed (0-11)
-              expenses: [],
-              totalAmount: 0
-            }))
-          };
-          this.yearlyExpenses.push(correctYearData);
-        }
-        
-        // Buscar el mes correcto
-        const correctMonthData = correctYearData.months.find(m => m.month === correctMonth);
-        if (correctMonthData) {
-          correctMonthData.expenses.push(expense);
-          correctMonthData.totalAmount += expense.amount;
-          console.log(`Gasto ${expense._id} movido a ${correctYear}/${getMonthName(correctMonth)}`);
-        } else {
-          console.error(`No se encontró el mes ${correctMonth} (${getMonthName(correctMonth)}) en el año ${correctYear}`);
-        }
-      }
+      // Actualizar el array de gastos en el documento
+      this.expenses = correctedExpenses;
+      
+      totalFixed += incorrectExpenses.length;
     }
   }
   
-  // Guardar los cambios
-  if (totalFixed > 0) {
-    await this.save();
-    console.log(`Reparación completada. Se corrigieron ${totalFixed} gastos.`);
-  } else {
-    console.log('No se encontraron gastos con fechas incorrectas.');
-  }
-  
+  console.log(`${totalFixed} gastos corregidos`);
+  await this.save();
   return { fixed: totalFixed };
 };
 
 // Función auxiliar para obtener el nombre del mes
-function getMonthName(monthIndex) {
+function getMonthName(month) {
   const monthNames = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
-  return monthNames[monthIndex] || `Mes ${monthIndex}`;
+  return monthNames[month] || 'Mes inválido';
 }
 
 module.exports = mongoose.model('SharedSession', sharedSessionSchema);
