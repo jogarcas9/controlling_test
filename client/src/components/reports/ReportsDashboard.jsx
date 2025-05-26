@@ -212,7 +212,11 @@ const ReportsDashboard = () => {
     >
       <Box sx={{ px: { xs: 1, sm: 1.5 }, width: '100%' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" gutterBottom>
+          <Typography 
+            variant="h4" 
+            gutterBottom 
+            className="page-title"
+          >
             {t('reports.title')}
           </Typography>
           

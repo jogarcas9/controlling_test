@@ -265,14 +265,28 @@ button, a, input, select, textarea {
   }
 }
 
-/* Asegurarse que el contenido principal tenga suficiente espacio para la barra de navegación móvil */
+/* Asegurarse que el contenido principal tenga suficiente espacio para la barra de navegación móvil y la barra superior */
 .main-content-with-bottom-nav {
   padding-bottom: 68px !important;
+  padding-top: 2px !important; /* Espacio mínimo para la barra superior en móvil */
 }
 
 @media screen and (max-width: 599px) {
   .main-content-with-bottom-nav {
     padding-bottom: 68px !important;
+    padding-top: 2px !important;
+  }
+}
+
+@media screen and (min-width: 600px) and (max-width: 959px) {
+  .main-content-with-bottom-nav {
+    padding-top: calc(48px) !important; /* Espacio mínimo para la barra superior en tablet */
+  }
+}
+
+@media screen and (min-width: 960px) {
+  .main-content-with-bottom-nav {
+    padding-top: 0 !important; /* Sin padding superior en desktop */
   }
 }
 
@@ -417,5 +431,42 @@ button, a, input, select, textarea {
   
   .no-print {
     display: none !important;
+  }
+}
+
+/* Estilos unificados para títulos de páginas */
+.page-title {
+  font-family: 'Inter', sans-serif;
+  color: var(--color-gray-900);
+  margin: 0;
+  padding: 0;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Móvil */
+@media screen and (max-width: 599px) {
+  .page-title {
+    font-size: 1.25rem !important; /* 20px */
+    letter-spacing: -0.01em;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Tablet */
+@media screen and (min-width: 600px) and (max-width: 959px) {
+  .page-title {
+    font-size: 1.5rem !important; /* 24px */
+    letter-spacing: -0.02em;
+    margin-bottom: 0.75rem;
+  }
+}
+
+/* Desktop */
+@media screen and (min-width: 960px) {
+  .page-title {
+    font-size: 1.75rem !important; /* 28px */
+    letter-spacing: -0.02em;
+    margin-bottom: 1rem;
   }
 }

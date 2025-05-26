@@ -1098,7 +1098,11 @@ const PersonalExpenses = () => {
     <Container maxWidth="xl" sx={{ py: { xs: 0.5, sm: 1 }, px: { xs: 0, sm: 0.5 } }}>
       <Box sx={{ width: '100%', p: { xs: 0.5, sm: 1 } }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-          <Typography variant="h4" component="h1">
+          <Typography 
+            variant="h4" 
+            component="h1"
+            className="page-title"
+          >
             Gastos Personales
           </Typography>
           

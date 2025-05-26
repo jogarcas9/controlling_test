@@ -767,7 +767,12 @@ const Settings = () => {
         width: '100%',
         mb: { xs: 7, sm: 0 }
       }}>
-        <Typography variant="h5" gutterBottom sx={{ px: 2, py: 1 }}>
+        <Typography 
+          variant="h5" 
+          gutterBottom 
+          className="page-title"
+          sx={{ px: 2, py: 1 }}
+        >
           {t('settings')}
         </Typography>
         

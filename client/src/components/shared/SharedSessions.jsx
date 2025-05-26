@@ -758,10 +758,7 @@ const SharedSessions = () => {
                 <Typography 
                   variant={isMobile ? "h5" : "h4"} 
                   component="h1"
-                  sx={{ 
-                    fontSize: isMobile ? '1.2rem' : '1.75rem',
-                    fontWeight: 'bold'
-                  }}
+                  className="page-title"
                 >
                   {currentSession.name}
                 </Typography>

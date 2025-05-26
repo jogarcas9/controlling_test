@@ -74,6 +74,9 @@ const AppLayout = ({
                                isTablet ? (isDrawerMinimized ? minimizedDrawerWidth : 100) : 
                                isDrawerMinimized ? minimizedDrawerWidth : drawerWidth;
 
+  // Altura de la barra superior
+  const topBarHeight = { xs: 48, sm: 52 };
+
   return (
     <Box sx={{ 
       display: 'flex',
@@ -82,6 +85,30 @@ const AppLayout = ({
       flexDirection: { xs: 'column', sm: 'row' },
     }}>
       <CssBaseline />
+
+      {/* Barra superior blanca - solo para móvil y tablet */}
+      <Box
+        component="header"
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: { xs: 0, sm: `${effectiveDrawerWidth}px` },
+          right: 0,
+          height: topBarHeight,
+          bgcolor: 'background.paper',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          zIndex: 1100,
+          display: { xs: 'flex', md: 'none' }, // Ocultar en desktop
+          alignItems: 'center',
+          px: 2,
+          transition: theme.transitions.create(['left', 'width'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
+        }}
+      />
+
       <Box
         component="nav"
         sx={{
@@ -155,6 +182,7 @@ const AppLayout = ({
           p: { xs: 0.25, sm: 0.5, md: 0.75 },
           width: { xs: '100%', sm: `calc(100% - ${effectiveDrawerWidth}px)` },
           ml: { xs: 0, sm: `${effectiveDrawerWidth}px` },
+          mt: { xs: `calc(${topBarHeight.xs}px)`, sm: `calc(${topBarHeight.sm}px)`, md: 0 }, // Sin margen en desktop
           transition: theme.transitions.create(['margin', 'width'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,

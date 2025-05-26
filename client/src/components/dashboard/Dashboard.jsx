@@ -239,7 +239,12 @@ const Dashboard = () => {
       <Box mb={4}>
         <Grid container alignItems="center" justifyContent="space-between" spacing={2}>
           <Grid item xs={12}>
-            <Typography variant="h5" component="h1" gutterBottom>
+            <Typography 
+              variant="h5" 
+              component="h1" 
+              gutterBottom 
+              className="page-title"
+            >
               {t('Resumen')}
             </Typography>
             <Typography variant="body1" color="textSecondary">
