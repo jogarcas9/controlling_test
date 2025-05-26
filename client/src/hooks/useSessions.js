@@ -40,19 +40,18 @@ export const useSessions = () => {
       const data = await sharedSessionService.createSession(sessionData);
       console.log('Sesión creada:', data);
       
-      if (data && data._id) {
+      if (data) {
         // Actualizar la lista completa en lugar de añadir solo la nueva
         await fetchSessions(true);
         
         // Si hay advertencias, mostrarlas
         if (data.warnings) {
           console.warn('Advertencias al crear la sesión:', data.warnings);
-          // Aquí podrías manejar las advertencias de alguna manera específica
         }
         
         return data;
       } else {
-        throw new Error('La respuesta del servidor no contiene un ID válido');
+        throw new Error('La respuesta del servidor no contiene datos válidos');
       }
     } catch (err) {
       console.error('Error al crear la sesión:', err);

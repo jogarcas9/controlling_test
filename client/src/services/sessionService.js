@@ -30,38 +30,8 @@ const sessionService = {
   createSession: async (sessionData) => {
     try {
       console.log('Enviando datos para crear sesión:', sessionData);
-      
-      // Asegurarnos de que todos los participantes tienen estado 'pending' y rol 'member'
-      const formattedParticipants = sessionData.participants.map(p => ({
-        email: p.email.toLowerCase(),
-        name: p.name || p.email.split('@')[0],
-        role: 'member',
-        status: 'pending',
-        canEdit: p.canEdit || false,
-        canDelete: p.canDelete || false
-      }));
-
-      // Obtener el email del creador
-      const creatorEmail = localStorage.getItem('email');
-
-      // Obtener información del creador
-      const userId = localStorage.getItem('userId');
-      const userName = localStorage.getItem('nombre') || creatorEmail;
-      
-      console.log('Información del creador:', { userId, userName, creatorEmail });
-      
-      const response = await api.post(
-        BASE_URL, 
-        { 
-          name: sessionData.name,
-          description: sessionData.description,
-          participants: formattedParticipants,
-          sessionType: sessionData.sessionType || 'single'
-        }
-      );
-      
+      const response = await api.post(BASE_URL, sessionData);
       console.log('Respuesta del servidor:', response.data);
-      
       return response.data;
     } catch (error) {
       console.error('Error al crear sesión:', error);
@@ -74,20 +44,6 @@ const sessionService = {
   
   // Eliminar una sesión
   deleteSession: (id) => api.delete(`${BASE_URL}/${id}`),
-  
-  // Invitar participantes a una sesión existente (eliminada)
-  inviteParticipants: async (sessionId, participants) => {
-    const errorMessage = 'La funcionalidad de invitaciones ha sido eliminada de la aplicación';
-    console.error(errorMessage);
-    throw new Error(errorMessage);
-  },
-  
-  // Responder a una invitación (eliminada)
-  respondToInvitation: async (sessionId, accept) => {
-    const errorMessage = 'La funcionalidad de invitaciones ha sido eliminada de la aplicación';
-    console.error(errorMessage);
-    throw new Error(errorMessage);
-  },
   
   // Sincronizar gastos de sesión compartida a gastos personales
   syncToPersonal: (sessionId) =>

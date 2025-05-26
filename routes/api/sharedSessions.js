@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../../middleware/auth');
 const SharedSession = require('../../models/SharedSession');
+const mongoose = require('mongoose');
+const ParticipantAllocation = require('../../models/ParticipantAllocation');
+const syncService = require('../../services/syncService');
 
 // @route   POST /api/shared-sessions/create-base
 // @desc    Crear una nueva sesión compartida (paso 1)
@@ -149,6 +152,137 @@ router.get('/:id', auth, async (req, res) => {
   } catch (error) {
     console.error('Error al obtener sesión:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Actualizar la distribución de una sesión
+router.put('/:id/update-distribution', auth, async (req, res) => {
+  const dbSession = await mongoose.startSession();
+  try {
+    await dbSession.withTransaction(async () => {
+      const { distribution, currentMonth, currentYear } = req.body;
+      const session = await SharedSession.findById(req.params.id).session(dbSession);
+      
+      if (!session) {
+        throw new Error('Sesión no encontrada');
+      }
+      
+      // Verificar que el usuario tenga acceso
+      const userParticipant = session.participants.find(p => 
+        p.email.toLowerCase() === req.user.email.toLowerCase()
+      );
+      
+      if (!userParticipant) {
+        throw new Error('No autorizado');
+      }
+      
+      // Validar la distribución
+      if (!distribution || !Array.isArray(distribution)) {
+        throw new Error('Distribución inválida');
+      }
+      
+      const totalPercentage = distribution.reduce((sum, item) => sum + item.percentage, 0);
+      if (Math.abs(totalPercentage - 100) > 0.01) {
+        throw new Error('Los porcentajes deben sumar 100%');
+      }
+
+      // Asegurarse de que yearlyExpenses existe
+      if (!session.yearlyExpenses) {
+        session.yearlyExpenses = [];
+      }
+
+      // Encontrar o crear el año
+      let yearData = session.yearlyExpenses.find(y => y.year === currentYear);
+      if (!yearData) {
+        yearData = {
+          year: currentYear,
+          months: []
+        };
+        session.yearlyExpenses.push(yearData);
+      }
+
+      // Asegurarse de que todos los meses desde el actual hasta el final del año existen
+      for (let month = currentMonth; month <= 11; month++) {
+        let monthData = yearData.months.find(m => m.month === month);
+        if (!monthData) {
+          monthData = {
+            month,
+            expenses: [],
+            totalAmount: 0,
+            Distribution: []
+          };
+          yearData.months.push(monthData);
+        }
+        
+        // Actualizar la distribución para este mes
+        monthData.Distribution = distribution.map(item => ({
+          userId: item.userId,
+          name: item.name,
+          percentage: item.percentage,
+          _id: new mongoose.Types.ObjectId()
+        }));
+      }
+      
+      // Guardar los cambios
+      await session.save({ session: dbSession });
+
+      // Recalcular asignaciones para todos los meses afectados
+      for (let month = currentMonth; month <= 11; month++) {
+        try {
+          // Eliminar asignaciones existentes para este mes
+          await ParticipantAllocation.deleteMany({
+            sessionId: session._id,
+            year: currentYear,
+            month
+          }).session(dbSession);
+
+          // Obtener los gastos del mes
+          const monthData = yearData.months.find(m => m.month === month);
+          const totalAmount = monthData?.totalAmount || 0;
+
+          // Crear nuevas asignaciones
+          const allocations = distribution.map(item => ({
+            sessionId: session._id,
+            userId: item.userId,
+            name: item.name,
+            year: currentYear,
+            month,
+            percentage: item.percentage,
+            amount: (totalAmount * item.percentage) / 100,
+            status: 'pending'
+          }));
+
+          if (allocations.length > 0) {
+            const savedAllocations = await ParticipantAllocation.insertMany(allocations, { session: dbSession });
+            
+            // Sincronizar cada asignación con gastos personales
+            for (const allocation of savedAllocations) {
+              try {
+                await syncService.syncAllocationToPersonalExpense(allocation);
+              } catch (syncError) {
+                console.warn(`Error al sincronizar asignación ${allocation._id}:`, syncError.message);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error procesando mes ${month}:`, error);
+          throw error;
+        }
+      }
+
+      res.json({
+        msg: 'Distribución actualizada correctamente',
+        yearlyExpenses: session.yearlyExpenses
+      });
+    });
+  } catch (error) {
+    console.error('Error al actualizar distribución:', error);
+    res.status(500).json({ 
+      msg: 'Error al actualizar distribución',
+      error: error.message 
+    });
+  } finally {
+    await dbSession.endSession();
   }
 });
 

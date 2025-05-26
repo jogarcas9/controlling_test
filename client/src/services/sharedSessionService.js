@@ -155,7 +155,7 @@ export const fetchPendingInvitations = async () => {
 
 export const respondToInvitation = async (sessionId, response) => {
   try {
-    const responseData = await api.post(`/api/shared-sessions/${sessionId}/respond`, { response });
+    const responseData = await api.post(`/api/shared-sessions/${sessionId}/respond`, { accept: response === 'accept' });
     // Invalidar caché después de responder a una invitación
     invalidateSessionsCache();
     return responseData.data;
@@ -184,13 +184,14 @@ export const createSession = async (sessionData) => {
     // Invalidar caché después de crear una sesión
     invalidateSessionsCache();
     
-    // La respuesta del servidor incluye la sesión en response.data.session
-    if (response.data && response.data.session) {
-      // Si hay advertencias, las agregamos a la sesión para mostrarlas en la UI
+    // La respuesta del servidor puede venir directamente como la sesión
+    if (response.data) {
+      const sessionData = response.data.session || response.data;
+      // Si hay advertencias, las agregamos a la sesión
       if (response.data.warnings) {
-        response.data.session.warnings = response.data.warnings;
+        sessionData.warnings = response.data.warnings;
       }
-      return response.data.session;
+      return sessionData;
     } else {
       throw new Error('La respuesta del servidor no tiene el formato esperado');
     }
@@ -238,13 +239,114 @@ export const removeParticipant = async (sessionId, participantId) => {
 
 export const addExpenseToSession = async (sessionId, expenseData) => {
   try {
-    console.log(`Añadiendo gasto a la sesión ${sessionId}`, expenseData);
-    // Corrección de la ruta para que coincida con la API del servidor
-    const response = await api.post(`/api/shared-sessions/${sessionId}/expenses`, expenseData);
-    console.log('Respuesta al añadir gasto:', response.data);
+    console.log('\n=== INICIO addExpenseToSession ===');
+    console.log('SessionId:', sessionId);
+    console.log('\nDATOS DEL GASTO RECIBIDOS DEL FORMULARIO:');
+    console.log(JSON.stringify(expenseData, null, 2));
+    console.log('\nTIPOS DE DATOS:');
+    console.log('- Tipo de amount:', typeof expenseData.amount);
+    console.log('- Valor de amount:', expenseData.amount);
+    console.log('- Tipo de name:', typeof expenseData.name);
+    console.log('- Tipo de date:', typeof expenseData.date);
+    console.log('- Tipo de category:', typeof expenseData.category);
+    console.log('- Tipo de isRecurring:', typeof expenseData.isRecurring);
+    
+    // Validar datos requeridos
+    if (!expenseData.name || typeof expenseData.name !== 'string' || expenseData.name.trim().length === 0) {
+      console.error('Error de validación: nombre inválido');
+      throw new Error('El nombre del gasto es requerido y no puede estar vacío');
+    }
+
+    // Asegurar que amount es un número
+    let amount;
+    try {
+      if (typeof expenseData.amount === 'string') {
+        // Si es string, intentar convertir (puede venir con coma decimal)
+        const cleanAmount = expenseData.amount.replace(',', '.');
+        amount = parseFloat(cleanAmount);
+      } else {
+        amount = Number(expenseData.amount);
+      }
+      
+      // Asegurar que tenemos un número válido con 2 decimales
+      if (isNaN(amount)) {
+        throw new Error('El monto debe ser un número válido');
+      }
+      amount = Number(amount.toFixed(2));
+    } catch (error) {
+      console.error('Error al procesar el monto:', error);
+      throw new Error('El monto debe ser un número válido');
+    }
+
+    console.log('\nMONTO PROCESADO:');
+    console.log('- Monto después de conversión:', amount);
+    console.log('- Tipo después de conversión:', typeof amount);
+
+    // Validar el monto
+    if (expenseData.amount === undefined || expenseData.amount === '') {
+      console.error('Error de validación: monto faltante');
+      throw new Error('El monto es requerido');
+    }
+    if (isNaN(amount)) {
+      console.error('Error de validación: monto no es un número', expenseData.amount);
+      throw new Error('El monto debe ser un número válido');
+    }
+    if (amount <= 0) {
+      console.error('Error de validación: monto no positivo', amount);
+      throw new Error('El monto debe ser mayor a 0');
+    }
+
+    if (!expenseData.date) {
+      console.error('Error de validación: fecha faltante');
+      throw new Error('La fecha es requerida');
+    }
+
+    // Formatear los datos del gasto
+    const formattedExpense = {
+      name: expenseData.name.trim(),
+      description: expenseData.description ? expenseData.description.trim() : '',
+      amount: amount,
+      date: new Date(expenseData.date).toISOString(),
+      category: expenseData.category ? expenseData.category.trim() : 'Otros',
+      paidBy: expenseData.paidBy,
+      isRecurring: !!expenseData.isRecurring
+    };
+
+    console.log('\nCOLECCIÓN FINAL A GUARDAR:');
+    console.log(JSON.stringify(formattedExpense, null, 2));
+    console.log('\nVALIDACIÓN FINAL:');
+    console.log('- Tipo de amount final:', typeof formattedExpense.amount);
+    console.log('- Valor de amount final:', formattedExpense.amount);
+    console.log('- Es amount un número válido:', !isNaN(formattedExpense.amount));
+    console.log('- Fecha válida:', new Date(formattedExpense.date).toISOString());
+
+    // Verificar que la fecha es válida
+    const dateTest = new Date(formattedExpense.date);
+    if (isNaN(dateTest.getTime())) {
+      console.error('Error: La fecha formateada no es válida');
+      throw new Error('La fecha proporcionada no es válida');
+    }
+
+    // Enviar la petición al servidor asegurando que los datos van en el formato correcto
+    console.log('\nENVIANDO PETICIÓN AL SERVIDOR:');
+    console.log('URL:', `/api/shared-sessions/${sessionId}/expenses`);
+    console.log('Datos completos:', { expense: formattedExpense });
+    
+    const response = await api.post(`/api/shared-sessions/${sessionId}/expenses`, {
+      expense: formattedExpense
+    });
+
+    console.log('\nRESPUESTA DEL SERVIDOR:', response.data);
+    console.log('=== FIN addExpenseToSession ===\n');
     return response.data;
   } catch (error) {
-    return handleApiError('addExpenseToSession', error);
+    console.error('=== Error en addExpenseToSession ===');
+    console.error('Detalles del error:', {
+      mensaje: error.message,
+      respuesta: error.response?.data,
+      estado: error.response?.status
+    });
+    throw error;
   }
 };
 

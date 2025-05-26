@@ -18,7 +18,9 @@ const participantSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true
+    required: true,
+    lowercase: true,
+    trim: true
   },
   role: {
     type: String,
@@ -52,42 +54,63 @@ const participantSchema = new mongoose.Schema({
 
 // Definición del esquema de gastos como subdocumento
 const expenseSchema = new mongoose.Schema({
+  _id: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: () => new mongoose.Types.ObjectId()
+  },
   name: {
     type: String,
-    required: true,
-    default: 'Gasto'
+    required: [true, 'El nombre del gasto es requerido'],
+    trim: true,
+    validate: {
+      validator: function(v) {
+        return v && v.trim().length > 0;
+      },
+      message: 'El nombre no puede estar vacío'
+    }
   },
   description: {
     type: String,
-    default: ''
+    default: '',
+    trim: true
   },
   amount: {
     type: Number,
-    required: true,
-    min: 0
+    required: [true, 'El monto es requerido'],
+    validate: {
+      validator: function(v) {
+        return !isNaN(v) && v > 0;
+      },
+      message: 'El monto debe ser un número positivo'
+    }
   },
   date: {
     type: Date,
-    default: Date.now,
-    required: true
+    required: [true, 'La fecha es requerida'],
+    validate: {
+      validator: function(v) {
+        return v instanceof Date && !isNaN(v);
+      },
+      message: 'La fecha debe ser válida'
+    }
   },
   category: {
     type: String,
-    default: 'Otros'
+    default: 'Otros',
+    trim: true
   },
   paidBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: [true, 'El usuario que pagó es requerido']
   },
   isRecurring: {
     type: Boolean,
     default: false
   }
-}, {
-  timestamps: true
 });
 
+// Esquema de distribución
 const distributionSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -106,6 +129,7 @@ const distributionSchema = new mongoose.Schema({
   }
 }, { _id: true });
 
+// Esquema de gastos mensuales
 const monthlyExpensesSchema = new mongoose.Schema({
   month: {
     type: Number,
@@ -113,49 +137,38 @@ const monthlyExpensesSchema = new mongoose.Schema({
     min: 0,
     max: 11
   },
-  expenses: [{
-    description: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    amount: {
-      type: Number,
-      required: true,
-      min: 0
-    },
-    date: {
-      type: Date,
-      required: true
-    },
-    category: {
-      type: String,
-      required: true
-    },
-    paidBy: {
-      type: String,
-      required: true
-    },
-    attachments: [{
-      url: String,
-      name: String,
-      type: String
-    }]
-  }],
+  expenses: [expenseSchema],
   totalAmount: {
     type: Number,
     default: 0
   },
-  Distribution: [distributionSchema]
-}, { _id: true });
+  Distribution: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    name: String,
+    percentage: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100
+    },
+    _id: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: () => new mongoose.Types.ObjectId()
+    }
+  }]
+});
 
+// Esquema de gastos anuales
 const yearlyExpensesSchema = new mongoose.Schema({
   year: {
     type: Number,
     required: true
   },
   months: [monthlyExpensesSchema]
-}, { _id: true });
+});
 
 const sharedSessionSchema = new mongoose.Schema({
   name: {
@@ -165,7 +178,9 @@ const sharedSessionSchema = new mongoose.Schema({
   },
   description: {
     type: String,
-    trim: true
+    required: false,
+    trim: true,
+    default: ''
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -181,6 +196,7 @@ const sharedSessionSchema = new mongoose.Schema({
   yearlyExpenses: [yearlyExpensesSchema],
   currency: {
     type: String,
+    required: false,
     default: 'EUR'
   },
   isActive: {
@@ -204,7 +220,7 @@ const sharedSessionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'completed'],
+    enum: ['active', 'archived', 'deleted'],
     default: 'active'
   },
   isLocked: {
@@ -535,6 +551,51 @@ sharedSessionSchema.methods.organizeExpenses = async function() {
           };
           futureMonthData.expenses.push(futureExpense);
           futureMonthData.totalAmount += expense.amount;
+
+          // Si no hay distribución, copiar la distribución del mes actual
+          if (!futureMonthData.Distribution || futureMonthData.Distribution.length === 0) {
+            futureMonthData.Distribution = monthData.Distribution.map(dist => ({
+              ...dist,
+              _id: new mongoose.Types.ObjectId()
+            }));
+          }
+
+          // Crear asignaciones para cada participante en el mes futuro
+          const ParticipantAllocation = mongoose.model('ParticipantAllocation');
+          
+          // Eliminar asignaciones existentes para este mes/año futuro
+          await ParticipantAllocation.deleteMany({
+            sessionId: this._id,
+            year: futureYear,
+            month: futureMonth
+          });
+
+          // Crear nuevas asignaciones para el mes futuro
+          const futureAllocations = futureMonthData.Distribution.map(dist => ({
+            sessionId: this._id,
+            userId: dist.userId,
+            name: dist.name,
+            year: futureYear,
+            month: futureMonth,
+            percentage: dist.percentage,
+            amount: (futureMonthData.totalAmount * dist.percentage) / 100,
+            totalAmount: futureMonthData.totalAmount,
+            status: 'pending'
+          }));
+
+          if (futureAllocations.length > 0) {
+            const savedFutureAllocations = await ParticipantAllocation.insertMany(futureAllocations);
+            
+            // Sincronizar cada asignación futura con gastos personales
+            const syncService = require('../services/syncService');
+            for (const allocation of savedFutureAllocations) {
+              try {
+                await syncService.syncAllocationToPersonalExpense(allocation);
+              } catch (syncError) {
+                console.warn(`Error al sincronizar asignación futura ${allocation._id}:`, syncError.message);
+              }
+            }
+          }
         }
       }
     }
@@ -569,12 +630,7 @@ sharedSessionSchema.methods.getUserAllocation = function(userId) {
 
 // Método para verificar si todos los participantes han aceptado
 sharedSessionSchema.methods.allParticipantsAccepted = function() {
-  if (!this.participants || this.participants.length === 0) return true;
-  
-  return this.participants.every(p => 
-    p.status === 'accepted' || 
-    (p.userId && this.userId && p.userId.toString() === this.userId.toString())
-  );
+  return this.participants.every(p => p.status === 'accepted');
 };
 
 // Método para actualizar el estado de la invitación de un participante
@@ -625,7 +681,8 @@ sharedSessionSchema.methods.addExpense = async function(expense, expenseDate, en
 
   // Limpiar y asegurar los campos del gasto
   const cleanExpense = {
-    name: expense.name || 'Gasto',
+    _id: new mongoose.Types.ObjectId(),
+    name: expense.name && typeof expense.name === 'string' ? expense.name.trim() : null,
     description: expense.description || '',
     amount: typeof expense.amount === 'number' ? expense.amount : Number(expense.amount) || 0,
     date: date,
@@ -634,186 +691,226 @@ sharedSessionSchema.methods.addExpense = async function(expense, expenseDate, en
     isRecurring: !!expense.isRecurring
   };
 
+  // Validar el nombre del gasto
+  if (!cleanExpense.name) {
+    console.error('Error: Nombre de gasto inválido o vacío');
+    console.log('Datos recibidos:', expense);
+    throw new Error('El nombre del gasto es requerido y no puede estar vacío');
+  }
+
+  // Validar el monto
+  if (isNaN(cleanExpense.amount) || cleanExpense.amount <= 0) {
+    console.error('Error: Monto de gasto inválido');
+    console.log('Monto recibido:', expense.amount);
+    throw new Error('El monto debe ser un número positivo');
+  }
+
   // Encontrar o crear el año correspondiente
   let yearData = this.yearlyExpenses.find(y => y.year === year);
   if (!yearData) {
     yearData = {
       year: year,
       months: Array.from({ length: 12 }, (_, i) => ({
-        month: i, // 0-indexed (0-11)
+        month: i,
         expenses: [],
-        totalAmount: 0
+        totalAmount: 0,
+        Distribution: []
       }))
     };
     this.yearlyExpenses.push(yearData);
   }
 
-  // Encontrar el mes correspondiente
-  const monthData = yearData.months.find(m => m.month === month);
-  if (monthData) {
-    monthData.expenses.push(cleanExpense);
-    monthData.totalAmount += cleanExpense.amount;
-    console.log(`Gasto añadido al mes ${month} (${getMonthName(month)}) del año ${year}`);
-  } else {
-    console.error(`No se encontró el mes ${month} en el año ${year}`);
+  // Encontrar o crear el mes correspondiente
+  let monthData = yearData.months.find(m => m.month === month);
+  if (!monthData) {
+    monthData = {
+      month: month,
+      expenses: [],
+      totalAmount: 0,
+      Distribution: []
+    };
+    yearData.months.push(monthData);
   }
 
-  // Si es recurrente, crear instancias futuras hasta la fecha final
+  // Añadir el gasto al mes
+  monthData.expenses.push(cleanExpense);
+
+  // Actualizar el monto total del mes
+  monthData.totalAmount = monthData.expenses.reduce((total, exp) => total + exp.amount, 0);
+
+  // Si no hay distribución, crear una distribución equitativa
+  if (!monthData.Distribution || monthData.Distribution.length === 0) {
+    const participantCount = this.participants.filter(p => p.status === 'accepted').length;
+    const equalPercentage = 100 / participantCount;
+    
+    monthData.Distribution = this.participants
+      .filter(p => p.status === 'accepted')
+      .map(participant => ({
+        userId: participant.userId,
+        name: participant.name || participant.email,
+        percentage: equalPercentage,
+        _id: new mongoose.Types.ObjectId()
+      }));
+  }
+
+  // Crear asignaciones para cada participante
+  const ParticipantAllocation = mongoose.model('ParticipantAllocation');
+  
+  // Eliminar asignaciones existentes para este mes/año
+  await ParticipantAllocation.deleteMany({
+    sessionId: this._id,
+    year: year,
+    month: month
+  });
+
+  // Crear nuevas asignaciones
+  const allocations = monthData.Distribution.map(dist => ({
+    sessionId: this._id,
+    userId: dist.userId,
+    name: dist.name,
+    year: year,
+    month: month,
+    percentage: dist.percentage,
+    amount: (monthData.totalAmount * dist.percentage) / 100,
+    totalAmount: monthData.totalAmount,
+    status: 'pending'
+  }));
+
+  if (allocations.length > 0) {
+    const savedAllocations = await ParticipantAllocation.insertMany(allocations);
+    
+    // Sincronizar cada asignación con gastos personales
+    const syncService = require('../services/syncService');
+    for (const allocation of savedAllocations) {
+      try {
+        await syncService.syncAllocationToPersonalExpense(allocation);
+      } catch (syncError) {
+        console.warn(`Error al sincronizar asignación ${allocation._id}:`, syncError.message);
+      }
+    }
+  }
+
+  // Si es un gasto recurrente, crear instancias futuras
   if (cleanExpense.isRecurring && endDate) {
-    const finalEndDate = endDate instanceof Date ? endDate : new Date(endDate);
-    
-    // Usar UTC para evitar problemas de zona horaria
-    const originalDate = new Date(Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate()
-    ));
-    
-    let i = 1;
-    while (true) {
-      // Crear una fecha para el mes siguiente usando UTC
-      const futureDate = new Date(Date.UTC(
-        originalDate.getUTCFullYear(),
-        originalDate.getUTCMonth() + i,
-        originalDate.getUTCDate()
-      ));
+    const currentDate = new Date(date);
+    const lastDate = new Date(endDate);
+
+    while (currentDate < lastDate) {
+      // Avanzar al siguiente mes
+      currentDate.setMonth(currentDate.getMonth() + 1);
       
-      if (futureDate > finalEndDate) break;
-      
-      const futureYear = futureDate.getUTCFullYear();
-      const futureMonth = futureDate.getUTCMonth(); // 0-indexed (0-11)
-      
-      console.log(`Creando gasto recurrente: ${futureDate.toISOString()}, año: ${futureYear}, mes: ${futureMonth} (${getMonthName(futureMonth)})`);
-      
+      // Si hemos llegado más allá de la fecha final, salir del bucle
+      if (currentDate > lastDate) break;
+
+      const futureYear = currentDate.getFullYear();
+      const futureMonth = currentDate.getMonth();
+
+      // Encontrar o crear el año futuro
       let futureYearData = this.yearlyExpenses.find(y => y.year === futureYear);
       if (!futureYearData) {
         futureYearData = {
           year: futureYear,
-          months: Array.from({ length: 12 }, (_, idx) => ({
-            month: idx, // 0-indexed (0-11)
+          months: Array.from({ length: 12 }, (_, i) => ({
+            month: i,
             expenses: [],
-            totalAmount: 0
+            totalAmount: 0,
+            Distribution: []
           }))
         };
         this.yearlyExpenses.push(futureYearData);
       }
-      
-      const futureMonthData = futureYearData.months.find(m => m.month === futureMonth);
-      if (futureMonthData) {
-        const futureExpense = {
-          ...cleanExpense,
-          _id: new mongoose.Types.ObjectId(),
-          date: new Date(futureDate)
+
+      // Encontrar o crear el mes futuro
+      let futureMonthData = futureYearData.months.find(m => m.month === futureMonth);
+      if (!futureMonthData) {
+        futureMonthData = {
+          month: futureMonth,
+          expenses: [],
+          totalAmount: 0,
+          Distribution: []
         };
-        futureMonthData.expenses.push(futureExpense);
-        futureMonthData.totalAmount += cleanExpense.amount;
+        futureYearData.months.push(futureMonthData);
       }
+
+      // Crear una copia del gasto para el mes futuro
+      const futureExpense = {
+        ...cleanExpense,
+        _id: new mongoose.Types.ObjectId(),
+        date: new Date(currentDate),
+        isRecurring: true
+      };
+
+      // Añadir el gasto al mes futuro
+      futureMonthData.expenses.push(futureExpense);
       
-      i++;
+      // Actualizar el monto total del mes futuro
+      futureMonthData.totalAmount = futureMonthData.expenses.reduce((total, exp) => total + exp.amount, 0);
+
+      // Si no hay distribución, copiar la distribución del mes actual
+      if (!futureMonthData.Distribution || futureMonthData.Distribution.length === 0) {
+        futureMonthData.Distribution = monthData.Distribution.map(dist => ({
+          ...dist,
+          _id: new mongoose.Types.ObjectId()
+        }));
+      }
+
+      // Crear asignaciones para cada participante en el mes futuro
+      const ParticipantAllocation = mongoose.model('ParticipantAllocation');
+      
+      // Eliminar asignaciones existentes para este mes/año futuro
+      await ParticipantAllocation.deleteMany({
+        sessionId: this._id,
+        year: futureYear,
+        month: futureMonth
+      });
+
+      // Crear nuevas asignaciones para el mes futuro
+      const futureAllocations = futureMonthData.Distribution.map(dist => ({
+        sessionId: this._id,
+        userId: dist.userId,
+        name: dist.name,
+        year: futureYear,
+        month: futureMonth,
+        percentage: dist.percentage,
+        amount: (futureMonthData.totalAmount * dist.percentage) / 100,
+        totalAmount: futureMonthData.totalAmount,
+        status: 'pending'
+      }));
+
+      if (futureAllocations.length > 0) {
+        const savedFutureAllocations = await ParticipantAllocation.insertMany(futureAllocations);
+        
+        // Sincronizar cada asignación futura con gastos personales
+        const syncService = require('../services/syncService');
+        for (const allocation of savedFutureAllocations) {
+          try {
+            await syncService.syncAllocationToPersonalExpense(allocation);
+          } catch (syncError) {
+            console.warn(`Error al sincronizar asignación futura ${allocation._id}:`, syncError.message);
+          }
+        }
+      }
     }
   }
-  
-  await this.save();
-  return this;
+
+  // Ordenar los años y meses para mantener consistencia
+  this.yearlyExpenses.sort((a, b) => a.year - b.year);
+  this.yearlyExpenses.forEach(yearData => {
+    yearData.months.sort((a, b) => a.month - b.month);
+  });
+
+  return cleanExpense;
 };
 
 // Método para obtener los gastos de un mes específico
 sharedSessionSchema.methods.getExpensesByMonth = function(year, month) {
-  console.log(`Buscando gastos para año=${year}, mes=${month}`);
+  const yearData = this.yearlyExpenses.find(y => y.year === year);
+  if (!yearData) return [];
   
-  // Validar año y mes
-  const yearNum = parseInt(year);
-  const monthNum = parseInt(month);
+  const monthData = yearData.months.find(m => m.month === month);
+  if (!monthData) return [];
   
-  // Verificar que el mes esté en el rango válido 0-11 (enero=0, diciembre=11)
-  if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 0 || monthNum > 11) {
-    console.error(`Año o mes inválidos: año=${year}, mes=${month}`);
-    return [];
-  }
-  
-  console.log(`Buscando año=${yearNum}, mes=${monthNum} (${getMonthName(monthNum)})`);
-  
-  // Verificar si yearlyExpenses existe y es un array
-  if (!this.yearlyExpenses || !Array.isArray(this.yearlyExpenses)) {
-    console.log(`No hay estructura de gastos anuales para la sesión ${this._id}`);
-    return [];
-  }
-  
-  // Buscar el año correspondiente
-  const yearData = this.yearlyExpenses.find(y => y.year === yearNum);
-  if (!yearData) {
-    console.log(`No se encontraron datos para el año ${yearNum}`);
-    return [];
-  }
-  
-  // Verificar si months existe y es un array
-  if (!yearData.months || !Array.isArray(yearData.months)) {
-    console.log(`El año ${yearNum} no tiene estructura de meses válida`);
-    return [];
-  }
-  
-  // Buscar el mes correspondiente (usando 0-indexed)
-  let monthData = yearData.months.find(m => m.month === monthNum);
-  
-  // Diagnóstico adicional para este problema
-  if (!monthData) {
-    console.log(`No se encontró el mes ${monthNum} (${getMonthName(monthNum)}). Estructura de meses disponible:`);
-    if (yearData.months && yearData.months.length > 0) {
-      yearData.months.forEach(m => {
-        console.log(`- Mes ${m.month} (${getMonthName(m.month)}): ${m.expenses ? m.expenses.length : 0} gastos`);
-      });
-      
-      // Intento de recuperación: buscar por posición en el array en lugar de por valor month
-      if (monthNum >= 0 && monthNum < yearData.months.length) {
-        monthData = yearData.months[monthNum];
-        console.log(`Recuperación: Usando mes en posición ${monthNum} con valor month=${monthData.month}`);
-      }
-    } else {
-      console.log('El año no tiene meses definidos');
-    }
-  }
-  
-  if (!monthData) {
-    console.log(`No se encontraron datos para el mes ${monthNum} (${getMonthName(monthNum)}) del año ${yearNum}`);
-    return [];
-  }
-  
-  // Verificar si expenses existe y es un array
-  if (!monthData.expenses || !Array.isArray(monthData.expenses)) {
-    console.log(`El mes ${monthNum} (${getMonthName(monthNum)}) no tiene gastos para el año ${yearNum}`);
-    return [];
-  }
-  
-  // Verificar que los gastos tengan una estructura válida
-  const validExpenses = (monthData.expenses || []).filter(expense => {
-    if (!expense) return false;
-    
-    // Verificar que tenga una fecha válida
-    if (!expense.date) {
-      console.warn('Gasto sin fecha encontrado');
-      return false;
-    }
-    
-    // Verificar que el mes corresponda (usando 0-indexed)
-    const expenseDate = new Date(expense.date);
-    if (isNaN(expenseDate.getTime())) {
-      console.log(`Fecha inválida encontrada en gasto: ${expense._id}`);
-      return false;
-    }
-    
-    const expenseMonth = expenseDate.getMonth(); // 0-indexed (0-11)
-    const expenseYear = expenseDate.getFullYear();
-    
-    if (expenseYear !== yearNum || expenseMonth !== monthNum) {
-      console.warn(`Gasto con fecha incorrecta: esperado año=${yearNum}, mes=${monthNum} (${getMonthName(monthNum)}), encontrado año=${expenseYear}, mes=${expenseMonth} (${getMonthName(expenseMonth)})`);
-      return false;
-    }
-    
-    return true;
-  });
-  
-  console.log(`Encontrados ${validExpenses.length} gastos válidos para ${getMonthName(monthNum)} (${monthNum}) de ${yearNum}`);
-  return validExpenses;
+  return monthData.expenses || [];
 };
 
 // Método para actualizar un gasto existente
@@ -872,62 +969,36 @@ sharedSessionSchema.methods.removeExpense = async function(expenseId) {
 
 // Método para reparar gastos con fechas incorrectas
 sharedSessionSchema.methods.fixExpenseDates = async function() {
-  console.log('Iniciando corrección de fechas de gastos...');
-  let totalFixed = 0;
+  let fixed = 0;
   
-  if (!this.yearlyExpenses || this.yearlyExpenses.length === 0) {
-    console.log('No hay estructura de gastos anuales para reparar.');
-    return { fixed: 0 };
-  }
-  
-  // Recorrer toda la estructura de gastos
-  for (const yearData of this.yearlyExpenses) {
-    if (!yearData.months || yearData.months.length === 0) continue;
-    
-    for (const monthData of yearData.months) {
-      if (!monthData.expenses || monthData.expenses.length === 0) continue;
-      
-      // Para cada gasto, verificar que esté en el mes/año correcto
-      const correctedExpenses = [];
-      let incorrectExpenses = [];
-      
-      for (const expense of monthData.expenses) {
-        if (!expense.date) {
-          console.log(`Gasto sin fecha encontrado en ${yearData.year}/${getMonthName(monthData.month)}`);
-          continue;
-        }
-        
-        const expenseDate = new Date(expense.date);
-        if (isNaN(expenseDate.getTime())) {
-          console.log(`Fecha inválida encontrada en gasto: ${expense._id}`);
-          continue;
-        }
-        
-        const expenseYear = expenseDate.getFullYear();
-        const expenseMonth = expenseDate.getMonth(); // 0-indexed (0-11)
-        
-        if (expenseYear !== yearData.year || expenseMonth !== monthData.month) {
-          console.log(`Gasto con fecha incorrecta: esperado año=${yearData.year}, mes=${monthData.month} (${getMonthName(monthData.month)}), encontrado año=${expenseYear}, mes=${expenseMonth} (${getMonthName(expenseMonth)})`);
-          incorrectExpenses.push(expense);
-        } else {
-          correctedExpenses.push(expense);
+  if (this.yearlyExpenses && Array.isArray(this.yearlyExpenses)) {
+    for (const yearData of this.yearlyExpenses) {
+      if (yearData.months && Array.isArray(yearData.months)) {
+        for (const monthData of yearData.months) {
+          if (monthData.expenses && Array.isArray(monthData.expenses)) {
+            for (const expense of monthData.expenses) {
+              if (expense.date) {
+                const expenseDate = new Date(expense.date);
+                const expenseYear = expenseDate.getFullYear();
+                const expenseMonth = expenseDate.getMonth();
+                
+                if (expenseYear !== yearData.year || expenseMonth !== monthData.month) {
+                  expense.date = new Date(yearData.year, monthData.month, 1);
+                  fixed++;
+                }
+              }
+            }
+          }
         }
       }
-      
-      // Actualizar el array de gastos en la estructura de años y meses
-      monthData.expenses = correctedExpenses;
-      monthData.totalAmount = correctedExpenses.reduce((total, expense) => total + expense.amount, 0);
-      
-      // Actualizar el array de gastos en el documento
-      this.expenses = correctedExpenses;
-      
-      totalFixed += incorrectExpenses.length;
     }
   }
   
-  console.log(`${totalFixed} gastos corregidos`);
-  await this.save();
-  return { fixed: totalFixed };
+  if (fixed > 0) {
+    await this.save();
+  }
+  
+  return { fixed };
 };
 
 // Función auxiliar para obtener el nombre del mes

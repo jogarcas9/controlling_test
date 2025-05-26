@@ -74,4 +74,60 @@ export const checkServiceWorkers = async () => {
     console.error('Error al verificar Service Workers:', error);
     return [];
   }
+};
+
+/**
+ * Reinicia los Service Workers de la aplicación
+ * @returns {Promise<boolean>} true si se reinició correctamente
+ */
+export const resetServiceWorkers = async () => {
+  try {
+    // Primero desregistrar todos los Service Workers existentes
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map(registration => registration.unregister()));
+
+    // Limpiar la caché
+    if ('caches' in window) {
+      const cacheKeys = await caches.keys();
+      await Promise.all(cacheKeys.map(key => caches.delete(key)));
+    }
+
+    // Recargar la página para que se registre un nuevo Service Worker limpio
+    window.location.reload();
+    return true;
+  } catch (error) {
+    console.error('Error al reiniciar Service Workers:', error);
+    return false;
+  }
+};
+
+// Función para verificar si hay conflictos de Service Workers
+export const checkForServiceWorkerConflicts = async () => {
+  if (!('serviceWorker' in navigator)) return false;
+
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    
+    // Si hay más de un Service Worker, podría haber conflictos
+    if (registrations.length > 1) {
+      console.warn('Se detectaron múltiples Service Workers. Reiniciando...');
+      await resetServiceWorkers();
+      return true;
+    }
+
+    // Si hay un Service Worker pero no está activo correctamente
+    if (registrations.length === 1) {
+      const registration = registrations[0];
+      if (registration.active && !navigator.serviceWorker.controller) {
+        console.warn('Service Worker en estado inconsistente. Reiniciando...');
+        await resetServiceWorkers();
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error al verificar conflictos de Service Workers:', error);
+    return false;
+  }
 }; 

@@ -128,111 +128,96 @@ export const useExpenses = (sessionId, month, year) => {
     try {
       setLoading(true);
       setError(null);
-      console.log(`Añadiendo gasto a la sesión ${currentSessionId}:`, expenseData);
+      console.log('\n=== DATOS RECIBIDOS EN useExpenses ===');
+      console.log('Datos completos recibidos:', JSON.stringify(expenseData, null, 2));
+      console.log('Tipo de amount:', typeof expenseData.amount);
+      console.log('Valor de amount:', expenseData.amount);
+      
+      // Procesar el monto antes de cualquier otra operación
+      let amount = expenseData.amount;
+      
+      // Si no es un número, intentar convertirlo
+      if (typeof amount !== 'number') {
+        try {
+          // Asegurar que tenemos un string y reemplazar coma por punto
+          const amountStr = amount.toString().replace(',', '.');
+          // Convertir a número
+          amount = parseFloat(amountStr);
+          
+          if (isNaN(amount)) {
+            throw new Error('El monto no es un número válido');
+          }
+        } catch (error) {
+          console.error('Error procesando el monto en useExpenses:', error);
+          throw new Error('El monto debe ser un número válido');
+        }
+      }
+      
+      // Fijar a 2 decimales y asegurar que es número
+      amount = Number(Number(amount).toFixed(2));
+      
+      if (isNaN(amount)) {
+        throw new Error('El monto final no es un número válido');
+      }
+      
+      console.log('\nMONTO PROCESADO:');
+      console.log('- Valor final:', amount);
+      console.log('- Tipo final:', typeof amount);
+      console.log('- Es número válido:', !isNaN(amount));
       
       // Obtener los detalles de la sesión para verificar participantes
       const sessionDetails = await sharedSessionService.getSessionDetails(currentSessionId);
-      console.log('Detalles de sesión obtenidos para validar paidBy:', sessionDetails);
       
       // Obtener IDs de los participantes
       const participantIds = sessionDetails.participants
         .filter(p => p.userId)
         .map(p => {
-          // Manejar tanto strings como objetos
           if (typeof p.userId === 'object' && p.userId._id) {
             return p.userId._id;
           }
           return p.userId;
         });
       
-      console.log('IDs de participantes válidos:', participantIds);
-      
       // Validar o establecer quién pagó
       let validPaidBy = expenseData.paidBy;
       
-      // Si no se proporciona un pagador o no es válido, usar el del usuario actual o el primer participante
       if (!validPaidBy || !participantIds.includes(validPaidBy)) {
-        // Intentar usar el ID del usuario actual
         const currentUserId = localStorage.getItem('userId');
         if (currentUserId && participantIds.includes(currentUserId)) {
           validPaidBy = currentUserId;
-          console.log(`Usando ID del usuario actual como pagador: ${validPaidBy}`);
         } else if (participantIds.length > 0) {
-          // Si el usuario actual no es un participante válido, usar el primer participante
           validPaidBy = participantIds[0];
-          console.log(`Usando primer participante como pagador: ${validPaidBy}`);
         } else {
-          // Caso extremo: si no hay participantes válidos, usar el creador de la sesión
           validPaidBy = sessionDetails.userId;
-          console.log(`Usando creador de la sesión como pagador: ${validPaidBy}`);
         }
       }
       
-      // Enviar los datos con el pagador validado
+      // Enviar los datos con el pagador validado y el monto procesado
       const dataToSend = {
         ...expenseData,
-        paidBy: validPaidBy
+        name: expenseData.name?.trim() || 'Gasto sin nombre',
+        description: expenseData.description?.trim() || '',
+        amount, // Usar el monto procesado
+        category: expenseData.category?.trim() || 'Otros',
+        date: expenseData.date ? new Date(expenseData.date).toISOString() : new Date().toISOString(),
+        paidBy: validPaidBy,
+        isRecurring: !!expenseData.isRecurring
       };
       
-      console.log(`Enviando gasto con paidBy validado:`, dataToSend);
+      console.log('\nDATOS FINALES A ENVIAR:');
+      console.log(JSON.stringify(dataToSend, null, 2));
+      console.log('Tipo de amount en datos finales:', typeof dataToSend.amount);
+      console.log('Valor de amount en datos finales:', dataToSend.amount);
       
-      // Añadir gasto a la sesión compartida
       const response = await sharedSessionService.addExpenseToSession(currentSessionId, dataToSend);
-      console.log('Respuesta al añadir gasto:', response);
-      
-      // Crear un nuevo gasto formateado con la respuesta y añadirlo inmediatamente al estado
-      // para que se actualice la interfaz sin necesidad de un refresco
-      const newExpense = {
-        ...response,
-        _id: response._id || response.id || Math.random().toString(36).substring(2, 15),
-        amount: typeof response.amount === 'number' ? response.amount : Number(response.amount) || 0,
-        date: response.date ? new Date(response.date) : new Date(),
-        name: response.name || dataToSend.name || 'Gasto',
-        category: response.category || dataToSend.category || 'Otros',
-        isRecurring: !!response.isRecurring
-      };
-      
-      // Actualizar el estado local inmediatamente con el nuevo gasto
-      setExpenses(prevExpenses => [...prevExpenses, newExpense]);
-      
-      // Si la respuesta contiene la sesión completa actualizada
-      if (response && response.expenses) {
-        // Actualizar con todos los gastos de la sesión, filtrando por mes/año si es necesario
-        let updatedExpenses = response.expenses || [];
-        
-        // Si se filtran por mes/año, aplicar el mismo filtro
-        if (month !== undefined && year !== undefined && response.sessionType === 'permanent') {
-          // Asegurar que month esté en rango 0-11
-          const monthNum = Math.max(0, Math.min(11, parseInt(month)));
-          const startDate = getFirstDayOfMonth(year, monthNum);
-          const endDate = getLastDayOfMonth(year, monthNum);
-          
-          console.log(`Filtrando gastos entre ${startDate.toISOString()} y ${endDate.toISOString()}`);
-          
-          updatedExpenses = updatedExpenses.filter(expense => {
-            const expenseDate = new Date(expense.date);
-            return expenseDate >= startDate && expenseDate <= endDate;
-          });
-        }
-        
-        setExpenses(updatedExpenses);
-        
-        // Retornar el gasto recién añadido (el último de la lista)
-        return updatedExpenses.length > 0 ? updatedExpenses[updatedExpenses.length - 1] : null;
-      } else {
-        // Si solo se devuelve el gasto añadido (y no la sesión completa)
-        // No es necesario actualizar el estado aquí, ya lo hicimos arriba
-        return newExpense;
-      }
+      return response;
     } catch (err) {
-      console.error('Error al añadir gasto:', err);
-      const errorMessage = err.userMessage || err.message || 'Error desconocido';
-      setError(`Error al añadir gasto: ${errorMessage}`);
+      console.error('Error en addExpense:', err);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [currentSessionId, month, year]);
+  }, [currentSessionId]);
 
   const updateExpense = useCallback(async (expenseId, expenseData) => {
     if (!currentSessionId) {

@@ -52,7 +52,7 @@ const ExpenseCard = ({ expense, onEdit, onDelete, canEdit }) => {
         mb: 1
       }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 'medium', fontSize: '0.95rem' }}>
-          {expense.name}
+          {expense.name || 'Sin nombre'}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           {canEdit && (
@@ -247,7 +247,7 @@ const ExpenseList = ({
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((expense) => (
                   <TableRow key={expense._id}>
-                    <TableCell>{expense.name}</TableCell>
+                    <TableCell>{expense.name || 'Sin nombre'}</TableCell>
                     <TableCell>{expense.category}</TableCell>
                     <TableCell>{formatDate(expense.date)}</TableCell>
                     <TableCell align="right">

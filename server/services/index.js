@@ -3,11 +3,11 @@
  * Esto facilita la importación de múltiples servicios desde un solo punto
  */
 
-const syncService = require('./syncService');
 const allocationService = require('./allocationService');
+const syncService = require('./syncService');
 
 // Exportar todos los servicios como un objeto
 module.exports = {
-  syncService,
-  allocationService
+  allocationService,
+  syncService
 }; 

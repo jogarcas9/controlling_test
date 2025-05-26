@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -19,7 +19,8 @@ import {
   DialogActions,
   useTheme,
   useMediaQuery,
-  alpha
+  alpha,
+  Snackbar
 } from '@mui/material';
 import {
   CheckCircle as AcceptIcon,
@@ -30,33 +31,81 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useInvitations } from '../../hooks/useInvitations';
+import * as sharedSessionService from '../../services/sharedSessionService';
 
 const PendingInvitations = ({ onInvitationAccepted, onInvitationRejected }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [selectedInvitation, setSelectedInvitation] = useState(null);
   const [openInfoDialog, setOpenInfoDialog] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   
   const {
     invitations,
-    loading,
+    loading: apiLoading,
     error,
-    fetchInvitations,
-    acceptInvitation,
-    rejectInvitation
+    fetchInvitations
   } = useInvitations();
 
+  useEffect(() => {
+    fetchInvitations();
+    
+    // Actualizar invitaciones cada 30 segundos
+    const interval = setInterval(() => {
+      fetchInvitations();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [fetchInvitations]);
+
   const handleAcceptInvitation = async (invitation) => {
-    const success = await acceptInvitation(invitation.sessionId);
-    if (success && onInvitationAccepted) {
-      onInvitationAccepted(invitation);
+    try {
+      setLoading(true);
+      await sharedSessionService.respondToInvitation(invitation.sessionId, 'accept');
+      await fetchInvitations();
+      if (onInvitationAccepted) {
+        onInvitationAccepted(invitation);
+      }
+      setSnackbar({
+        open: true,
+        message: 'Invitación aceptada correctamente',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error al aceptar invitación:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error al aceptar la invitación',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleRejectInvitation = async (invitation) => {
-    const success = await rejectInvitation(invitation.sessionId);
-    if (success && onInvitationRejected) {
-      onInvitationRejected(invitation);
+    try {
+      setLoading(true);
+      await sharedSessionService.respondToInvitation(invitation.sessionId, 'reject');
+      await fetchInvitations();
+      if (onInvitationRejected) {
+        onInvitationRejected(invitation);
+      }
+      setSnackbar({
+        open: true,
+        message: 'Invitación rechazada correctamente',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error al rechazar invitación:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error al rechazar la invitación',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -69,7 +118,11 @@ const PendingInvitations = ({ onInvitationAccepted, onInvitationRejected }) => {
     setOpenInfoDialog(false);
   };
 
-  if (loading) {
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  if (apiLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '20vh' }}>
         <CircularProgress />
@@ -187,6 +240,7 @@ const PendingInvitations = ({ onInvitationAccepted, onInvitationRejected }) => {
                     onClick={() => handleRejectInvitation(invitation)}
                     size="small"
                     sx={{ mr: 1 }}
+                    disabled={loading}
                   >
                     Rechazar
                   </Button>
@@ -196,6 +250,7 @@ const PendingInvitations = ({ onInvitationAccepted, onInvitationRejected }) => {
                     variant="contained"
                     onClick={() => handleAcceptInvitation(invitation)}
                     size="small"
+                    disabled={loading}
                   >
                     Aceptar
                   </Button>
@@ -261,6 +316,7 @@ const PendingInvitations = ({ onInvitationAccepted, onInvitationRejected }) => {
                   handleRejectInvitation(selectedInvitation);
                   handleCloseInfoDialog();
                 }}
+                disabled={loading}
               >
                 Rechazar
               </Button>
@@ -271,6 +327,7 @@ const PendingInvitations = ({ onInvitationAccepted, onInvitationRejected }) => {
                   handleAcceptInvitation(selectedInvitation);
                   handleCloseInfoDialog();
                 }}
+                disabled={loading}
               >
                 Aceptar
               </Button>
@@ -278,6 +335,21 @@ const PendingInvitations = ({ onInvitationAccepted, onInvitationRejected }) => {
           </>
         )}
       </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

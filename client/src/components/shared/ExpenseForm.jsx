@@ -101,14 +101,61 @@ const ExpenseForm = ({
     }
   }, [selectedMonth, selectedYear, initialData]);
 
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Validación específica para el campo amount
+    if (name === 'amount') {
+      // Permitir números, un punto o coma decimal
+      const regex = /^\d*[.,]?\d{0,2}$/;
+      
+      if (value === '' || regex.test(value)) {
+        // Almacenar el valor tal cual se ingresa
+        setFormData(prev => ({
+          ...prev,
+          amount: value
+        }));
+        setFormErrors(prev => ({
+          ...prev,
+          amount: ''
+        }));
+      }
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+
+    setFormErrors(prev => ({
+      ...prev,
+      [name]: ''
+    }));
+  };
+
   const validateForm = () => {
     const errors = {};
     if (!formData.name.trim()) {
       errors.name = 'El nombre es requerido';
     }
-    if (!formData.amount || formData.amount <= 0) {
-      errors.amount = 'El monto debe ser mayor a 0';
+
+    // Validar el monto - Mejorada la validación
+    try {
+      // Primero reemplazar la coma por punto si existe
+      const amountStr = formData.amount.toString().replace(',', '.');
+      const numericAmount = parseFloat(amountStr);
+      
+      if (!formData.amount) {
+        errors.amount = 'El monto es requerido';
+      } else if (isNaN(numericAmount)) {
+        errors.amount = 'El monto debe ser un número válido';
+      } else if (numericAmount <= 0) {
+        errors.amount = 'El monto debe ser mayor a 0';
+      }
+    } catch (error) {
+      errors.amount = 'El monto debe ser un número válido';
     }
+
     if (!formData.category) {
       errors.category = 'La categoría es requerida';
     }
@@ -119,18 +166,6 @@ const ExpenseForm = ({
     return Object.keys(errors).length === 0;
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    setFormErrors(prev => ({
-      ...prev,
-      [name]: ''
-    }));
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateForm()) {
@@ -139,11 +174,51 @@ const ExpenseForm = ({
         validDate = new Date();
       }
 
-      onSubmit({
-        ...formData,
-        amount: Number(formData.amount),
-        date: validDate.toISOString()
-      });
+      // Procesar el monto antes de enviarlo
+      let amount;
+      try {
+        // Primero reemplazar la coma por punto si existe
+        const amountStr = formData.amount.toString().replace(',', '.');
+        // Convertir a número
+        amount = parseFloat(amountStr);
+        
+        if (isNaN(amount)) {
+          setFormErrors(prev => ({
+            ...prev,
+            amount: 'El monto debe ser un número válido'
+          }));
+          return;
+        }
+        
+        // Fijar a 2 decimales y convertir de nuevo a número
+        amount = Number(amount.toFixed(2));
+      } catch (error) {
+        console.error('Error procesando el monto:', error);
+        setFormErrors(prev => ({
+          ...prev,
+          amount: 'El monto debe ser un número válido'
+        }));
+        return;
+      }
+
+      // Asegurar que todos los campos requeridos están presentes y formateados
+      const expenseData = {
+        name: formData.name.trim(),
+        description: formData.description?.trim() || '',
+        amount: amount,
+        category: formData.category?.trim() || 'Otros',
+        date: validDate.toISOString(),
+        isRecurring: !!formData.isRecurring
+      };
+
+      console.log('=== DATOS DEL FORMULARIO ===');
+      console.log('formData original:', formData);
+      console.log('Monto original:', formData.amount);
+      console.log('Monto procesado:', amount);
+      console.log('Tipo de monto procesado:', typeof amount);
+      console.log('Datos finales a enviar:', expenseData);
+
+      onSubmit(expenseData);
     }
   };
 
@@ -255,8 +330,23 @@ const ExpenseForm = ({
               id="amount"
               name="amount"
               value={formData.amount}
-              onChange={handleChange}
-              type="number"
+              onChange={(e) => {
+                // Permitir números, un punto o coma decimal
+                const value = e.target.value;
+                const regex = /^\d*[.,]?\d{0,2}$/;
+                
+                if (value === '' || regex.test(value)) {
+                  setFormData(prev => ({
+                    ...prev,
+                    amount: value
+                  }));
+                  setFormErrors(prev => ({
+                    ...prev,
+                    amount: ''
+                  }));
+                }
+              }}
+              type="text"
               fullWidth
               required
               error={!!formErrors.amount}
@@ -269,7 +359,6 @@ const ExpenseForm = ({
                     <EuroIcon fontSize="small" color="action" />
                   </InputAdornment>
                 ),
-                inputProps: { min: 0, step: "0.01" },
                 sx: { py: 1.5, backgroundColor: 'background.paper' }
               }}
             />

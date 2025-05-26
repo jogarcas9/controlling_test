@@ -74,6 +74,7 @@ const SharedSessions = () => {
   // Hooks personalizados
   const {
     sessions,
+    setSessions,
     loading: sessionsLoading,
     error: sessionsError,
     fetchSessions,
@@ -543,31 +544,36 @@ const SharedSessions = () => {
 
   const handleExpenseSubmit = async (expenseData) => {
     try {
-      if (editingExpense) {
-        await updateExpense(editingExpense._id, expenseData);
-      } else {
-        await addExpense(expenseData);
-      }
+      console.log('Añadiendo gasto a la sesión:', currentSession._id);
+      await addExpense(expenseData);
       setShowExpenseForm(false);
-      setEditingExpense(null);
-      
-      // Después de añadir/actualizar un gasto, asegurarse de que la lista está actualizada
       await fetchExpenses();
-      
-      // Sincronizar solo después de que el gasto se haya guardado correctamente
-      try {
-        await sharedSessionService.syncToPersonal(currentSession._id);
-      } catch (syncError) {
-        console.error('Error en la sincronización:', syncError);
-        // No mostrar error al usuario ya que el gasto se guardó correctamente
-      }
     } catch (error) {
-      console.error('Error al guardar el gasto:', error);
-      alert('Error al guardar el gasto: ' + (error.response?.data?.msg || error.message));
+      console.error('Error al añadir gasto:', error);
+      setMessage({
+        type: 'error',
+        text: error.message || 'Error al añadir el gasto'
+      });
     }
   };
 
-  // Manejador de distribución
+  // Efecto para cargar los datos de la sesión cuando cambia el mes o año
+  useEffect(() => {
+    const loadSessionData = async () => {
+      if (currentSession?._id) {
+        try {
+          const updatedSession = await sharedSessionService.getSessionDetails(currentSession._id);
+          setCurrentSession(updatedSession);
+        } catch (error) {
+          console.error('Error al cargar datos de la sesión:', error);
+        }
+      }
+    };
+    
+    loadSessionData();
+  }, [selectedMonth, selectedYear]);
+
+  // Manejador de distribución actualizado
   const handleUpdateDistribution = async (distribution, month, year) => {
     if (!currentSession || !currentSession._id) {
       console.error('No hay una sesión seleccionada para actualizar la distribución');
@@ -583,24 +589,26 @@ const SharedSessions = () => {
         year
       );
       
-      // Actualizar la sesión actual con los nuevos datos
-      setCurrentSession(prevSession => ({
-        ...prevSession,
-        ...result.data
-      }));
-      
-      // Recargar los gastos para reflejar los cambios
-      await fetchExpenses(currentSession._id, selectedMonth, selectedYear);
-      
-      setMessage({
-        type: 'success',
-        text: 'Distribución actualizada correctamente'
-      });
+      if (result && result._id) {
+        // Obtener los datos actualizados de la sesión
+        const updatedSession = await sharedSessionService.getSessionDetails(currentSession._id);
+        setCurrentSession(updatedSession);
+        
+        // Recargar los gastos
+        await fetchExpenses(currentSession._id, selectedMonth, selectedYear);
+        
+        setMessage({
+          type: 'success',
+          text: 'Distribución actualizada correctamente'
+        });
+      } else {
+        throw new Error('La respuesta del servidor no incluye los datos de la sesión actualizada');
+      }
     } catch (error) {
       console.error('Error al actualizar la distribución:', error);
       setMessage({
         type: 'error',
-        text: 'Error al actualizar la distribución. Por favor, intenta de nuevo.'
+        text: error.response?.data?.msg || error.message || 'Error al actualizar la distribución. Por favor, intenta de nuevo.'
       });
     } finally {
       setLoading(false);
@@ -928,14 +936,23 @@ const SharedSessions = () => {
                 <DistributionTable
                   participants={currentSession.participants
                     .filter(p => p.status === 'accepted')
-                    .map(p => ({
-                      userId: p.userId._id || p.userId,
-                      name: p.name || (p.userId && (p.userId.nombre || p.userId.email)) || p.email,
-                      email: p.email,
-                      percentage: currentSession.allocations?.find(a => 
-                        (a.userId._id || a.userId) === (p.userId._id || p.userId)
-                      )?.percentage || 0
-                    }))}
+                    .map(p => {
+                      // Encontrar el año actual en yearlyExpenses
+                      const yearData = currentSession.yearlyExpenses?.find(y => y.year === selectedYear);
+                      // Encontrar el mes actual en el año
+                      const monthData = yearData?.months?.find(m => m.month === selectedMonth);
+                      // Encontrar la distribución para este participante
+                      const distribution = monthData?.Distribution?.find(d => 
+                        (d.userId?._id || d.userId) === (p.userId?._id || p.userId)
+                      );
+                      
+                      return {
+                        userId: p.userId?._id || p.userId,
+                        name: p.name || (p.userId && (p.userId.nombre || p.userId.email)) || p.email,
+                        email: p.email,
+                        percentage: distribution?.percentage || 0
+                      };
+                    })}
                   expenses={expenses}
                   onUpdateDistribution={handleUpdateDistribution}
                   loading={expensesLoading}

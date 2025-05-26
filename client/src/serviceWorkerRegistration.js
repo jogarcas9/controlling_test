@@ -52,7 +52,17 @@ export function register(config) {
 function registerValidSW(swUrl, config) {
   navigator.serviceWorker
     .register(swUrl)
-    .then((registration) => {
+    .then(async (registration) => {
+      // Primero, verificar si hay un worker activo
+      if (registration.active) {
+        try {
+          // Intentar reclamar los clientes
+          await registration.active.claim();
+        } catch (error) {
+          console.warn('No se pudieron reclamar los clientes:', error);
+        }
+      }
+
       registration.onupdatefound = () => {
         const installingWorker = registration.installing;
         if (installingWorker == null) {
@@ -61,25 +71,23 @@ function registerValidSW(swUrl, config) {
         installingWorker.onstatechange = () => {
           if (installingWorker.state === 'installed') {
             if (navigator.serviceWorker.controller) {
-              // At this point, the updated precached content has been fetched,
-              // but the previous service worker will still serve the older
-              // content until all client tabs are closed.
+              // En este punto, el contenido precargado actualizado ha sido obtenido,
+              // pero el service worker anterior seguirá sirviendo el contenido antiguo
+              // hasta que todas las pestañas de la página se cierren.
               console.log(
                 'Nuevo contenido está disponible y se usará cuando todas ' +
-                  'las pestañas de esta página se cierren. Ver https://cra.link/PWA.'
+                  'las pestañas de esta página se cierren.'
               );
 
-              // Execute callback
+              // Ejecutar callback
               if (config && config.onUpdate) {
                 config.onUpdate(registration);
               }
-            } else {
-              // At this point, everything has been precached.
-              // It's the perfect time to display a
-              // "Content is cached for offline use." message.
-              console.log('El contenido está en caché para uso sin conexión.');
 
-              // Execute callback
+              // Intentar activar el nuevo Service Worker inmediatamente
+              installingWorker.postMessage({ type: 'SKIP_WAITING' });
+            } else {
+              console.log('El contenido está en caché para uso sin conexión.');
               if (config && config.onSuccess) {
                 config.onSuccess(registration);
               }

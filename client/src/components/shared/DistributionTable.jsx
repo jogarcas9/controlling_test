@@ -62,29 +62,25 @@ const DistributionTable = ({
     
     const newPercentages = {};
     
-    // Número total de participantes únicos
-    const totalParticipants = uniqueParticipants.length;
-    
-    // Si no hay participantes, salir
-    if (totalParticipants === 0) {
-      console.warn('No se encontraron participantes para la distribución');
-      return;
-    }
-    
-    // Distribuir los porcentajes equitativamente
-    const equalPercentage = Math.floor(100 / totalParticipants);
-    let remainingPercentage = 100 - (equalPercentage * totalParticipants);
-    
-    uniqueParticipants.forEach((participant, index) => {
-      // El último participante recibe el porcentaje restante para asegurar que sume 100%
-      const adjustedPercentage = index === totalParticipants - 1 
-        ? equalPercentage + remainingPercentage 
-        : equalPercentage;
-      
-      newPercentages[participant.userId] = adjustedPercentage;
+    // Usar los porcentajes existentes de la base de datos
+    uniqueParticipants.forEach((participant) => {
+      newPercentages[participant.userId] = participant.percentage || 0;
     });
     
-    console.log('Porcentajes calculados:', newPercentages);
+    // Si no hay porcentajes definidos, distribuir equitativamente
+    const totalDefined = Object.values(newPercentages).reduce((sum, p) => sum + p, 0);
+    if (totalDefined === 0 && uniqueParticipants.length > 0) {
+      const equalPercentage = Math.floor(100 / uniqueParticipants.length);
+      let remainingPercentage = 100 - (equalPercentage * uniqueParticipants.length);
+      
+      uniqueParticipants.forEach((participant, index) => {
+        newPercentages[participant.userId] = index === uniqueParticipants.length - 1 
+          ? equalPercentage + remainingPercentage 
+          : equalPercentage;
+      });
+    }
+    
+    console.log('Porcentajes inicializados:', newPercentages);
     setPercentages(newPercentages);
     setParticipantsWithNames(uniqueParticipants);
   }, [participants]);
@@ -275,77 +271,46 @@ const DistributionTable = ({
 
   return (
     <Box>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Distribución de Gastos
-        </Typography>
-        <Typography variant="subtitle2" color="text.secondary">
-          Total a distribuir: {formatCurrency(total)}
-        </Typography>
-      </Box>
+      <Typography variant="h6" gutterBottom>
+        Distribución de Gastos
+      </Typography>
+      <Typography variant="subtitle1" gutterBottom>
+        Total a distribuir: {formatCurrency(total)}
+      </Typography>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {validationError && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {validationError}
-        </Alert>
-      )}
-
-      <TableContainer component={Paper} sx={{ mb: 3, borderRadius: 2 }}>
+      <TableContainer component={Paper} sx={{ mb: 2 }}>
         <Table>
           <TableHead>
             <TableRow sx={{ backgroundColor: 'primary.light' }}>
-              <TableCell sx={{ fontWeight: 'bold', color: 'white' }}>Participante</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 'bold', color: 'white' }}>Porcentaje</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 'bold', color: 'white' }}>Monto</TableCell>
+              <TableCell sx={{ color: 'white' }}>Participante</TableCell>
+              <TableCell align="center" sx={{ color: 'white' }}>Porcentaje</TableCell>
+              <TableCell align="right" sx={{ color: 'white' }}>Monto</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {participantsWithNames.map((participant, index) => (
-              <TableRow key={`participant-${participant.userId || index}`}>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body1" fontWeight="medium">
-                      {participant.name && participant.email && !participant.email.includes(participant.name) 
-                        ? participant.name 
-                        : (participant.email ? participant.email.split('@')[0] : `Participante ${index + 1}`)}
-                    </Typography>
-                    {participant.canEdit && (
-                      <Tooltip title="Puede editar">
-                        <EditIcon fontSize="small" color="action" />
-                      </Tooltip>
-                    )}
-                    {participant.canDelete && (
-                      <Tooltip title="Puede eliminar">
-                        <DeleteIcon fontSize="small" color="action" />
-                      </Tooltip>
-                    )}
+            {participantsWithNames.map((participant) => (
+              <TableRow key={participant.userId}>
+                <TableCell>{participant.name}</TableCell>
+                <TableCell align="center">
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <TextField
+                      type="number"
+                      value={percentages[participant.userId] || 0}
+                      onChange={(e) => handlePercentageChange(participant.userId, e.target.value)}
+                      inputProps={{
+                        min: 0,
+                        max: 100,
+                        style: { textAlign: 'right', width: '50px' }
+                      }}
+                      variant="outlined"
+                      size="small"
+                      sx={{ width: '80px' }}
+                    />
+                    <Typography sx={{ ml: 1 }}>%</Typography>
                   </Box>
                 </TableCell>
                 <TableCell align="right">
-                  <TextField
-                    type="number"
-                    value={Math.round(percentages[participant.userId] || 0)}
-                    onChange={(e) => handlePercentageChange(participant.userId, e.target.value)}
-                    size="small"
-                    InputProps={{
-                      endAdornment: '%',
-                      inputProps: { 
-                        min: 0, 
-                        max: 100,
-                        step: 1 // Forzar enteros
-                      }
-                    }}
-                    sx={{ width: 100 }}
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  {formatCurrency(calculateParticipantShare(participant.userId))}
+                  {formatCurrency((total * (percentages[participant.userId] || 0)) / 100)}
                 </TableCell>
               </TableRow>
             ))}
@@ -353,13 +318,24 @@ const DistributionTable = ({
         </Table>
       </TableContainer>
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
+      {validationError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {validationError}
+        </Alert>
+      )}
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
         <Button
           variant="contained"
           color="primary"
           onClick={handleApplyDistribution}
           disabled={loading}
-          sx={{ borderRadius: 2, fontWeight: 'bold' }}
         >
           Aplicar Distribución
         </Button>
