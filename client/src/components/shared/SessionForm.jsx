@@ -19,7 +19,9 @@ import {
   FormHelperText,
   Checkbox,
   FormControlLabel,
-  Tooltip
+  Tooltip,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { validateEmail } from '../../utils/helpers';
 import EditIcon from '@mui/icons-material/Edit';
@@ -34,6 +36,8 @@ const SessionForm = ({
   loading = false,
   error = null
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -191,141 +195,194 @@ const SessionForm = ({
             </Alert>
           )}
 
-          <TextField
-            autoFocus
-            margin="dense"
-            name="name"
-            label="Nombre de la sesión"
-            type="text"
-            fullWidth
-            value={formData.name}
-            onChange={handleChange}
-            required
-            sx={{ mb: 2 }}
-          />
-
-          <TextField
-            margin="dense"
-            name="description"
-            label="Descripción (opcional)"
-            type="text"
-            fullWidth
-            multiline
-            rows={3}
-            value={formData.description}
-            onChange={handleChange}
-            sx={{ mb: 3 }}
-          />
-
-          <FormControl fullWidth margin="dense" sx={{ mb: 3 }}>
-            <InputLabel id="session-type-label">Tipo de Sesión</InputLabel>
-            <Select
-              labelId="session-type-label"
-              name="sessionType"
-              value={formData.sessionType}
-              label="Tipo de Sesión"
+          <Box sx={{ mt: 1 }}>
+            <TextField
+              autoFocus
+              margin="dense"
+              name="name"
+              label="Nombre de la sesión"
+              type="text"
+              fullWidth
+              value={formData.name}
               onChange={handleChange}
-            >
-              {SESSION_TYPES.map(type => (
-                <MenuItem key={type.value} value={type.value}>
-                  {type.label}
-                </MenuItem>
-              ))}
-            </Select>
-            <FormHelperText>
-              {formData.sessionType === 'permanent' 
-                ? 'Sesión con historial mensual, como gastos recurrentes del hogar' 
-                : 'Sesión para un evento puntual, como un viaje o una cena'}
-            </FormHelperText>
-          </FormControl>
-
-          <Typography variant="subtitle2" gutterBottom>
-            Participantes
-          </Typography>
-
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={12}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-                <TextField
-                  label="Email del participante"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setEmailError('');
-                  }}
-                  error={!!emailError}
-                  helperText={emailError}
-                  size="small"
-                  fullWidth
-                />
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <Tooltip title="Permite al participante editar detalles de la sesión">
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={canEdit}
-                          onChange={(e) => setCanEdit(e.target.checked)}
-                          icon={<EditIcon color="disabled" />}
-                          checkedIcon={<EditIcon color="primary" />}
-                        />
-                      }
-                      label="Puede editar"
-                    />
-                  </Tooltip>
-                  <Tooltip title="Permite al participante eliminar elementos de la sesión">
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={canDelete}
-                          onChange={(e) => setCanDelete(e.target.checked)}
-                          icon={<DeleteIcon color="disabled" />}
-                          checkedIcon={<DeleteIcon color="error" />}
-                        />
-                      }
-                      label="Puede eliminar"
-                    />
-                  </Tooltip>
-                  <Button
-                    variant="contained"
-                    onClick={handleAddParticipant}
-                    size="small"
-                  >
-                    Agregar
-                  </Button>
-                </Box>
-              </Box>
-            </Grid>
-          </Grid>
-
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-            {formData.participants.map((participant) => (
-              <Chip
-                key={participant.email}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <span>{participant.name && participant.name !== participant.email ? participant.name : participant.email.split('@')[0]}</span>
-                    {participant.canEdit && (
-                      <Tooltip title="Puede editar">
-                        <EditIcon fontSize="small" color="action" />
-                      </Tooltip>
-                    )}
-                    {participant.canDelete && (
-                      <Tooltip title="Puede eliminar">
-                        <DeleteIcon fontSize="small" color="action" />
-                      </Tooltip>
-                    )}
-                  </Box>
+              required
+              sx={{
+                mb: 2,
+                '& .MuiInputLabel-root': {
+                  background: theme.palette.background.paper,
+                  px: 1,
+                  transform: 'translate(14px, -9px) scale(0.75)',
+                  '&.Mui-focused': {
+                    transform: 'translate(14px, -9px) scale(0.75)',
+                  }
+                },
+                '& .MuiInputLabel-shrink': {
+                  transform: 'translate(14px, -9px) scale(0.75)',
                 }
-                onDelete={() => handleRemoveParticipant(participant.email)}
+              }}
+            />
+
+            <TextField
+              margin="dense"
+              name="description"
+              label="Descripción (opcional)"
+              type="text"
+              fullWidth
+              multiline
+              rows={3}
+              value={formData.description}
+              onChange={handleChange}
+              sx={{
+                mb: 3,
+                '& .MuiInputLabel-root': {
+                  background: theme.palette.background.paper,
+                  px: 1,
+                  transform: 'translate(14px, -9px) scale(0.75)',
+                  '&.Mui-focused': {
+                    transform: 'translate(14px, -9px) scale(0.75)',
+                  }
+                },
+                '& .MuiInputLabel-shrink': {
+                  transform: 'translate(14px, -9px) scale(0.75)',
+                }
+              }}
+            />
+
+            <FormControl fullWidth margin="dense" sx={{ mb: 3 }}>
+              <InputLabel 
+                id="session-type-label"
                 sx={{
-                  '& .MuiChip-label': {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5
+                  background: theme.palette.background.paper,
+                  px: 1,
+                  transform: 'translate(14px, -9px) scale(0.75)',
+                  '&.Mui-focused': {
+                    transform: 'translate(14px, -9px) scale(0.75)',
                   }
                 }}
-              />
-            ))}
+              >
+                Tipo de Sesión
+              </InputLabel>
+              <Select
+                labelId="session-type-label"
+                name="sessionType"
+                value={formData.sessionType}
+                label="Tipo de Sesión"
+                onChange={handleChange}
+              >
+                {SESSION_TYPES.map(type => (
+                  <MenuItem key={type.value} value={type.value}>
+                    {type.label}
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>
+                {formData.sessionType === 'permanent' 
+                  ? 'Sesión con historial mensual, como gastos recurrentes del hogar' 
+                  : 'Sesión para un evento puntual, como un viaje o una cena'}
+              </FormHelperText>
+            </FormControl>
+
+            <Typography variant="subtitle2" gutterBottom>
+              Participantes
+            </Typography>
+
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={12}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
+                  <TextField
+                    label="Email del participante"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailError('');
+                    }}
+                    error={!!emailError}
+                    helperText={emailError}
+                    size="small"
+                    fullWidth
+                    sx={{
+                      '& .MuiInputLabel-root': {
+                        background: theme.palette.background.paper,
+                        px: 1,
+                        transform: 'translate(14px, -9px) scale(0.75)',
+                        '&.Mui-focused': {
+                          transform: 'translate(14px, -9px) scale(0.75)',
+                        }
+                      },
+                      '& .MuiInputLabel-shrink': {
+                        transform: 'translate(14px, -9px) scale(0.75)',
+                      }
+                    }}
+                  />
+                  <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <Tooltip title="Permite al participante editar detalles de la sesión">
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={canEdit}
+                            onChange={(e) => setCanEdit(e.target.checked)}
+                            icon={<EditIcon color="disabled" />}
+                            checkedIcon={<EditIcon color="primary" />}
+                          />
+                        }
+                        label="Puede editar"
+                      />
+                    </Tooltip>
+                    <Tooltip title="Permite al participante eliminar elementos de la sesión">
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={canDelete}
+                            onChange={(e) => setCanDelete(e.target.checked)}
+                            icon={<DeleteIcon color="disabled" />}
+                            checkedIcon={<DeleteIcon color="error" />}
+                          />
+                        }
+                        label="Puede eliminar"
+                      />
+                    </Tooltip>
+                    <Button
+                      variant="contained"
+                      onClick={handleAddParticipant}
+                      size="small"
+                    >
+                      Agregar
+                    </Button>
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+              {formData.participants.map((participant) => (
+                <Chip
+                  key={participant.email}
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <span>{participant.name && participant.name !== participant.email ? participant.name : participant.email.split('@')[0]}</span>
+                      {participant.canEdit && (
+                        <Tooltip title="Puede editar">
+                          <EditIcon fontSize="small" color="action" />
+                        </Tooltip>
+                      )}
+                      {participant.canDelete && (
+                        <Tooltip title="Puede eliminar">
+                          <DeleteIcon fontSize="small" color="action" />
+                        </Tooltip>
+                      )}
+                    </Box>
+                  }
+                  onDelete={() => handleRemoveParticipant(participant.email)}
+                  sx={{
+                    '& .MuiChip-label': {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5
+                    }
+                  }}
+                />
+              ))}
+            </Box>
           </Box>
         </DialogContent>
 

@@ -21,7 +21,8 @@ import {
   IconButton,
   Typography,
   Divider,
-  InputAdornment
+  InputAdornment,
+  Slide
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -234,355 +235,254 @@ const ExpenseForm = ({
       maxWidth="sm"
       fullWidth
       fullScreen={isMobile}
+      TransitionComponent={Slide}
+      sx={{
+        zIndex: theme.zIndex.modal
+      }}
       PaperProps={{
-        elevation: 3,
+        elevation: isMobile ? 0 : 3,
         sx: {
-          borderRadius: isMobile ? 0 : 2,
-          height: isMobile ? '100%' : 'auto',
-          m: isMobile ? 0 : 2,
-          maxHeight: isMobile ? '100vh' : '95vh',
-          overflow: 'auto'
+          borderRadius: isMobile ? '16px 16px 0 0' : 2,
+          height: isMobile ? '90vh' : 'auto',
+          m: isMobile ? '10vh 0 0 0' : 2,
+          position: isMobile ? 'fixed' : 'static',
+          bottom: 0,
+          maxHeight: isMobile ? '90vh' : '95vh',
+          overflow: 'auto',
+          bgcolor: theme.palette.background.paper
         }
       }}
     >
-      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {/* Cabecera del formulario */}
-        <Box 
-          sx={{ 
-            px: 3, 
-            py: 2.5, 
-            borderBottom: 1, 
-            borderColor: 'divider',
-            backgroundColor: theme => alpha(theme.palette.primary.main, 0.05),
+      <Box 
+        sx={{ 
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
+          bgcolor: alpha(theme.palette.info.main, 0.1),
+          borderRadius: isMobile ? '16px 16px 0 0' : '4px 4px 0 0'
+        }}
+      >
+        <DialogTitle
+          sx={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            position: 'relative',
-            zIndex: 1
+            py: 2,
+            color: theme.palette.info.main
           }}
         >
-          <Typography variant="h6" fontWeight="medium">
-            {initialData ? 'Editar Gasto' : 'Nuevo Gasto'}
-          </Typography>
-          <IconButton edge="end" onClick={onClose} aria-label="close">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6">
+              {initialData ? 'Editar Gasto' : 'Nuevo Gasto'}
+            </Typography>
+          </Box>
+          <IconButton
+            edge="end"
+            onClick={onClose}
+            sx={{
+              color: theme.palette.info.main
+            }}
+          >
             <CloseIcon />
           </IconButton>
-        </Box>
+        </DialogTitle>
+      </Box>
 
-        {/* Contenido del formulario */}
-        <Box sx={{ 
-          p: 3, 
-          flexGrow: 1, 
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
-          {error && (
-            <Alert
-              severity="error"
-              sx={{
-                mb: 3,
-                borderRadius: 1,
-                fontSize: '0.9rem'
-              }}
-            >
-              {error}
-            </Alert>
-          )}
-
-          {/* Nombre y Monto */}
-          <Box sx={{ mb: 3 }}>
-            <Typography 
-              variant="subtitle2" 
-              component="label" 
-              htmlFor="name" 
-              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-            >
-              Nombre
-            </Typography>
+      <DialogContent sx={{ p: isMobile ? 2 : 3, pt: isMobile ? 3 : 3 }}>
+        <Box component="form" onSubmit={handleSubmit}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Monto */}
             <TextField
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
               fullWidth
-              required
-              error={!!formErrors.name}
-              helperText={formErrors.name}
-              placeholder="Nombre del gasto"
-              variant="outlined"
-              InputProps={{
-                sx: { py: 1.5, backgroundColor: 'background.paper' }
-              }}
-            />
-          </Box>
-
-          <Box sx={{ mb: 3 }}>
-            <Typography 
-              variant="subtitle2" 
-              component="label" 
-              htmlFor="amount" 
-              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-            >
-              Importe
-            </Typography>
-            <TextField
-              id="amount"
               name="amount"
               value={formData.amount}
-              onChange={(e) => {
-                // Permitir números, un punto o coma decimal
-                const value = e.target.value;
-                const regex = /^\d*[.,]?\d{0,2}$/;
-                
-                if (value === '' || regex.test(value)) {
-                  setFormData(prev => ({
-                    ...prev,
-                    amount: value
-                  }));
-                  setFormErrors(prev => ({
-                    ...prev,
-                    amount: ''
-                  }));
-                }
-              }}
-              type="text"
-              fullWidth
-              required
+              onChange={handleChange}
+              placeholder="Importe *"
               error={!!formErrors.amount}
               helperText={formErrors.amount}
-              placeholder="0.00"
-              variant="outlined"
+              disabled={loading}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <EuroIcon fontSize="small" color="action" />
+                    <EuroIcon color="info" />
                   </InputAdornment>
                 ),
-                sx: { py: 1.5, backgroundColor: 'background.paper' }
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'background.paper',
+                  borderRadius: 2
+                }
               }}
             />
-          </Box>
 
-          {/* Categoría */}
-          <Box sx={{ mb: 3 }}>
-            <Typography 
-              variant="subtitle2" 
-              component="label" 
-              htmlFor="category" 
-              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-            >
-              Categoría
-            </Typography>
-            <FormControl
-              fullWidth
+            {/* Categoría */}
+            <FormControl 
+              fullWidth 
               error={!!formErrors.category}
-              variant="outlined"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'background.paper',
+                  borderRadius: 2
+                }
+              }}
             >
               <Select
-                id="category"
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
                 displayEmpty
-                sx={{
-                  backgroundColor: 'background.paper',
-                  '& .MuiSelect-select': { py: 1.5 }
-                }}
-                MenuProps={{
-                  PaperProps: {
-                    sx: { maxHeight: 300, borderRadius: 1 }
-                  },
-                  anchorOrigin: {
-                    vertical: 'bottom',
-                    horizontal: 'left',
-                  },
-                  transformOrigin: {
-                    vertical: 'top',
-                    horizontal: 'left',
-                  },
-                  sx: { zIndex: 9999 }
-                }}
-                renderValue={(selected) => {
-                  if (!selected) {
-                    return <Typography color="text.secondary">Seleccionar categoría</Typography>;
-                  }
-                  return selected;
-                }}
+                disabled={loading}
+                renderValue={selected => selected || "Categoría *"}
               >
+                <MenuItem value="" disabled>
+                  <em>Categoría *</em>
+                </MenuItem>
                 {EXPENSE_CATEGORIES.map(category => (
-                  <MenuItem
-                    key={category}
-                    value={category}
-                  >
+                  <MenuItem key={category} value={category}>
                     {category}
                   </MenuItem>
                 ))}
               </Select>
               {formErrors.category && (
-                <FormHelperText>
-                  {formErrors.category}
-                </FormHelperText>
+                <FormHelperText>{formErrors.category}</FormHelperText>
               )}
             </FormControl>
-          </Box>
 
-          {/* Fecha */}
-          <Box sx={{ mb: 3 }}>
-            <Typography 
-              variant="subtitle2" 
-              component="label" 
-              htmlFor="date" 
-              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
-            >
-              Fecha
-            </Typography>
+            {/* Nombre */}
+            <TextField
+              fullWidth
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="Nombre del gasto *"
+              error={!!formErrors.name}
+              helperText={formErrors.name}
+              disabled={loading}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'background.paper',
+                  borderRadius: 2
+                }
+              }}
+            />
+
+            {/* Fecha */}
             <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
               <DatePicker
                 value={formData.date}
-                onChange={(newValue) => {
+                onChange={(newDate) => {
                   setFormData(prev => ({
                     ...prev,
-                    date: newValue
-                  }));
-                  setFormErrors(prev => ({
-                    ...prev,
-                    date: ''
+                    date: newDate
                   }));
                 }}
+                disabled={loading}
                 slotProps={{
                   textField: {
                     fullWidth: true,
-                    variant: 'outlined',
                     error: !!formErrors.date,
-                    helperText: formErrors.date || 'Se guardará como gasto del mes ' + 
-                      format(formData.date, 'MMMM yyyy', { locale: es }),
-                    InputProps: {
-                      sx: { py: 1.5, backgroundColor: 'background.paper' }
+                    helperText: formErrors.date,
+                    sx: {
+                      '& .MuiOutlinedInput-root': {
+                        bgcolor: 'background.paper',
+                        borderRadius: 2
+                      }
                     }
-                  },
-                  popper: {
-                    sx: { zIndex: 9999 }
                   }
                 }}
               />
             </LocalizationProvider>
-          </Box>
 
-          {/* Descripción */}
-          <Box sx={{ mb: 3 }}>
-            <Typography 
-              variant="subtitle2" 
-              component="label" 
-              htmlFor="description" 
-              sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
+            {/* Gasto Recurrente */}
+            <Box 
+              sx={{ 
+                p: 2, 
+                bgcolor: alpha(theme.palette.info.main, 0.05),
+                borderRadius: 2
+              }}
             >
-              Descripción (opcional)
-            </Typography>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.isRecurring}
+                    onChange={(e) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        isRecurring: e.target.checked
+                      }));
+                      setShowRecurringInfo(e.target.checked);
+                    }}
+                    disabled={loading}
+                    color="info"
+                  />
+                }
+                label="¿Es un gasto recurrente?"
+              />
+            </Box>
+
+            {/* Descripción */}
             <TextField
-              id="description"
+              fullWidth
               name="description"
               value={formData.description}
               onChange={handleChange}
-              fullWidth
+              placeholder="Descripción (opcional)"
               multiline
               rows={3}
-              placeholder="Detalles adicionales del gasto"
-              variant="outlined"
-              InputProps={{
-                sx: { backgroundColor: 'background.paper' }
-              }}
-            />
-          </Box>
-
-          {/* Recurrente */}
-          <Box sx={{ mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={formData.isRecurring}
-                  onChange={(e) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      isRecurring: e.target.checked
-                    }));
-                    setShowRecurringInfo(e.target.checked);
-                  }}
-                  color="primary"
-                />
-              }
-              label={
-                <Typography>
-                  Es un {formData.type === 'income' ? 'ingreso' : 'gasto'} recurrente
-                </Typography>
-              }
-            />
-          </Box>
-
-          {showRecurringInfo && (
-            <Alert
-              severity="info"
+              disabled={loading}
               sx={{
-                borderRadius: 1
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'background.paper',
+                  borderRadius: 2
+                }
               }}
-            >
-              Los {formData.type === 'income' ? 'ingresos' : 'gastos'} recurrentes se repiten automáticamente cada mes el día {getDayFromDate(formData.date)}.
+            />
+          </Box>
+
+          {error && (
+            <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
+              {error}
             </Alert>
           )}
         </Box>
+      </DialogContent>
 
-        {/* Botones de acción */}
-        <Box
+      <DialogActions 
+        sx={{ 
+          p: 2, 
+          bgcolor: 'background.paper',
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 1
+        }}
+      >
+        <Button 
+          onClick={onClose}
+          disabled={loading}
           sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            p: 3,
-            borderTop: 1,
-            borderColor: 'divider',
-            backgroundColor: theme => alpha(theme.palette.background.default, 0.5),
-            position: 'sticky',
-            bottom: 0,
-            zIndex: 10
+            borderRadius: 2,
+            px: 3
           }}
         >
-          <Button
-            onClick={onClose}
-            sx={{ 
-              py: 1.5, 
-              px: 3, 
-              borderRadius: 2,
-              textTransform: 'none',
-              fontSize: '0.95rem'
-            }}
-            disabled={loading}
-          >
-            Cancelar
-          </Button>
-          
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            disabled={loading}
-            sx={{ 
-              py: 1.5, 
-              px: 4, 
-              borderRadius: 2,
-              textTransform: 'none',
-              fontSize: '0.95rem',
-              fontWeight: 'medium'
-            }}
-          >
-            {loading ? (
-              <CircularProgress size={20} color="inherit" />
-            ) : initialData ? (
-              'Actualizar'
-            ) : (
-              'Guardar'
-            )}
-          </Button>
-        </Box>
-      </Box>
+          Cancelar
+        </Button>
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          color="info"
+          disabled={loading}
+          startIcon={loading ? <CircularProgress size={20} /> : null}
+          sx={{
+            borderRadius: 2,
+            px: 3
+          }}
+        >
+          {loading ? 'Guardando...' : 'Guardar'}
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 };

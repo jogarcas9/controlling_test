@@ -750,7 +750,7 @@ const SharedSessions = () => {
               }}>
                 <IconButton
                   onClick={() => { console.log('Click en retroceder sesión'); setCurrentSession(null); }}
-                  sx={{ mr: 1.5, zIndex: 2000 }}
+                  sx={{ mr: 1.5 }}
                   size={isMobile ? "small" : "medium"}
                 >
                   <ArrowBackIcon fontSize={isMobile ? "small" : "medium"} />
@@ -796,7 +796,6 @@ const SharedSessions = () => {
                         height: 38, 
                         p: 0,
                         borderRadius: 1.5,
-                        zIndex: 2000,
                         '&:hover': {
                           backgroundColor: 'action.hover'
                         }
@@ -877,7 +876,8 @@ const SharedSessions = () => {
                   sx={{ 
                     borderRadius: 2,
                     fontSize: isMobile ? '0.75rem' : '0.875rem',
-                    height: isMobile ? 'auto' : 40
+                    height: isMobile ? 'auto' : 40,
+                    zIndex: 1
                   }}
                   disabled={loading}
                   size={isMobile ? "small" : "medium"}

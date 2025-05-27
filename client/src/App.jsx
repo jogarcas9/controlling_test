@@ -119,38 +119,14 @@ const AppLayout = ({
           bottom: 0,
           left: 0,
           zIndex: 1200,
+          display: { xs: 'none', sm: 'block' } // Ocultar en móvil
         }}
       >
-        {/* Menú lateral para dispositivos móviles */}
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { 
-              boxSizing: 'border-box', 
-              width: drawerWidth,
-              boxShadow: theme.shadows[8],
-            },
-          }}
-        >
-          <Sidebar 
-            mobileOpen={mobileOpen} 
-            handleDrawerToggle={handleDrawerToggle} 
-            isMinimized={false}
-            onMinimizeToggle={handleDrawerMinimize}
-            handleLogout={handleLogout}
-            isMobile={true}
-          />
-        </Drawer>
-
         {/* Menú lateral para tablets y escritorio combinado */}
         <Drawer
-          variant={(isMobile || isTablet) ? "temporary" : "permanent"}
-          open={(isMobile || isTablet) ? mobileOpen : true}
-          onClose={(isMobile || isTablet) ? handleDrawerToggle : undefined}
+          variant={(isTablet) ? "temporary" : "permanent"}
+          open={(isTablet) ? mobileOpen : true}
+          onClose={(isTablet) ? handleDrawerToggle : undefined}
           sx={{
             display: { xs: 'none', sm: 'block' },
             '& .MuiDrawer-paper': { 

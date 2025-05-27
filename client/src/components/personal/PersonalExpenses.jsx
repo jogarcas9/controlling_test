@@ -31,7 +31,9 @@ import {
   Switch,
   Tooltip,
   Fab,
-  Divider
+  Divider,
+  Checkbox,
+  Slide
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -110,6 +112,10 @@ const INITIAL_EXPENSE_DATA = {
   isRecurring: false,
   recurringDay: ''
 };
+
+const SlideTransition = React.forwardRef(function Transition(props, ref) {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
 
 const PersonalExpenses = () => {
   const { t } = useTranslation();
@@ -1094,8 +1100,341 @@ const PersonalExpenses = () => {
     );
   };
 
+  const renderExpenseDialog = () => {
+    const isIncome = expenseData.type === 'income';
+    const headerColor = isIncome ? alpha(theme.palette.success.main, 0.1) : alpha(theme.palette.error.main, 0.1);
+    const headerTextColor = theme.palette.getContrastText(headerColor);
+
+    return (
+      <Dialog
+        open={openExpenseDialog}
+        onClose={closeDialog}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+        TransitionComponent={SlideTransition}
+        PaperProps={{
+          elevation: isMobile ? 0 : 3,
+          sx: {
+            borderRadius: isMobile ? '16px 16px 0 0' : 2,
+            height: isMobile ? '90vh' : 'auto',
+            m: isMobile ? '10vh 0 0 0' : 2,
+            position: isMobile ? 'fixed' : 'static',
+            bottom: 0,
+            maxHeight: isMobile ? '90vh' : '95vh',
+            overflow: 'auto',
+            bgcolor: theme.palette.background.paper
+          }
+        }}
+      >
+        <Box 
+          sx={{ 
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
+            bgcolor: expenseData.type === 'income' 
+              ? alpha(theme.palette.success.main, 0.1)
+              : alpha(theme.palette.error.main, 0.1),
+            borderRadius: isMobile ? '16px 16px 0 0' : '4px 4px 0 0'
+          }}
+        >
+          <DialogTitle
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              py: 2,
+              color: expenseData.type === 'income' 
+                ? theme.palette.success.main
+                : theme.palette.error.main
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {expenseData.type === 'income' 
+                ? <ArrowUpwardIcon color="success" /> 
+                : <ArrowDownwardIcon color="error" />}
+              <Typography variant="h6">
+                {expenseData.type === 'income' ? 'Nuevo Ingreso' : 'Nuevo Gasto'}
+              </Typography>
+            </Box>
+            <IconButton
+              edge="end"
+              onClick={closeDialog}
+              sx={{
+                color: expenseData.type === 'income' 
+                  ? theme.palette.success.main
+                  : theme.palette.error.main
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+        </Box>
+
+        <DialogContent sx={{ p: isMobile ? 2 : 3, pt: isMobile ? 3 : 3 }}>
+          <Box component="form" onSubmit={_handleSubmit} ref={_formRef}>
+            <Grid container spacing={isMobile ? 2 : 3}>
+              {/* Importe */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="amount"
+                  type="number"
+                  value={expenseData.amount}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  required
+                  placeholder="Importe *"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EuroSymbolIcon color={expenseData.type === 'income' ? "success" : "error"} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  inputProps={{
+                    step: "0.01",
+                    min: 0
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: 'background.paper',
+                      borderRadius: 2
+                    }
+                  }}
+                />
+              </Grid>
+              
+              {/* Categoría */}
+              <Grid item xs={12}>
+                <FormControl fullWidth variant="outlined">
+                  <Select
+                    value={expenseData.category}
+                    name="category"
+                    onChange={_handleExpenseChange}
+                    disabled={submitting}
+                    required
+                    displayEmpty
+                    renderValue={selected => selected || "Categoría *"}
+                    sx={{
+                      bgcolor: 'background.paper',
+                      borderRadius: 2,
+                      '& .MuiSelect-select': {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1
+                      }
+                    }}
+                  >
+                    <MenuItem value="" disabled>
+                      <em>Categoría *</em>
+                    </MenuItem>
+                    {expenseData.type === 'income' ? (
+                      INCOME_CATEGORIES.map(cat => (
+                        <MenuItem key={cat} value={cat}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {CATEGORY_ICONS[cat] || <FiberManualRecordIcon />}
+                            {cat}
+                          </Box>
+                        </MenuItem>
+                      ))
+                    ) : (
+                      EXPENSE_CATEGORIES.map(cat => (
+                        <MenuItem key={cat} value={cat}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {CATEGORY_ICONS[cat] || <FiberManualRecordIcon />}
+                            {cat}
+                          </Box>
+                        </MenuItem>
+                      ))
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              {/* Nombre */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="name"
+                  value={expenseData.name}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  required
+                  placeholder={`Nombre del ${expenseData.type === 'income' ? 'ingreso' : 'gasto'} *`}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: 'background.paper',
+                      borderRadius: 2
+                    }
+                  }}
+                />
+              </Grid>
+              
+              {/* Fecha */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="date"
+                  type="date"
+                  value={expenseData.date}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <CalendarTodayIcon color="action" />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: 'background.paper',
+                      borderRadius: 2
+                    }
+                  }}
+                />
+              </Grid>
+
+              {/* Recurrente */}
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0} 
+                  sx={{ 
+                    p: 2, 
+                    bgcolor: alpha(expenseData.type === 'income' ? theme.palette.success.main : theme.palette.error.main, 0.05),
+                    borderRadius: 2
+                  }}
+                >
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={expenseData.isRecurring}
+                        onChange={(e) => {
+                          _handleExpenseChange({
+                            target: {
+                              name: 'isRecurring',
+                              value: e.target.checked
+                            }
+                          });
+                        }}
+                        color={expenseData.type === 'income' ? "success" : "error"}
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        {`¿Es un ${expenseData.type === 'income' ? 'ingreso' : 'gasto'} recurrente?`}
+                      </Typography>
+                    }
+                  />
+                </Paper>
+              </Grid>
+
+              {/* Campo de día recurrente */}
+              {expenseData.isRecurring && (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    name="recurringDay"
+                    type="number"
+                    value={expenseData.recurringDay}
+                    onChange={_handleExpenseChange}
+                    disabled={submitting}
+                    placeholder="Día del mes para recurrencia"
+                    InputProps={{
+                      endAdornment: <InputAdornment position="end">del mes</InputAdornment>,
+                    }}
+                    inputProps={{
+                      min: 1,
+                      max: 31,
+                    }}
+                    helperText={`Día del mes en que se repetirá este ${expenseData.type === 'income' ? 'ingreso' : 'gasto'}`}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        bgcolor: 'background.paper',
+                        borderRadius: 2
+                      }
+                    }}
+                  />
+                </Grid>
+              )}
+              
+              {/* Descripción */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  name="description"
+                  value={expenseData.description}
+                  onChange={_handleExpenseChange}
+                  disabled={submitting}
+                  multiline
+                  rows={3}
+                  placeholder="Descripción (opcional)"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: 'background.paper',
+                      borderRadius: 2
+                    }
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </Box>
+          
+          {error && (
+            <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
+              {error}
+            </Alert>
+          )}
+        </DialogContent>
+
+        <DialogActions 
+          sx={{ 
+            p: 2, 
+            bgcolor: 'background.paper',
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 1
+          }}
+        >
+          <Button 
+            onClick={closeDialog} 
+            disabled={submitting}
+            sx={{
+              borderRadius: 2,
+              px: 3
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            onClick={_handleSubmit} 
+            variant="contained" 
+            disabled={submitting}
+            startIcon={submitting ? <CircularProgress size={20} /> : null}
+            color={expenseData.type === 'income' ? 'success' : 'error'}
+            sx={{
+              borderRadius: 2,
+              px: 3
+            }}
+          >
+            {submitting ? 'Guardando...' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 0.5, sm: 1 }, px: { xs: 0, sm: 0.5 } }}>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ width: '100%', p: { xs: 0.5, sm: 1 } }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
           <Typography 
@@ -1263,237 +1602,7 @@ const PersonalExpenses = () => {
       
         {renderExpensesList()}
 
-        {/* Diálogo para crear/editar gastos */}
-        <Dialog
-          open={openExpenseDialog}
-          onClose={() => !submitting && closeDialog()}
-          maxWidth="sm"
-          fullWidth
-          PaperProps={{
-            sx: {
-              borderRadius: 2,
-              boxShadow: '0px 8px 24px rgba(0,0,0,0.15)',
-              overflow: 'visible'
-            }
-          }}
-        >
-          <DialogTitle
-            sx={{
-              py: 2,
-              px: 3, 
-              bgcolor: expenseData.type === 'income' ? 'success.light' : 'primary.main',
-              color: 'white',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
-          >
-            <Typography variant="h6" component="div">{selectedExpense ? 'Editar' : 'Añadir'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}</Typography>
-            <IconButton
-              aria-label="close"
-              onClick={() => !submitting && closeDialog()}
-              sx={{
-                color: 'white',
-                width: 32,
-                height: 32
-              }}
-              disabled={submitting}
-            >
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent sx={{ p: 3, pt: 4 }}>
-            <Box component="form" onSubmit={_handleSubmit} ref={_formRef} sx={{ pt: 2 }}>
-              <Grid container spacing={3}>
-                {/* Importe */}
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    variant="outlined"
-                    name="amount"
-                    type="number"
-                    value={expenseData.amount}
-                    onChange={_handleExpenseChange}
-                    disabled={submitting}
-                    required
-                    placeholder="Importe *"
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">€</InputAdornment>
-                    }}
-                    inputProps={{
-                      step: "0.01",
-                      min: 0
-                    }}
-                    sx={{ marginBottom: { xs: 2, sm: 0 } }}
-                  />
-                </Grid>
-                
-                {/* Categoría */}
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth variant="outlined" sx={{ marginBottom: { xs: 2, sm: 0 } }}>
-                    <InputLabel 
-                      id="category-label" 
-                      required
-                      shrink={true}
-                      style={{ display: 'none' }} // Ocultar label visualmente
-                    >
-                      Categoría *
-                    </InputLabel>
-                    <Select
-                      labelId="category-label"
-                      value={expenseData.category}
-                      name="category"
-                      onChange={_handleExpenseChange}
-                      disabled={submitting}
-                      required
-                      displayEmpty
-                      renderValue={selected => selected || "Categoría *"}
-                    >
-                      <MenuItem value="" disabled>
-                        <em>Categoría *</em>
-                      </MenuItem>
-                      {expenseData.type === 'income' ? (
-                        INCOME_CATEGORIES.map(cat => (
-                          <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                        ))
-                      ) : (
-                        EXPENSE_CATEGORIES.map(cat => (
-                          <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                        ))
-                      )}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                {/* Nombre */}
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    variant="outlined"
-                    name="name"
-                    value={expenseData.name}
-                    onChange={_handleExpenseChange}
-                    disabled={submitting}
-                    placeholder="Nombre"
-                    sx={{ marginBottom: { xs: 2, sm: 0 } }}
-                  />
-                </Grid>
-                
-                {/* Fecha */}
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    variant="outlined"
-                    name="date"
-                    type="date"
-                    value={expenseData.date}
-                    onChange={_handleExpenseChange}
-                    disabled={submitting}
-                    required
-                    placeholder="Fecha *"
-                    inputProps={{
-                      style: { height: isMobile ? '24px' : 'auto' }
-                    }}
-                    sx={{ marginBottom: { xs: 2, sm: 0 } }}
-                  />
-                </Grid>
-                
-                {/* Switch para gasto recurrente */}
-                <Grid item xs={12} sm={6}>
-                  <Paper 
-                    variant="outlined" 
-                    sx={{ 
-                      p: 1.5, 
-                      display: 'flex', 
-                      alignItems: 'center',
-                      height: '56px',
-                      mb: { xs: 2, sm: 0 }
-                    }}
-                  >
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={expenseData.isRecurring}
-                          onChange={_handleRecurringChange}
-                          name="isRecurring"
-                          color="primary"
-                          disabled={submitting}
-                        />
-                      }
-                      label={expenseData.type === 'income' ? "Es un ingreso recurrente" : "Es un gasto recurrente"}
-                      sx={{ m: 0 }}
-                    />
-                  </Paper>
-                  
-                  {expenseData.isRecurring && (
-                    <TextField
-                      fullWidth
-                      variant="outlined"
-                      margin="normal"
-                      name="recurringDay"
-                      type="number"
-                      value={expenseData.recurringDay}
-                      onChange={_handleExpenseChange}
-                      disabled={submitting}
-                      placeholder="Día del mes para recurrencia"
-                      InputProps={{
-                        endAdornment: <InputAdornment position="end">del mes</InputAdornment>,
-                      }}
-                      inputProps={{
-                        min: 1,
-                        max: 31,
-                      }}
-                      helperText={`Día del mes en que se repetirá este ${expenseData.type === 'income' ? 'ingreso' : 'gasto'}`}
-                      sx={{ mt: 2 }}
-                    />
-                  )}
-                </Grid>
-                
-                {/* Descripción */}
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    variant="outlined"
-                    name="description"
-                    value={expenseData.description}
-                    onChange={_handleExpenseChange}
-                    disabled={submitting}
-                    multiline
-                    rows={3}
-                    placeholder="Descripción"
-                  />
-                </Grid>
-              </Grid>
-            </Box>
-            
-            {error && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {error}
-              </Alert>
-            )}
-          </DialogContent>
-          <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-            <Button 
-              onClick={closeDialog} 
-              disabled={submitting}
-              color="inherit"
-              variant="outlined"
-            >
-              Cancelar
-            </Button>
-            <Button 
-              onClick={_handleSubmit} 
-              variant="contained" 
-              disabled={submitting}
-              startIcon={submitting ? <CircularProgress size={20} /> : null}
-              color={expenseData.type === 'income' ? 'success' : 'primary'}
-              sx={{ ml: 1 }}
-            >
-              {submitting ? 'Guardando...' : 'Guardar'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
+        {renderExpenseDialog()}
         {renderExpenseDetails()}
       </Box>
     </Container>
