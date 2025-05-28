@@ -35,22 +35,6 @@ const ExpenseSummaryByCategory = () => {
   const [expensesByCategory, setExpensesByCategory] = useState([]);
   const [error, setError] = useState(null);
 
-  // Función para formatear cantidades monetarias
-  const formatCurrency = (amount) => {
-    try {
-      if (amount === null || amount === undefined) return '0,00 €';
-      return new Intl.NumberFormat('es-ES', {
-        style: 'currency',
-        currency: 'EUR',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(amount);
-    } catch (error) {
-      console.error('Error al formatear cantidad:', error);
-      return '0,00 €';
-    }
-  };
-
   // Función para obtener el color de una categoría
   const getCategoryColor = (category) => {
     return CATEGORY_COLORS[category] || theme.palette.grey[500];
@@ -270,7 +254,7 @@ const ExpenseSummaryByCategory = () => {
                             </Box>
                           </TableCell>
                           <TableCell align="right">
-                            {formatCurrency(item.total)}
+                            {formatAmount(item.total)}
                           </TableCell>
                           <TableCell align="right">
                             {totalExpenses ? Math.round((item.total / totalExpenses) * 100) : 0}%
@@ -285,7 +269,7 @@ const ExpenseSummaryByCategory = () => {
             
             <Box mt={2} sx={{ textAlign: 'right' }}>
               <Typography variant="subtitle1" fontWeight="medium">
-                {t('Total de gastos')}: {formatCurrency(totalExpenses)}
+                {t('Total de gastos')}: {formatAmount(totalExpenses)}
               </Typography>
             </Box>
           </Box>

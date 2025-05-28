@@ -16,7 +16,8 @@ import {
   Chip,
   IconButton,
   Tooltip,
-  Collapse
+  Collapse,
+  CircularProgress
 } from '@mui/material';
 import {
   KeyboardArrowDown as ExpandMoreIcon,
@@ -336,8 +337,27 @@ const DistributionTable = ({
           color="primary"
           onClick={handleApplyDistribution}
           disabled={loading}
+          sx={{ 
+            minWidth: 140,
+            position: 'relative'
+          }}
         >
-          Aplicar Distribución
+          {loading ? (
+            <>
+              <CircularProgress
+                size={20}
+                sx={{
+                  color: 'grey.500',
+                  position: 'absolute',
+                  left: '50%',
+                  marginLeft: '-10px'
+                }}
+              />
+              <span style={{ visibility: 'hidden' }}>Aplicar Distribución</span>
+            </>
+          ) : (
+            'Aplicar Distribución'
+          )}
         </Button>
       </Box>
     </Box>

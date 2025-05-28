@@ -237,7 +237,9 @@ const ExpenseForm = ({
       fullScreen={isMobile}
       TransitionComponent={Slide}
       sx={{
-        zIndex: theme.zIndex.modal
+        '& .MuiDialog-paper': {
+          zIndex: theme.zIndex.modal
+        }
       }}
       PaperProps={{
         elevation: isMobile ? 0 : 3,

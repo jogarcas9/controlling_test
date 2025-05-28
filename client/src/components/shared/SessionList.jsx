@@ -13,7 +13,8 @@ import {
   AvatarGroup,
   Chip,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  alpha
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -57,26 +58,32 @@ const SessionList = ({
           />
         </Tooltip>
       );
-    } else {
-      return (
-        <Tooltip title="Todos los participantes han aceptado y la sesión está desbloqueada">
-          <Chip
-            icon={<UnlockedIcon fontSize={isMobile ? "small" : "small"} />}
-            label={isMobile ? "Activa" : "Desbloqueada"}
-            color="success"
-            size="small"
-            sx={{ 
-              ml: isMobile ? 0.5 : 1,
-              height: isMobile ? 20 : 24,
-              fontSize: isMobile ? '0.65rem' : '0.75rem',
-              '& .MuiChip-icon': { 
-                fontSize: isMobile ? '0.75rem' : '0.875rem'
-              }
-            }}
-          />
-        </Tooltip>
-      );
     }
+    
+    return (
+      <Tooltip title="Todos los participantes han aceptado y la sesión está desbloqueada">
+        <Chip
+          icon={<UnlockedIcon fontSize={isMobile ? "small" : "small"} />}
+          label={isMobile ? "Activa" : "Desbloqueada"}
+          color="success"
+          size="small"
+          sx={{ 
+            ml: isMobile ? 0.5 : 1,
+            height: isMobile ? 20 : 24,
+            fontSize: isMobile ? '0.65rem' : '0.75rem',
+            '& .MuiChip-icon': { 
+              fontSize: isMobile ? '0.75rem' : '0.875rem'
+            }
+          }}
+        />
+      </Tooltip>
+    );
+  };
+
+  // Manejador para evitar la propagación del click en los botones
+  const handleActionClick = (e, callback) => {
+    e.stopPropagation();
+    callback();
   };
 
   return (
@@ -154,16 +161,49 @@ const SessionList = ({
           sessions.map((session) => (
             <Grid item xs={12} sm={6} md={4} key={session._id}>
               <Card 
+                onClick={() => !session.isLocked && onSelectSession(session)}
                 sx={{ 
                   display: 'flex', 
                   flexDirection: 'column', 
                   height: '100%',
-                  borderRadius: 2,
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  '&:hover': {
-                    boxShadow: 6,
-                    transform: 'translateY(-4px)'
-                  }
+                  borderRadius: isMobile ? 3 : 2,
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  cursor: session.isLocked ? 'not-allowed' : 'pointer',
+                  opacity: session.isLocked ? 0.8 : 1,
+                  transform: 'translateY(0)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                  ...(isMobile && {
+                    '&:active': {
+                      transform: 'scale(0.98)',
+                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                    },
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: 'radial-gradient(circle, transparent 1%, rgba(0,0,0,.025) 1%)',
+                      backgroundPosition: 'center',
+                      backgroundSize: '15000%',
+                      opacity: 0,
+                      transition: 'background-size 0.3s, opacity 0.3s',
+                    },
+                    '&:active::after': {
+                      backgroundSize: '100%',
+                      opacity: 1,
+                      transition: 'all 0s',
+                    }
+                  }),
+                  ...(!isMobile && {
+                    '&:hover': {
+                      boxShadow: `0 8px 24px ${alpha(theme.palette.primary.main, 0.15)}`,
+                      transform: session.isLocked ? 'none' : 'translateY(-4px)'
+                    }
+                  })
                 }}
               >
                 <CardContent sx={{ 
@@ -304,41 +344,26 @@ const SessionList = ({
                 </CardContent>
                 
                 <CardActions sx={{ 
-                  justifyContent: 'space-between', 
+                  justifyContent: 'flex-start', 
                   p: isMobile ? 1.5 : 2, 
                   pt: 0
                 }}>
-                  <Box>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => onEditSession(session)}
-                      color="primary"
-                      sx={{ padding: isMobile ? 0.5 : 1 }}
-                    >
-                      <EditIcon fontSize={isMobile ? "small" : "medium"} />
-                    </IconButton>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => onDeleteSession(session._id)}
-                      color="error"
-                      sx={{ padding: isMobile ? 0.5 : 1 }}
-                    >
-                      <DeleteIcon fontSize={isMobile ? "small" : "medium"} />
-                    </IconButton>
-                  </Box>
-                  <Button
-                    variant="contained"
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => handleActionClick(e, () => onEditSession(session))}
                     color="primary"
-                    size="small"
-                    onClick={() => onSelectSession(session)}
-                    disabled={session.isLocked}
-                    sx={{ 
-                      fontSize: isMobile ? '0.7rem' : '0.8125rem',
-                      py: isMobile ? 0.5 : 0.75
-                    }}
+                    sx={{ padding: isMobile ? 0.5 : 1 }}
                   >
-                    {session.isLocked ? 'En espera' : (isMobile ? 'Ver' : 'Ver detalles')}
-                  </Button>
+                    <EditIcon fontSize={isMobile ? "small" : "medium"} />
+                  </IconButton>
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => handleActionClick(e, () => onDeleteSession(session._id))}
+                    color="error"
+                    sx={{ padding: isMobile ? 0.5 : 1 }}
+                  >
+                    <DeleteIcon fontSize={isMobile ? "small" : "medium"} />
+                  </IconButton>
                 </CardActions>
               </Card>
             </Grid>

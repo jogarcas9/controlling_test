@@ -71,13 +71,18 @@ const MonthSelector = ({
         border: '1px solid #e0e0e0',
         padding: '2px 4px',
         width: 'auto',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        position: 'relative',
+        zIndex: 1
       }}
     >
       <IconButton
         size="small"
         onClick={handlePreviousMonth}
-        sx={{ color: '#666' }}
+        sx={{ 
+          color: '#666',
+          zIndex: 1
+        }}
       >
         <ChevronLeftIcon fontSize="small" />
       </IconButton>
@@ -87,7 +92,8 @@ const MonthSelector = ({
         alignItems: 'center',
         padding: '4px 12px',
         minWidth: '140px',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        zIndex: 1
       }}>
         <Typography 
           variant="body1"
@@ -113,7 +119,10 @@ const MonthSelector = ({
       <IconButton
         size="small"
         onClick={handleNextMonth}
-        sx={{ color: '#666' }}
+        sx={{ 
+          color: '#666',
+          zIndex: 1
+        }}
       >
         <ChevronRightIcon fontSize="small" />
       </IconButton>
@@ -126,13 +135,17 @@ const MonthSelector = ({
           ml: 1,
           pl: 1,
           borderLeft: '1px solid #e0e0e0',
-          height: '30px'
+          height: '30px',
+          zIndex: 1
         }}
       >
         <IconButton
           size="small"
           onClick={onCurrentMonth}
-          sx={{ color: '#666' }}
+          sx={{ 
+            color: '#666',
+            zIndex: 1
+          }}
         >
           <TodayIcon fontSize="small" />
         </IconButton>

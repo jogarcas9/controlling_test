@@ -926,6 +926,12 @@ const PersonalExpenses = () => {
         onClose={() => setOpenViewDialog(false)}
         maxWidth="sm"
         fullWidth
+        sx={{
+          '& .MuiDialog-paper': {
+            zIndex: theme.zIndex.modal + 1
+          },
+          zIndex: theme.zIndex.modal + 1
+        }}
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">
@@ -1484,49 +1490,104 @@ const PersonalExpenses = () => {
             width: '100%'
           }}
         >
-          {/* Navegador de meses a la izquierda en escritorio */}
+          {/* Navegador de meses mejorado para móviles y escritorio */}
           {!openExpenseDialog && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: { xs: 2, md: 0 } }}>
-              <IconButton
+            <Box sx={{ 
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mb: isMobile ? 2 : 0,
+              mt: { xs: 1, sm: 0 },
+              gap: 1,
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              p: 0.5,
+              backgroundColor: 'background.paper'
+            }}>
+              {/* Botón MES ANTERIOR */}
+              <Button
+                variant="text"
+                color="primary"
                 onClick={() => {
                   console.log('Click en flecha izquierda (retroceder mes)');
                   handlePreviousMonth();
                 }}
-                color="primary"
-                size="large"
-                sx={{
-                  transition: 'transform 0.1s',
-                  '&:active': { transform: 'scale(0.92)' },
-                  zIndex: 2000,
-                  pointerEvents: 'auto'
+                sx={{ 
+                  minWidth: 40, 
+                  width: 40, 
+                  height: 38, 
+                  p: 0,
+                  borderRadius: 1.5,
+                  '&:hover': {
+                    backgroundColor: 'action.hover'
+                  }
                 }}
               >
                 <ChevronLeftIcon />
-              </IconButton>
-              <Typography variant="h6" sx={{ minWidth: 100, textAlign: 'center', fontWeight: 'bold' }}>
-                {MONTH_NAMES[selectedMonth]} {selectedYear}
-              </Typography>
-              <IconButton
-                onClick={handleNextMonth}
+              </Button>
+              
+              {/* Selector de MES */}
+              <Button
+                variant="text"
+                color="inherit"
+                onClick={goToCurrentMonth}
+                sx={{ 
+                  flex: 1, 
+                  height: 38, 
+                  maxWidth: 200,
+                  textTransform: 'none',
+                  fontSize: '0.9rem',
+                  fontWeight: 'medium',
+                  px: 2,
+                  borderRadius: 1.5,
+                  mx: 0.5,
+                  '&:hover': {
+                    backgroundColor: 'action.hover'
+                  }
+                }}
+              >
+                {isMobile ? getShortMonthName(selectedMonth) : MONTH_NAMES[selectedMonth]} {selectedYear}
+              </Button>
+              
+              {/* Botón MES SIGUIENTE */}
+              <Button
+                variant="text"
                 color="primary"
-                size="large"
-                sx={{
-                  transition: 'transform 0.1s',
-                  '&:active': { transform: 'scale(0.92)' },
-                  zIndex: 2000,
-                  pointerEvents: 'auto'
+                onClick={handleNextMonth}
+                sx={{ 
+                  minWidth: 40, 
+                  width: 40, 
+                  height: 38, 
+                  p: 0,
+                  borderRadius: 1.5,
+                  '&:hover': {
+                    backgroundColor: 'action.hover'
+                  }
                 }}
               >
                 <ChevronRightIcon />
-              </IconButton>
+              </Button>
+              
+              {/* Botón HOY (tanto desktop como mobile) */}
               <Button
-                variant="outlined"
-                size="small"
-                startIcon={<TodayIcon />}
+                variant="text"
+                color="primary"
                 onClick={goToCurrentMonth}
-                sx={{ ml: 2, borderRadius: 2, fontWeight: 'bold' }}
+                sx={{ 
+                  minWidth: 40, 
+                  width: 40, 
+                  height: 38, 
+                  p: 0, 
+                  ml: 0.5,
+                  borderRadius: 1.5,
+                  display: { xs: 'none', sm: 'flex' },
+                  '&:hover': {
+                    backgroundColor: 'action.hover'
+                  }
+                }}
               >
-                Hoy
+                <TodayIcon />
               </Button>
             </Box>
           )}
@@ -1555,7 +1616,7 @@ const PersonalExpenses = () => {
                   },
                   minWidth: 120,
                   transition: 'transform 0.1s',
-                  zIndex: 10001
+                  zIndex: 1
                 }}
                 TouchRippleProps={{
                   style: { color: '#fff' }
@@ -1585,7 +1646,7 @@ const PersonalExpenses = () => {
                   },
                   minWidth: 120,
                   transition: 'transform 0.1s',
-                  zIndex: 10001
+                  zIndex: 1
                 }}
                 TouchRippleProps={{
                   style: { color: '#fff' }

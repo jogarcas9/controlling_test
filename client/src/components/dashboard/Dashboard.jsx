@@ -37,6 +37,7 @@ import { useTranslation } from 'react-i18next';
 import api, { checkServerHealth } from '../../utils/api';
 import authService from '../../services/authService';
 import ExpenseSummaryByCategory from './ExpenseSummaryByCategory';
+import { formatAmount } from '../../utils/expenseUtils';
 
 const Dashboard = () => {
   const { t } = useTranslation();
@@ -61,20 +62,7 @@ const Dashboard = () => {
   }).format(currentDate).replace(/^\w/, c => c.toUpperCase());
 
   // Función para formatear cantidades monetarias
-  const formatAmount = (amount) => {
-    try {
-      if (amount === null || amount === undefined) return '0,00 €';
-      return new Intl.NumberFormat('es-ES', {
-        style: 'currency',
-        currency: 'EUR',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(amount);
-    } catch (error) {
-      console.error('Error al formatear cantidad:', error);
-      return '0,00 €';
-    }
-  };
+  const formatCurrency = formatAmount;
 
   const navigate = useNavigate();
 
@@ -304,7 +292,7 @@ const Dashboard = () => {
                     <Skeleton width={100} height={36} />
                   ) : (
                     <Typography variant="h5" component="div">
-                      {formatAmount(balance)}
+                      {formatCurrency(balance)}
                     </Typography>
                   )}
                 </Box>
@@ -375,7 +363,7 @@ const Dashboard = () => {
                     <Skeleton width={100} height={36} />
                   ) : (
                     <Typography variant="h5" component="div" sx={{ color: theme.palette.success.main }}>
-                      {formatAmount(monthlyIncome)}
+                      {formatCurrency(monthlyIncome)}
                     </Typography>
                   )}
                 </Box>
@@ -444,7 +432,7 @@ const Dashboard = () => {
                     <Skeleton width={100} height={36} />
                   ) : (
                     <Typography variant="h5" component="div" sx={{ color: theme.palette.error.main }}>
-                      {formatAmount(monthlyExpenses)}
+                      {formatCurrency(monthlyExpenses)}
                     </Typography>
                   )}
                 </Box>

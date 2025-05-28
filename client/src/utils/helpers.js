@@ -3,12 +3,10 @@
 // import format from 'date-fns/format';
 // import es from 'date-fns/locale/es';
 
-export const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR'
-  }).format(amount);
-};
+import { formatAmount } from './expenseUtils';
+
+// Exportar la función formatCurrency como alias de formatAmount para mantener compatibilidad
+export const formatCurrency = formatAmount;
 
 export const formatDate = (date) => {
   if (!date) return 'Fecha no disponible';

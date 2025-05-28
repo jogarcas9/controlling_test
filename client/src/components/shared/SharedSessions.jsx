@@ -91,7 +91,8 @@ const SharedSessions = () => {
     fetchExpenses,
     addExpense,
     updateExpense,
-    calculateTotal
+    calculateTotal,
+    setExpenses
   } = useExpenses(currentSession?._id || null, selectedMonth, selectedYear);
 
   const {
@@ -589,20 +590,42 @@ const SharedSessions = () => {
         year
       );
       
-      if (result && result._id) {
-        // Obtener los datos actualizados de la sesión
-        const updatedSession = await sharedSessionService.getSessionDetails(currentSession._id);
-        setCurrentSession(updatedSession);
+      if (result && result.yearlyExpenses) {
+        // Actualizar la sesión actual
+        setCurrentSession(prev => ({
+          ...prev,
+          yearlyExpenses: result.yearlyExpenses
+        }));
         
-        // Recargar los gastos
-        await fetchExpenses(currentSession._id, selectedMonth, selectedYear);
+        // Buscar los gastos del mes actual en la respuesta
+        const yearData = result.yearlyExpenses.find(y => y.year === year);
+        const monthData = yearData?.months?.find(m => m.month === month);
+        
+        if (monthData?.expenses) {
+          // Formatear los gastos antes de actualizarlos
+          const formattedExpenses = monthData.expenses.map(exp => ({
+            ...exp,
+            amount: typeof exp.amount === 'number' ? exp.amount : Number(exp.amount) || 0,
+            date: exp.date ? new Date(exp.date) : null,
+            name: exp.name || '',
+            category: exp.category || '',
+            isRecurring: !!exp.isRecurring,
+            _id: exp._id || exp.id || Math.random().toString(36).substring(2, 15)
+          }));
+          
+          // Actualizar los gastos
+          setExpenses(formattedExpenses);
+        } else {
+          // Si no hay gastos en la respuesta, recargarlos
+          await fetchExpenses();
+        }
         
         setMessage({
           type: 'success',
           text: 'Distribución actualizada correctamente'
         });
       } else {
-        throw new Error('La respuesta del servidor no incluye los datos de la sesión actualizada');
+        throw new Error('La respuesta del servidor no incluye los datos actualizados');
       }
     } catch (error) {
       console.error('Error al actualizar la distribución:', error);
@@ -952,7 +975,7 @@ const SharedSessions = () => {
                     })}
                   expenses={expenses}
                   onUpdateDistribution={handleUpdateDistribution}
-                  loading={expensesLoading}
+                  loading={loading}
                   error={distributionError}
                   currentMonth={selectedMonth}
                   currentYear={selectedYear}

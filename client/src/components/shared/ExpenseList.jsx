@@ -16,7 +16,11 @@ import {
   TablePagination,
   useTheme,
   useMediaQuery,
-  Grid
+  Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -25,12 +29,13 @@ import {
   AttachMoney as MoneyIcon,
   CalendarToday as CalendarTodayIcon,
   Category as CategoryIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  Info as InfoIcon
 } from '@mui/icons-material';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 
 // Componente de tarjeta de gasto para móviles
-const ExpenseCard = ({ expense, onEdit, onDelete, canEdit }) => {
+const ExpenseCard = ({ expense, onEdit, onDelete, canEdit, onViewDetails }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isIncome = expense.type === 'income';
@@ -55,6 +60,18 @@ const ExpenseCard = ({ expense, onEdit, onDelete, canEdit }) => {
           {expense.name || 'Sin nombre'}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <IconButton
+            size="small"
+            onClick={() => onViewDetails(expense)}
+            sx={{
+              p: 0.5,
+              '&:hover': {
+                backgroundColor: 'action.selected'
+              }
+            }}
+          >
+            <InfoIcon fontSize="small" />
+          </IconButton>
           {canEdit && (
             <>
               <IconButton 
@@ -136,6 +153,8 @@ const ExpenseList = ({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(isMobile ? 5 : 10);
+  const [selectedExpense, setSelectedExpense] = useState(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -144,6 +163,16 @@ const ExpenseList = ({
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
+  };
+
+  const handleViewDetails = (expense) => {
+    setSelectedExpense(expense);
+    setDetailsDialogOpen(true);
+  };
+
+  const handleCloseDetails = () => {
+    setDetailsDialogOpen(false);
+    setSelectedExpense(null);
   };
 
   const canAddExpense = true;
@@ -162,44 +191,29 @@ const ExpenseList = ({
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center',
-        mb: 2 
+        mb: 3
       }}>
-        <Typography variant="h6" component="h2" sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
-          Lista de Gastos
+        <Typography variant="h6" component="h2">
+          Gastos
+          <Typography 
+            component="span" 
+            variant="subtitle1" 
+            color="text.secondary" 
+            sx={{ ml: 2 }}
+          >
+            Total: {formatCurrency(total)}
+          </Typography>
         </Typography>
-        
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          {canAddExpense && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={onAddExpense}
-              size={isMobile ? "small" : "medium"}
-              sx={{ 
-                fontSize: isMobile ? '0.75rem' : '0.875rem',
-                height: 40,
-                minWidth: isMobile ? 80 : 'auto',
-                borderRadius: 1
-              }}
-            >
-              {isMobile ? "Nuevo" : "Nuevo Gasto"}
-            </Button>
-          )}
-        </Box>
-      </Box>
-
-      {/* Mostrar total */}
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'flex-end', 
-        mb: 2,
-        backgroundColor: 'primary.light',
-        p: 1,
-        borderRadius: 1
-      }}>
-        <Typography variant="body1" sx={{ fontWeight: 'bold', color: 'white' }}>
-          Total: {formatCurrency(total)}
-        </Typography>
+        {canAddExpense && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={onAddExpense}
+            size={isMobile ? "small" : "medium"}
+          >
+            Añadir Gasto
+          </Button>
+        )}
       </Box>
 
       {isMobile ? (
@@ -212,6 +226,7 @@ const ExpenseList = ({
                 expense={expense}
                 onEdit={onEditExpense}
                 onDelete={onDeleteExpense}
+                onViewDetails={handleViewDetails}
                 canEdit={canEditExpense(expense)}
               />
             ))}
@@ -261,6 +276,14 @@ const ExpenseList = ({
                       />
                     </TableCell>
                     <TableCell align="right">
+                      <Tooltip title="Ver detalles">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleViewDetails(expense)}
+                        >
+                          <InfoIcon />
+                        </IconButton>
+                      </Tooltip>
                       {canEditExpense(expense) && (
                         <>
                           <Tooltip title="Editar">
@@ -298,6 +321,134 @@ const ExpenseList = ({
           />
         </TableContainer>
       )}
+
+      {/* Diálogo de detalles del gasto */}
+      <Dialog
+        open={detailsDialogOpen}
+        onClose={handleCloseDetails}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            width: '100%',
+            m: isMobile ? 1 : 2
+          }
+        }}
+      >
+        <DialogTitle>
+          <Typography variant="h6">Detalles del Gasto</Typography>
+        </DialogTitle>
+        <DialogContent 
+          dividers
+          sx={{
+            px: isMobile ? 2 : 3,
+            py: 2,
+            overflowX: 'hidden'
+          }}
+        >
+          {selectedExpense && (
+            <Grid 
+              container 
+              spacing={isMobile ? 2 : 3}
+              sx={{ width: '100%', m: 0 }}
+            >
+              <Grid item xs={12}>
+                <Typography 
+                  variant="subtitle1" 
+                  fontWeight="bold"
+                  sx={{
+                    wordBreak: 'break-word'
+                  }}
+                >
+                  {selectedExpense.name || selectedExpense.description || 'Sin nombre'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Categoría</Typography>
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    wordBreak: 'break-word',
+                    mt: 0.5 
+                  }}
+                >
+                  {selectedExpense.category || 'Sin categoría'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Fecha</Typography>
+                <Typography 
+                  variant="body1"
+                  sx={{ mt: 0.5 }}
+                >
+                  {formatDate(selectedExpense.date)}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Monto</Typography>
+                <Typography 
+                  variant="body1" 
+                  color={selectedExpense.type === 'income' ? 'success.main' : 'primary.main'}
+                  sx={{ mt: 0.5 }}
+                >
+                  {formatCurrency(selectedExpense.amount)}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Recurrente</Typography>
+                <Typography 
+                  variant="body1"
+                  sx={{ mt: 0.5 }}
+                >
+                  {selectedExpense.isRecurring ? 'Sí' : 'No'}
+                </Typography>
+              </Grid>
+              {selectedExpense.description && (
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">Descripción</Typography>
+                  <Typography 
+                    variant="body1"
+                    sx={{ 
+                      wordBreak: 'break-word',
+                      mt: 0.5 
+                    }}
+                  >
+                    {selectedExpense.description}
+                  </Typography>
+                </Grid>
+              )}
+              {currentSession && (
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">Sesión Compartida</Typography>
+                  <Typography 
+                    variant="body1"
+                    sx={{ 
+                      wordBreak: 'break-word',
+                      mt: 0.5 
+                    }}
+                  >
+                    {currentSession.name}
+                  </Typography>
+                </Grid>
+              )}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: isMobile ? 2 : 3, py: 1.5 }}>
+          <Button onClick={handleCloseDetails}>Cerrar</Button>
+          {selectedExpense && canEditExpense(selectedExpense) && (
+            <Button 
+              onClick={() => {
+                handleCloseDetails();
+                onEditExpense(selectedExpense);
+              }}
+              color="primary"
+            >
+              Editar
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { formatAmount } from '../utils/expenseUtils';
 
 const API_URL = '/api/shared-sessions';
 
@@ -31,12 +32,17 @@ export const formatCurrency = (value, currency = 'EUR', showSymbol = true) => {
   if (value === undefined || value === null) return '';
   
   try {
-    // Usar Intl.NumberFormat para formatear según la moneda
+    if (currency === 'EUR') {
+      return formatAmount(value);
+    }
+    
+    // Para otras monedas, usar Intl.NumberFormat
     return new Intl.NumberFormat(CURRENCY_LOCALES[currency] || 'es-ES', {
       style: showSymbol ? 'currency' : 'decimal',
       currency: currency,
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
+      useGrouping: true
     }).format(value);
   } catch (error) {
     // Fallback simple en caso de error

@@ -45,7 +45,7 @@ API.interceptors.response.use(
 );
 
 // Tiempo de caché para las sesiones (en ms)
-const CACHE_TIME = 60000; // 1 minuto
+const CACHE_TIME = 1000 * 60 * 60; // 1 hora
 
 // Caché para sesiones compartidas
 let sessionsCache = {
@@ -54,9 +54,10 @@ let sessionsCache = {
 };
 
 // Caché para información de usuarios por email
-let userEmailCache = {
-  // Estructura: { [email]: { data: userObject, timestamp: time } }
-};
+let userEmailCache = {};
+
+// Constantes para el caché
+const pendingRequests = {};
 
 // Función para manejar errores y logging consistente
 const handleApiError = (functionName, error) => {
@@ -455,60 +456,68 @@ export const getUserByEmail = async (email) => {
     const cachedUser = userEmailCache[normalizedEmail];
     
     if (cachedUser && (now - cachedUser.timestamp < CACHE_TIME)) {
-      console.log(`Usando datos en caché para el usuario con email: ${email}`);
+      console.log(`Usando datos en caché para ${normalizedEmail}`);
       return cachedUser.data;
     }
-    
-    console.log(`Obteniendo información para el usuario con email: ${email}`);
-    const result = await api.get(`/api/users/by-email/${encodeURIComponent(email)}`);
-    
-    if (result && result.data && result.data.user) {
-      console.log(`Nombre obtenido para ${email}: ${result.data.user.name}`);
-      
-      // Guardar en caché
-      userEmailCache[normalizedEmail] = {
-        data: result.data,
-        timestamp: now
-      };
-      
-      return result.data;
-    } else {
-      console.warn(`No se encontró información para el usuario con email: ${email}`);
-      
-      // Crear un usuario básico como fallback
-      const fallbackData = { 
-        user: {
-          email: email,
-          name: email.split('@')[0]
-        } 
-      };
-      
-      // Guardar en caché incluso el fallback
-      userEmailCache[normalizedEmail] = {
-        data: fallbackData,
-        timestamp: now
-      };
-      
-      return fallbackData;
+
+    // Si ya hay una petición pendiente para este email, esperar su resultado
+    if (pendingRequests[normalizedEmail]) {
+      console.log(`Esperando petición pendiente para ${normalizedEmail}`);
+      return pendingRequests[normalizedEmail];
     }
+
+    // Crear una nueva promesa para esta petición
+    pendingRequests[normalizedEmail] = (async () => {
+      try {
+        console.log(`Realizando petición para ${normalizedEmail}`);
+        const result = await api.get(`/api/users/by-email/${encodeURIComponent(normalizedEmail)}`);
+        
+        const userData = result?.data?.user ? result.data : {
+          user: {
+            email: normalizedEmail,
+            name: normalizedEmail.split('@')[0]
+          }
+        };
+
+        // Guardar en caché
+        userEmailCache[normalizedEmail] = {
+          data: userData,
+          timestamp: now
+        };
+
+        return userData;
+      } catch (error) {
+        console.warn(`Error al obtener datos para ${normalizedEmail}:`, error);
+        // Crear datos de fallback
+        const fallbackData = {
+          user: {
+            email: normalizedEmail,
+            name: normalizedEmail.split('@')[0]
+          }
+        };
+        
+        // Guardar fallback en caché
+        userEmailCache[normalizedEmail] = {
+          data: fallbackData,
+          timestamp: now
+        };
+        
+        return fallbackData;
+      } finally {
+        // Limpiar la petición pendiente
+        delete pendingRequests[normalizedEmail];
+      }
+    })();
+
+    return pendingRequests[normalizedEmail];
   } catch (error) {
-    // Fallback inmediato: usar el email como nombre, sin reintentos ni throw
-    console.warn(`Fallo getUserByEmail para ${email}, usando fallback local.`, error);
-    
-    const fallbackData = { 
+    console.warn(`Error general en getUserByEmail para ${email}:`, error);
+    return {
       user: {
         email: email,
         name: email.split('@')[0]
-      } 
+      }
     };
-    
-    // Guardar el fallback en caché para evitar más peticiones fallidas
-    userEmailCache[email.toLowerCase().trim()] = {
-      data: fallbackData,
-      timestamp: Date.now()
-    };
-    
-    return fallbackData;
   }
 };
 

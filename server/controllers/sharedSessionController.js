@@ -290,189 +290,92 @@ exports.updateDistribution = async (req, res) => {
         throw new Error('La suma de porcentajes debe ser 100%');
       }
 
-      // Obtener la sesión actual
+      // Obtener la sesión actual con una sola consulta que incluya todos los datos necesarios
       const currentSession = await SharedSession.findOne({
         _id: sessionId,
         $or: [
           { userId: userId },
           { 'participants.userId': userId }
         ]
-      }).session(dbSession);
+      })
+      .populate('userId', 'nombre email')
+      .populate('participants.userId', 'nombre email')
+      .session(dbSession);
 
       if (!currentSession) {
         throw new Error('Sesión no encontrada o acceso denegado');
       }
 
-      // Preparar la actualización de la distribución
-      const yearlyExpenses = currentSession.yearlyExpenses || [];
-      
-      // Encontrar el último año y mes con datos en la colección
-      let lastYear = currentYear;
-      let lastMonth = currentMonth;
-      
-      yearlyExpenses.forEach(yearData => {
-        if (yearData.year >= currentYear) {
-          if (yearData.year > lastYear) {
-            lastYear = yearData.year;
-            lastMonth = Math.max(...yearData.months.map(m => m.month));
-          } else if (yearData.year === lastYear) {
-            const maxMonth = Math.max(...yearData.months.map(m => m.month));
-            if (maxMonth > lastMonth) {
-              lastMonth = maxMonth;
-            }
-          }
-        }
-      });
-
-      // Preparar todas las actualizaciones de distribución
-      const distributionUpdates = [];
-      const allocationUpdates = [];
-      const personalExpenseUpdates = [];
-
-      // Generar actualizaciones para cada año y mes
-      for (let year = currentYear; year <= lastYear; year++) {
-        let yearData = yearlyExpenses.find(y => y.year === year);
-        
-        if (!yearData) {
-          yearData = {
-            year,
-            months: []
-          };
-          yearlyExpenses.push(yearData);
-        }
-
-        const endMonth = year === lastYear ? lastMonth : 11;
-        
-        for (let month = (year === currentYear ? currentMonth : 0); month <= endMonth; month++) {
-          let monthData = yearData.months.find(m => m.month === month);
-          
-          if (!monthData) {
-            monthData = {
-              month,
-              expenses: [],
-              totalAmount: 0,
-              Distribution: []
-            };
-            yearData.months.push(monthData);
-          }
-
-          // Actualizar la distribución para este mes
-          monthData.Distribution = distribution.map(item => ({
-            userId: item.userId,
-            name: item.name,
-            percentage: item.percentage,
-            _id: new mongoose.Types.ObjectId()
-          }));
-
-          const totalAmount = monthData.totalAmount || 0;
-
-          // Preparar actualizaciones de asignaciones y gastos personales
-          for (const item of distribution) {
-            const amount = (totalAmount * item.percentage) / 100;
-
-            // Preparar actualización de asignación
-            allocationUpdates.push({
-              deleteOne: {
-                filter: {
-                  sessionId,
-                  year,
-                  month,
-                  userId: item.userId
-                }
-              }
-            });
-
-            allocationUpdates.push({
-              insertOne: {
-                document: {
-                  sessionId,
-                  userId: item.userId,
-                  name: item.name,
-                  year,
-                  month,
-                  percentage: item.percentage,
-                  amount: amount,
-                  status: 'pending'
-                }
-              }
-            });
-
-            // Preparar actualización de gasto personal
-            personalExpenseUpdates.push({
-              updateOne: {
-                filter: {
-                  user: item.userId.toString(),
-                  'sessionReference.sessionId': sessionId,
-                  year,
-                  month
-                },
-                update: {
-                  $set: {
-                    amount: amount,
-                    percentage: item.percentage,
-                    isRecurring: true,
-                    'sessionReference.percentage': item.percentage,
-                    'sessionReference.totalAmount': totalAmount,
-                    'sessionReference.isRecurringShare': true
-                  }
-                },
-                upsert: true,
-                setDefaultsOnInsert: true
-              }
-            });
-          }
-        }
+      // Preparar la actualización de la distribución de manera más eficiente
+      let yearData = currentSession.yearlyExpenses?.find(y => y.year === currentYear);
+      if (!yearData) {
+        yearData = { year: currentYear, months: [] };
+        currentSession.yearlyExpenses = currentSession.yearlyExpenses || [];
+        currentSession.yearlyExpenses.push(yearData);
       }
 
-      // Ordenar los años y meses
-      yearlyExpenses.sort((a, b) => a.year - b.year);
-      yearlyExpenses.forEach(yearData => {
-        yearData.months.sort((a, b) => a.month - b.month);
-      });
+      let monthData = yearData.months?.find(m => m.month === currentMonth);
+      if (!monthData) {
+        monthData = {
+          month: currentMonth,
+          expenses: [],
+          Distribution: [],
+          totalAmount: 0
+        };
+        yearData.months.push(monthData);
+      }
 
-      // Ejecutar todas las actualizaciones en paralelo
-      const [updatedSessionResult] = await Promise.all([
-        // Actualizar la sesión
-        SharedSession.findOneAndUpdate(
-          { _id: sessionId },
-          { $set: { yearlyExpenses } },
-          { 
-            session: dbSession,
-            new: true,
-            runValidators: false
-          }
-        ).populate('userId', 'nombre email')
-          .populate('participants.userId', 'nombre email'),
+      // Actualizar la distribución del mes actual
+      monthData.Distribution = distribution.map(d => ({
+        ...d,
+        _id: new mongoose.Types.ObjectId()
+      }));
 
-        // Actualizar asignaciones en lote
-        ParticipantAllocation.bulkWrite(allocationUpdates, { session: dbSession }),
-
-        // Actualizar gastos personales en lote
-        PersonalExpense.bulkWrite(personalExpenseUpdates.map(update => ({
-          ...update,
-          updateOne: {
-            ...update.updateOne,
-            update: {
-              $set: {
-                ...update.updateOne.update.$set,
-                name: currentSession.name || 'Gasto Compartido',
-                description: `Gasto compartido - ${getMonthName(update.updateOne.filter.month)} ${update.updateOne.filter.year}`,
-                category: 'Gastos Compartidos',
-                date: new Date(update.updateOne.filter.year, update.updateOne.filter.month),
-                isFromSharedSession: true,
-                'sessionReference.sessionName': currentSession.name,
-                'sessionReference.year': update.updateOne.filter.year,
-                'sessionReference.month': update.updateOne.filter.month
-              }
+      // Actualizar asignaciones en una sola operación
+      const bulkOps = distribution.map(d => ({
+        updateOne: {
+          filter: {
+            sessionId,
+            userId: d.userId,
+            year: currentYear,
+            month: currentMonth
+          },
+          update: {
+            $set: {
+              percentage: d.percentage,
+              amount: (monthData.totalAmount * d.percentage) / 100,
+              name: d.name,
+              totalAmount: monthData.totalAmount,
+              currency: currentSession.currency || 'EUR'
             }
-          }
-        })), { session: dbSession })
+          },
+          upsert: true
+        }
+      }));
+
+      // Ejecutar las operaciones en paralelo
+      const [savedSession, bulkWriteResult] = await Promise.all([
+        currentSession.save(),
+        ParticipantAllocation.bulkWrite(bulkOps, { session: dbSession })
       ]);
 
-      updatedSession = updatedSessionResult;
+      // Obtener las asignaciones actualizadas
+      const updatedAllocations = await ParticipantAllocation.find({
+        sessionId,
+        year: currentYear,
+        month: currentMonth
+      }).session(dbSession);
+
+      // Sincronizar cada asignación con gastos personales
+      const syncService = require('../services/syncService');
+      await Promise.all(updatedAllocations.map(allocation => 
+        syncService.syncAllocationToPersonalExpense(allocation, savedSession)
+      ));
+
+      updatedSession = savedSession;
     });
 
-    // Devolver la sesión actualizada
+    // Devolver la sesión actualizada con todos los datos necesarios
     res.json(updatedSession);
   } catch (error) {
     console.error('[updateDistribution] Error:', error);

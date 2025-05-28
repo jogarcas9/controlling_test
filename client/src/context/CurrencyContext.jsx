@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext } from 'react';
+import { formatAmount } from '../utils/expenseUtils';
 
 const CurrencyContext = createContext();
 
@@ -24,10 +25,17 @@ export const CurrencyProvider = ({ children }) => {
   };
 
   // Formatear cantidad según la moneda seleccionada
-  const formatAmount = (amount) => {
+  const formatCurrency = (amount) => {
+    if (currency.code === 'EUR') {
+      return formatAmount(amount);
+    }
+    
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
-      currency: currency.code
+      currency: currency.code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: true
     }).format(amount);
   };
 
@@ -35,7 +43,7 @@ export const CurrencyProvider = ({ children }) => {
     currency,
     availableCurrencies,
     changeCurrency,
-    formatAmount
+    formatAmount: formatCurrency
   };
 
   return (

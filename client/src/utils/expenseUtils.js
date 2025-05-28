@@ -64,11 +64,13 @@ export const MONTH_NAMES = [
 // Funciones de utilidad
 export const formatAmount = (amount) => {
   if (!amount && amount !== 0) return '0,00 €';
-  return amount.toLocaleString('es-ES', {
+  return new Intl.NumberFormat('es-ES', {
     style: 'currency',
     currency: 'EUR',
-    minimumFractionDigits: 2
-  });
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true
+  }).format(amount);
 };
 
 // Obtiene el color asignado a una categoría o devuelve un color por defecto
