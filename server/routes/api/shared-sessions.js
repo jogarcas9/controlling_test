@@ -27,7 +27,7 @@ router.post('/', [
     }
     next();
   }
-], sharedSessionController.createSharedSession);
+], sharedSessionController.createSession);
 
 // @route   GET api/shared-sessions/:id
 // @desc    Obtener detalles de una sesión

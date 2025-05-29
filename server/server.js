@@ -1,10 +1,14 @@
 require('dotenv').config();
 
 // Configuración temporal de variables de entorno
-process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jogarcas29:7JAw4tGRRjos9I8d@homeexpenses.acabyfv.mongodb.net/controlling_app';
 process.env.PORT = process.env.PORT || 5000;
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123';
+
+// NO sobreescribir MONGODB_URI si ya está definida
+if (!process.env.MONGODB_URI && !process.env.MONGODB_URI_PRODUCTION && !process.env.MONGODB_URI_QUALITY) {
+  process.env.MONGODB_URI = 'mongodb+srv://jogarcas29:7JAw4tGRRjos9I8d@homeexpenses.acabyfv.mongodb.net/controlling_app';
+}
 
 const express = require('express');
 const cors = require('cors');

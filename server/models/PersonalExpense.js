@@ -60,6 +60,18 @@ const personalExpenseSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // Nuevo campo para indicar si es un gasto por período
+  isPeriodic: {
+    type: Boolean,
+    default: false
+  },
+  // Campos para el rango de fechas del gasto por período
+  periodStartDate: {
+    type: Date
+  },
+  periodEndDate: {
+    type: Date
+  },
   // Controla si este gasto proviene de una sesión compartida
   // y por lo tanto no debe ser editable ni eliminable desde la vista de gastos personales
   isFromSharedSession: {
@@ -102,6 +114,14 @@ const personalExpenseSchema = new mongoose.Schema({
       default: false
     }
   },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  },
   allocationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ParticipantAllocation',
@@ -128,11 +148,21 @@ personalExpenseSchema.index({ 'sessionReference.sessionId': 1, year: 1, month: 1
 personalExpenseSchema.index({ isFromSharedSession: 1 });
 personalExpenseSchema.index({ user: 1, isFromSharedSession: 1 });
 
+// Nuevo índice para gastos por período
+personalExpenseSchema.index({ isPeriodic: 1 });
+personalExpenseSchema.index({ user: 1, isPeriodic: 1 });
+personalExpenseSchema.index({ periodStartDate: 1, periodEndDate: 1 });
+
 // Hook para validar los datos antes de guardar
 personalExpenseSchema.pre('save', function(next) {
   // Registro de depuración para la creación de gastos
   console.log(`Guardando gasto personal: ${this._id || 'nuevo'}`);
   console.log(`Datos: usuario=${this.user}, monto=${this.amount}, categoria=${this.category}`);
+  console.log('Estado del gasto periódico:', {
+    isPeriodic: this.isPeriodic,
+    periodStartDate: this.periodStartDate,
+    periodEndDate: this.periodEndDate
+  });
   
   // Asegurar que user es string
   if (this.user && typeof this.user !== 'string') {
@@ -145,6 +175,34 @@ personalExpenseSchema.pre('save', function(next) {
     this.year = date.getFullYear();
     this.month = date.getMonth();
     console.log(`Estableciendo año=${this.year} y mes=${this.month} desde fecha=${this.date}`);
+  }
+
+  // Validaciones para gastos periódicos
+  if (this.isPeriodic === true) {
+    console.log('Validando gasto periódico...');
+    
+    // Asegurar que las fechas del período estén presentes
+    if (!this.periodStartDate || !this.periodEndDate) {
+      console.error('Error: Gasto periódico sin fechas de período');
+      return next(new Error('Los gastos periódicos requieren fechas de inicio y fin'));
+    }
+
+    // Asegurar que las fechas son válidas
+    const startDate = new Date(this.periodStartDate);
+    const endDate = new Date(this.periodEndDate);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      console.error('Error: Fechas de período inválidas');
+      return next(new Error('Las fechas del período no son válidas'));
+    }
+
+    // Asegurar que la fecha de inicio es anterior a la fecha de fin
+    if (startDate > endDate) {
+      console.error('Error: Fecha de inicio posterior a fecha de fin');
+      return next(new Error('La fecha de inicio debe ser anterior a la fecha de fin'));
+    }
+
+    console.log('Validación de gasto periódico exitosa');
   }
   
   if (this.allocationId) {

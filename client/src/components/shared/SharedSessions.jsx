@@ -36,6 +36,7 @@ import { useSessions, useExpenses, useDistribution, useInvitations } from '../..
 import * as sharedSessionService from '../../services/sharedSessionService';
 import * as expenseService from '../../services/expenseService';
 import { formatMonthYear } from '../../utils/dateHelpers';
+import authService from '../../services/authService';
 
 const SharedSessions = () => {
   const navigate = useNavigate();
@@ -111,6 +112,8 @@ const SharedSessions = () => {
     acceptInvitation,
     rejectInvitation
   } = useInvitations();
+
+  const [currentUser, setCurrentUser] = useState(null);
 
   // Función para mostrar correctamente el nombre del mes en dispositivos móviles
   const getShortMonthName = (monthIndex) => {
@@ -590,15 +593,12 @@ const SharedSessions = () => {
         year
       );
       
-      if (result && result.yearlyExpenses) {
-        // Actualizar la sesión actual
-        setCurrentSession(prev => ({
-          ...prev,
-          yearlyExpenses: result.yearlyExpenses
-        }));
+      if (result.success && result.session) {
+        // Actualizar la sesión actual con todos los datos recibidos
+        setCurrentSession(result.session);
         
         // Buscar los gastos del mes actual en la respuesta
-        const yearData = result.yearlyExpenses.find(y => y.year === year);
+        const yearData = result.session.yearlyExpenses.find(y => y.year === year);
         const monthData = yearData?.months?.find(m => m.month === month);
         
         if (monthData?.expenses) {
@@ -622,16 +622,16 @@ const SharedSessions = () => {
         
         setMessage({
           type: 'success',
-          text: 'Distribución actualizada correctamente'
+          text: result.message || 'Distribución actualizada correctamente'
         });
       } else {
-        throw new Error('La respuesta del servidor no incluye los datos actualizados');
+        throw new Error(result.error || 'La respuesta del servidor no incluye los datos actualizados');
       }
     } catch (error) {
       console.error('Error al actualizar la distribución:', error);
       setMessage({
         type: 'error',
-        text: error.response?.data?.msg || error.message || 'Error al actualizar la distribución. Por favor, intenta de nuevo.'
+        text: error.message || 'Error al actualizar la distribución'
       });
     } finally {
       setLoading(false);
@@ -674,6 +674,18 @@ const SharedSessions = () => {
       window.history.replaceState({}, document.title);
     }
   }, [location, handleAddSession]);
+
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Error al cargar datos del usuario:', error);
+      }
+    };
+    loadUserData();
+  }, []);
 
   if (sessionsLoading && !sessions.length) {
     return (
@@ -948,6 +960,8 @@ const SharedSessions = () => {
                 loading={expensesLoading}
                 userRole="Participante"
                 currentSession={currentSession}
+                selectedMonth={selectedMonth}
+                selectedYear={selectedYear}
               />
             </Box>
 
@@ -1010,6 +1024,7 @@ const SharedSessions = () => {
           error={expensesError}
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
+          currentUser={currentUser}
         />
       </Box>
     </Container>

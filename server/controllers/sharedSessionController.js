@@ -68,31 +68,75 @@ exports.getAllSessions = async (req, res) => {
   }
 };
 
-exports.createSharedSession = async (req, res) => {
+exports.createSession = async (req, res) => {
+  const dbSession = await mongoose.startSession();
+  let savedSession = null;
+  
   try {
-    const { name, description, participants = [], sessionType = 'single' } = req.body;
-    
-    const newSession = new SharedSession({
-      userId: req.user.id,
-      name,
-      description,
-      participants,
-      sessionType,
-      isActive: true,
-      status: 'active'
+    savedSession = await dbSession.withTransaction(async () => {
+      const { name, participants, sessionType, description } = req.body;
+      const userId = req.user.id;
+      
+      console.log('Añadiendo al creador como participante en una nueva sesión');
+      console.log(`Añadiendo creador ${userId} (${req.user.email}) como participante aceptado`);
+      
+      // Asegurarse de que el creador esté en la lista de participantes
+      const allParticipants = [
+        {
+          email: req.user.email,
+          userId: userId,
+          name: req.user.nombre || req.user.email,
+          status: 'accepted',
+          canEdit: true,
+          canDelete: true
+        },
+        ...participants.filter(p => p.email !== req.user.email)
+      ];
+      
+      // Crear la sesión (bloqueada e inactiva por defecto)
+      const session = new SharedSession({
+        name,
+        description,
+        userId: userId,
+        isLocked: true,
+        isActive: false, // La sesión comienza inactiva hasta que todos acepten
+        participants: allParticipants.map(p => ({
+          ...p,
+          status: p.email === req.user.email ? 'accepted' : 'pending'
+        })),
+        sessionType: sessionType || 'permanent',
+        yearlyExpenses: [{
+          year: new Date().getFullYear(),
+          months: []
+        }]
+      });
+      
+      // Guardar la sesión
+      const newSession = await session.save({ session: dbSession });
+
+      // Obtener la sesión con los datos populados
+      const populatedSession = await SharedSession.findById(newSession._id)
+        .populate('userId', 'nombre email')
+        .populate('participants.userId', 'nombre email')
+        .session(dbSession);
+      
+      return populatedSession;
     });
 
-    const savedSession = await newSession.save();
-    const populatedSession = await SharedSession.findById(savedSession._id)
-      .populate('userId', 'nombre email');
+    res.json({
+      success: true,
+      message: 'Sesión creada correctamente',
+      session: savedSession
+    });
 
-    res.json(populatedSession);
   } catch (error) {
-    console.error('Error al crear sesión:', error);
+    console.error('Error al crear sesión compartida:', error);
     res.status(500).json({ 
-      msg: 'Error del servidor al crear sesión',
+      msg: 'Error al crear la sesión compartida',
       error: error.message 
     });
+  } finally {
+    await dbSession.endSession();
   }
 };
 
@@ -133,17 +177,62 @@ exports.updateSession = async (req, res) => {
 };
 
 exports.deleteSession = async (req, res) => {
+  const dbSession = await mongoose.startSession();
   try {
-    const session = await SharedSession.findByIdAndDelete(req.params.id);
-    
-    if (!session) {
-      return res.status(404).json({ msg: 'Sesión no encontrada' });
-    }
-    
-    res.json({ msg: 'Sesión eliminada' });
+    await dbSession.withTransaction(async () => {
+      const sessionId = req.params.id;
+      console.log('=== Inicio deleteSession ===');
+      console.log(`Eliminando sesión: ${sessionId}`);
+
+      // Verificar que la sesión existe y el usuario tiene permisos
+      const session = await SharedSession.findOne({
+        _id: sessionId,
+        $or: [
+          { userId: req.user.id },
+          { 'participants.userId': req.user.id }
+        ]
+      }).session(dbSession);
+
+      if (!session) {
+        throw new Error('Sesión no encontrada o sin permisos para eliminar');
+      }
+
+      // 1. Eliminar todos los gastos personales relacionados con esta sesión
+      console.log('Eliminando gastos personales relacionados...');
+      const deletedPersonalExpenses = await PersonalExpense.deleteMany({
+        'sessionReference.sessionId': sessionId
+      }).session(dbSession);
+      console.log(`- ${deletedPersonalExpenses.deletedCount} gastos personales eliminados`);
+
+      // 2. Eliminar todas las asignaciones de participantes
+      console.log('Eliminando asignaciones de participantes...');
+      const deletedAllocations = await ParticipantAllocation.deleteMany({
+        sessionId: sessionId
+      }).session(dbSession);
+      console.log(`- ${deletedAllocations.deletedCount} asignaciones eliminadas`);
+
+      // 3. Eliminar la sesión (esto eliminará también todos los gastos compartidos)
+      console.log('Eliminando la sesión...');
+      await SharedSession.findByIdAndDelete(sessionId).session(dbSession);
+
+      console.log('=== Fin deleteSession ===');
+      res.json({ 
+        msg: 'Sesión y datos relacionados eliminados correctamente',
+        stats: {
+          personalExpenses: deletedPersonalExpenses.deletedCount,
+          allocations: deletedAllocations.deletedCount
+        }
+      });
+    });
   } catch (error) {
     console.error('Error al eliminar sesión:', error);
-    res.status(500).json({ msg: 'Error del servidor al eliminar sesión' });
+    await dbSession.abortTransaction();
+    res.status(500).json({ 
+      msg: 'Error del servidor al eliminar sesión',
+      error: error.message
+    });
+  } finally {
+    await dbSession.endSession();
   }
 };
 
@@ -186,45 +275,80 @@ exports.getPendingInvitations = async (req, res) => {
 exports.respondToInvitation = async (req, res) => {
   try {
     const { accept } = req.body;
-    const session = await SharedSession.findById(req.params.id);
-    
+    const sessionId = req.params.id;
+    const userId = req.user.id;
+    const userEmail = req.user.email;
+
+    console.log('=== Inicio respondToInvitation ===', {
+      sessionId,
+      accept,
+      userId,
+      userEmail
+    });
+
+    // 1. Buscar la sesión y verificar que existe
+    const session = await SharedSession.findById(sessionId);
     if (!session) {
-      return res.status(404).json({ msg: 'Sesión no encontrada' });
+      return res.status(404).json({ 
+        msg: 'Sesión no encontrada' 
+      });
     }
 
-    // Obtener el email del usuario actual
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ msg: 'Usuario no encontrado' });
-    }
-
-    const participant = session.participants.find(
-      p => p.email.toLowerCase() === user.email.toLowerCase()
+    // 2. Buscar al participante y verificar que está pendiente
+    const participantIndex = session.participants.findIndex(
+      p => p.email?.toLowerCase() === userEmail?.toLowerCase() && p.status === 'pending'
     );
 
-    if (!participant) {
-      return res.status(404).json({ msg: 'No eres participante de esta sesión' });
+    if (participantIndex === -1) {
+      return res.status(400).json({ 
+        msg: 'No se encontró una invitación pendiente para este usuario' 
+      });
     }
 
-    participant.status = accept ? 'accepted' : 'rejected';
-    participant.userId = user.id; // Asignar el userId al aceptar la invitación
-    participant.responseDate = new Date();
+    // 3. Actualizar el estado del participante manteniendo todos los campos existentes
+    const currentParticipant = session.participants[participantIndex];
+    session.participants[participantIndex] = {
+      ...currentParticipant, // Mantener todos los campos existentes
+      email: userEmail, // Asegurar que el email está presente
+      userId: userId,
+      status: accept ? 'accepted' : 'rejected',
+      responseDate: new Date()
+    };
 
-    // Verificar si todos los participantes (excepto el creador) han aceptado
-    const creatorEmail = session.userId && session.userId.email ? session.userId.email.toLowerCase() : null;
-    const allAccepted = session.participants
-      .filter(p => !creatorEmail || p.email.toLowerCase() !== creatorEmail)
-      .every(p => p.status === 'accepted');
-
-    if (allAccepted) {
-      session.isLocked = false;
+    // 4. Verificar si todos han respondido y actualizar estado de la sesión
+    const pendingParticipants = session.participants.filter(p => p.status === 'pending');
+    
+    // Solo verificar aceptación si no hay pendientes
+    if (pendingParticipants.length === 0) {
+      const allAccepted = session.participants.every(p => p.status === 'accepted');
+      if (allAccepted) {
+        session.isLocked = false;
+        session.isActive = true;
+        console.log('Todos los participantes han aceptado. Activando sesión.');
+      }
     }
 
-    await session.save();
-    res.json(session);
+    // 5. Guardar los cambios
+    const updatedSession = await session.save();
+    if (!updatedSession) {
+      throw new Error('Error al guardar los cambios en la sesión');
+    }
+
+    // 6. Devolver la sesión actualizada con los datos populados
+    const populatedSession = await SharedSession.findById(sessionId)
+      .populate('userId', 'nombre email')
+      .populate('participants.userId', 'nombre email');
+
+    console.log('Sesión actualizada exitosamente');
+    res.json(populatedSession);
+
   } catch (error) {
-    console.error('Error al responder invitación:', error);
-    res.status(500).json({ msg: 'Error al procesar respuesta' });
+    console.error('Error al responder a la invitación:', error);
+    res.status(500).json({ 
+      msg: 'Error al procesar la respuesta',
+      error: error.message,
+      details: error.errors // Incluir detalles de validación si existen
+    });
   }
 };
 
@@ -272,119 +396,232 @@ exports.syncToPersonal = async (req, res) => {
 };
 
 exports.updateDistribution = async (req, res) => {
-  const dbSession = await mongoose.startSession();
+  let dbSession;
   try {
-    let updatedSession;
-    await dbSession.withTransaction(async () => {
-      const { distribution, currentMonth, currentYear } = req.body;
-      const sessionId = req.params.id;
-      const userId = req.user.id;
+    console.log('Iniciando updateDistribution con datos:', JSON.stringify(req.body, null, 2));
+    
+    dbSession = await mongoose.startSession();
+    await dbSession.startTransaction();
 
-      // Validar la distribución
-      if (!distribution || !Array.isArray(distribution)) {
-        throw new Error('Formato de distribución inválido');
-      }
-      
-      const totalPercentage = distribution.reduce((sum, item) => sum + (item.percentage || 0), 0);
-      if (Math.abs(totalPercentage - 100) > 0.01) {
-        throw new Error('La suma de porcentajes debe ser 100%');
-      }
+    const { distribution, currentMonth, currentYear } = req.body;
+    const sessionId = req.params.id;
+    const userId = req.user.id;
 
-      // Obtener la sesión actual con una sola consulta que incluya todos los datos necesarios
-      const currentSession = await SharedSession.findOne({
-        _id: sessionId,
-        $or: [
-          { userId: userId },
-          { 'participants.userId': userId }
-        ]
-      })
-      .populate('userId', 'nombre email')
-      .populate('participants.userId', 'nombre email')
-      .session(dbSession);
-
-      if (!currentSession) {
-        throw new Error('Sesión no encontrada o acceso denegado');
-      }
-
-      // Preparar la actualización de la distribución de manera más eficiente
-      let yearData = currentSession.yearlyExpenses?.find(y => y.year === currentYear);
-      if (!yearData) {
-        yearData = { year: currentYear, months: [] };
-        currentSession.yearlyExpenses = currentSession.yearlyExpenses || [];
-        currentSession.yearlyExpenses.push(yearData);
-      }
-
-      let monthData = yearData.months?.find(m => m.month === currentMonth);
-      if (!monthData) {
-        monthData = {
-          month: currentMonth,
-          expenses: [],
-          Distribution: [],
-          totalAmount: 0
-        };
-        yearData.months.push(monthData);
-      }
-
-      // Actualizar la distribución del mes actual
-      monthData.Distribution = distribution.map(d => ({
-        ...d,
-        _id: new mongoose.Types.ObjectId()
-      }));
-
-      // Actualizar asignaciones en una sola operación
-      const bulkOps = distribution.map(d => ({
-        updateOne: {
-          filter: {
-            sessionId,
-            userId: d.userId,
-            year: currentYear,
-            month: currentMonth
-          },
-          update: {
-            $set: {
-              percentage: d.percentage,
-              amount: (monthData.totalAmount * d.percentage) / 100,
-              name: d.name,
-              totalAmount: monthData.totalAmount,
-              currency: currentSession.currency || 'EUR'
-            }
-          },
-          upsert: true
-        }
-      }));
-
-      // Ejecutar las operaciones en paralelo
-      const [savedSession, bulkWriteResult] = await Promise.all([
-        currentSession.save(),
-        ParticipantAllocation.bulkWrite(bulkOps, { session: dbSession })
-      ]);
-
-      // Obtener las asignaciones actualizadas
-      const updatedAllocations = await ParticipantAllocation.find({
-        sessionId,
-        year: currentYear,
-        month: currentMonth
-      }).session(dbSession);
-
-      // Sincronizar cada asignación con gastos personales
-      const syncService = require('../services/syncService');
-      await Promise.all(updatedAllocations.map(allocation => 
-        syncService.syncAllocationToPersonalExpense(allocation, savedSession)
-      ));
-
-      updatedSession = savedSession;
+    console.log('Validando datos:', {
+      sessionId,
+      userId,
+      currentMonth,
+      currentYear,
+      distributionLength: distribution?.length
     });
 
-    // Devolver la sesión actualizada con todos los datos necesarios
-    res.json(updatedSession);
+    // Validar la distribución
+    if (!distribution || !Array.isArray(distribution)) {
+      throw new Error('Formato de distribución inválido');
+    }
+    
+    const totalPercentage = distribution.reduce((sum, item) => sum + (Number(item.percentage) || 0), 0);
+    console.log('Total porcentaje calculado:', totalPercentage);
+    
+    if (Math.abs(totalPercentage - 100) > 0.01) {
+      throw new Error(`La suma de porcentajes debe ser 100%. Actual: ${totalPercentage}%`);
+    }
+
+    // Obtener la sesión con campos específicos necesarios
+    const currentSession = await SharedSession.findOne({
+      _id: sessionId,
+      $or: [
+        { userId: userId },
+        { 'participants.userId': userId }
+      ]
+    })
+    .select('yearlyExpenses currency participants userId name')
+    .session(dbSession);
+
+    if (!currentSession) {
+      throw new Error('Sesión no encontrada o acceso denegado');
+    }
+
+    console.log('Sesión encontrada:', {
+      id: currentSession._id,
+      name: currentSession.name,
+      participantsCount: currentSession.participants?.length
+    });
+
+    // Asegurarse de que yearlyExpenses existe y es un array
+    if (!Array.isArray(currentSession.yearlyExpenses)) {
+      currentSession.yearlyExpenses = [];
+    }
+
+    // Preparar la nueva distribución con IDs
+    const newDistribution = distribution.map(d => ({
+      userId: d.userId,
+      name: d.name,
+      percentage: Number(d.percentage),
+      _id: new mongoose.Types.ObjectId()
+    }));
+
+    // Array para almacenar todas las asignaciones que necesitamos crear
+    const allAllocations = [];
+
+    // Iterar sobre todos los años
+    for (const yearData of currentSession.yearlyExpenses) {
+      // Solo procesar si es el año actual o futuro
+      if (yearData.year >= currentYear) {
+        // Asegurarse de que months es un array
+        if (!Array.isArray(yearData.months)) {
+          yearData.months = [];
+        }
+
+        // Iterar sobre todos los meses del año
+        for (const monthData of yearData.months) {
+          // Solo actualizar si es un mes futuro o el mes actual
+          if (yearData.year > currentYear || (yearData.year === currentYear && monthData.month >= currentMonth)) {
+            // Asegurarse de que expenses y Distribution son arrays
+            if (!Array.isArray(monthData.expenses)) {
+              monthData.expenses = [];
+            }
+            if (!Array.isArray(monthData.Distribution)) {
+              monthData.Distribution = [];
+            }
+
+            // Actualizar la distribución para este mes
+            monthData.Distribution = newDistribution.map(d => ({
+              ...d,
+              _id: new mongoose.Types.ObjectId()
+            }));
+
+            // Preparar asignaciones para este mes
+            const monthlyAllocations = distribution.map(d => ({
+              sessionId,
+              userId: d.userId,
+              name: d.name,
+              year: yearData.year,
+              month: monthData.month,
+              percentage: Number(d.percentage),
+              amount: (monthData.totalAmount * Number(d.percentage)) / 100,
+              totalAmount: monthData.totalAmount,
+              currency: currentSession.currency || 'EUR',
+              status: 'pending'
+            }));
+
+            allAllocations.push(...monthlyAllocations);
+          }
+        }
+      }
+    }
+
+    console.log('Total de asignaciones preparadas:', allAllocations.length);
+
+    // Eliminar los gastos personales existentes relacionados con esta sesión para los meses futuros
+    await PersonalExpense.deleteMany({
+      'sessionReference.sessionId': sessionId,
+      $or: [
+        { year: { $gt: currentYear } },
+        {
+          year: currentYear,
+          month: { $gte: currentMonth }
+        }
+      ],
+      isFromSharedSession: true
+    }).session(dbSession);
+
+    // Eliminar todas las asignaciones futuras
+    await ParticipantAllocation.deleteMany({
+      sessionId,
+      $or: [
+        { year: { $gt: currentYear } },
+        {
+          year: currentYear,
+          month: { $gte: currentMonth }
+        }
+      ]
+    }).session(dbSession);
+
+    // Crear las nuevas asignaciones
+    let savedAllocations = [];
+    if (allAllocations.length > 0) {
+      savedAllocations = await ParticipantAllocation.insertMany(allAllocations, { session: dbSession });
+    }
+
+    // Crear los nuevos gastos personales basados en las asignaciones
+    const personalExpenses = savedAllocations.map(allocation => ({
+      user: allocation.userId.toString(),
+      name: currentSession.name,
+      description: `Parte correspondiente (${allocation.percentage.toFixed(2)}%) de gastos compartidos en "${currentSession.name}" para ${getMonthName(allocation.month)} ${allocation.year}`,
+      amount: allocation.amount,
+      currency: allocation.currency,
+      category: 'Gastos Compartidos',
+      date: new Date(allocation.year, allocation.month, 15),
+      year: allocation.year,
+      month: allocation.month,
+      type: 'expense',
+      isFromSharedSession: true,
+      isRecurring: true,
+      sessionReference: {
+        sessionId: allocation.sessionId,
+        sessionName: currentSession.name,
+        percentage: allocation.percentage,
+        totalAmount: allocation.totalAmount,
+        year: allocation.year,
+        month: allocation.month,
+        isRecurringShare: true,
+        participantName: allocation.name
+      },
+      allocationId: allocation._id
+    }));
+
+    // Insertar los nuevos gastos personales
+    if (personalExpenses.length > 0) {
+      await PersonalExpense.insertMany(personalExpenses, { session: dbSession });
+    }
+
+    // Ordenar los meses y años para mantener consistencia
+    currentSession.yearlyExpenses.forEach(yearData => {
+      yearData.months.sort((a, b) => a.month - b.month);
+    });
+    currentSession.yearlyExpenses.sort((a, b) => a.year - b.year);
+
+    // Marcar el documento como modificado
+    currentSession.markModified('yearlyExpenses');
+
+    // Guardar la sesión actualizada
+    await currentSession.save({ session: dbSession });
+
+    // Confirmar la transacción
+    await dbSession.commitTransaction();
+
+    // Obtener la sesión actualizada con todos los datos necesarios
+    const finalSession = await SharedSession.findById(sessionId)
+      .populate('userId', 'nombre email')
+      .populate('participants.userId', 'nombre email');
+
+    console.log('Distribución y gastos personales actualizados exitosamente');
+
+    res.json({
+      success: true,
+      message: 'Distribución actualizada correctamente',
+      session: finalSession
+    });
+
   } catch (error) {
-    console.error('[updateDistribution] Error:', error);
+    console.error('[updateDistribution] Error detallado:', error);
+    console.error('Stack trace:', error.stack);
+    
+    if (dbSession?.inTransaction()) {
+      await dbSession.abortTransaction();
+    }
+    
     res.status(500).json({ 
-      msg: 'Error al actualizar distribución',
-      error: error.message
+      success: false,
+      message: 'Error al actualizar distribución',
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   } finally {
-    await dbSession.endSession();
+    if (dbSession) {
+      await dbSession.endSession();
+    }
   }
 };
 
@@ -435,93 +672,151 @@ exports.updateAllocationStatus = async (req, res) => {
 exports.addExpense = async (req, res) => {
   const dbSession = await mongoose.startSession();
   try {
-    console.log('=== Inicio addExpense ===');
-    console.log('Body recibido completo:', JSON.stringify(req.body));
-    console.log('Tipo de req.body:', typeof req.body);
-    console.log('¿Tiene propiedad expense?:', 'expense' in req.body);
-    
     await dbSession.withTransaction(async () => {
-      const session = await SharedSession.findById(req.params.id).session(dbSession);
-      if (!session) {
-        console.error('Sesión no encontrada:', req.params.id);
-        return res.status(404).json({ msg: 'Sesión no encontrada' });
-      }
-
-      // Validar que expense existe en el body
-      if (!req.body || !req.body.expense) {
-        console.error('Datos del gasto no proporcionados');
+      const { expense } = req.body;
+      
+      if (!expense) {
         return res.status(400).json({ 
-          msg: 'Datos del gasto no proporcionados',
-          details: 'El objeto expense es requerido en el body'
+          msg: 'Datos del gasto no proporcionados'
         });
       }
 
-      const { expense } = req.body;
-      
-      // Validar campos requeridos del gasto
-      if (!expense.name || typeof expense.name !== 'string' || expense.name.trim().length === 0) {
-        console.error('Nombre del gasto inválido:', expense.name);
+      // Validaciones básicas
+      if (!expense.name?.trim()) {
         return res.status(400).json({
-          msg: 'El nombre del gasto es requerido y no puede estar vacío',
-          details: { receivedName: expense.name }
+          msg: 'El nombre del gasto es requerido'
         });
       }
 
       if (!expense.amount || isNaN(Number(expense.amount)) || Number(expense.amount) <= 0) {
-        console.error('Monto del gasto inválido:', expense.amount);
         return res.status(400).json({
-          msg: 'El monto debe ser un número positivo',
-          details: { receivedAmount: expense.amount }
+          msg: 'El monto debe ser un número positivo'
         });
       }
 
-      try {
-        // Calcular la fecha de fin para gastos recurrentes (3 años en el futuro)
-        const endDate = expense.isRecurring ? new Date(new Date().setFullYear(new Date().getFullYear() + 3)) : null;
-        
-        console.log('Datos del gasto a añadir:', {
-          name: expense.name,
-          amount: expense.amount,
-          category: expense.category,
-          date: expense.date,
-          isRecurring: expense.isRecurring
-        });
-        
-        // Usar el método addExpense del modelo
-        const newExpense = await session.addExpense(expense, expense.date, endDate);
-        console.log('Gasto añadido correctamente:', newExpense);
-        
-        // Guardar la sesión
-        await session.save();
+      // Buscar la sesión y validar en una sola operación
+      const session = await SharedSession.findOne({
+        _id: req.params.id,
+        $or: [
+          { userId: req.user.id },
+          { 'participants.userId': req.user.id }
+        ]
+      }).session(dbSession);
 
-        // Devolver respuesta exitosa con el gasto completo
-        return res.json({
-          msg: 'Gasto añadido correctamente',
-          expense: {
-            _id: newExpense._id,
-            name: newExpense.name,
-            description: newExpense.description,
-            amount: newExpense.amount,
-            category: newExpense.category,
-            date: newExpense.date,
-            paidBy: newExpense.paidBy,
-            isRecurring: newExpense.isRecurring
+      if (!session) {
+        return res.status(404).json({ msg: 'Sesión no encontrada o acceso denegado' });
+      }
+
+      // Crear el gasto con los datos validados
+      const expenseDate = new Date(expense.date);
+      const year = expenseDate.getFullYear();
+      const month = expenseDate.getMonth();
+
+      // Encontrar o crear el año y mes en una sola operación
+      let yearData = session.yearlyExpenses.find(y => y.year === year);
+      if (!yearData) {
+        yearData = { 
+          year,
+          months: []
+        };
+        session.yearlyExpenses.push(yearData);
+      }
+
+      let monthData = yearData.months.find(m => m.month === month);
+      if (!monthData) {
+        monthData = {
+          month,
+          expenses: [],
+          Distribution: [],
+          totalAmount: 0
+        };
+        yearData.months.push(monthData);
+      }
+
+      // Crear el nuevo gasto
+      const newExpense = {
+        _id: new mongoose.Types.ObjectId(),
+        name: expense.name.trim(),
+        description: expense.description?.trim() || '',
+        amount: Number(expense.amount),
+        date: expenseDate,
+        category: expense.category?.trim() || 'Otros',
+        paidBy: expense.paidBy || req.user.id,
+        isPeriodic: expense.isPeriodic || false,
+        isRecurring: expense.isRecurring || false,
+        chargeDay: expense.isRecurring ? expense.chargeDay : undefined,
+        periodStartDate: expense.isPeriodic ? new Date(expense.periodStartDate) : null,
+        periodEndDate: expense.isPeriodic ? new Date(expense.periodEndDate) : null
+      };
+
+      // Si es un gasto recurrente o periódico, crear las instancias necesarias
+      if (expense.isRecurring || expense.isPeriodic) {
+        const startDate = expense.isPeriodic ? new Date(expense.periodStartDate) : expenseDate;
+        const endDate = expense.isPeriodic ? new Date(expense.periodEndDate) : null;
+        
+        let currentDate = new Date(startDate);
+        const finalDate = endDate || new Date(year + 1, month, 1); // Si es recurrente, crear para un año
+
+        while (currentDate <= finalDate) {
+          const currentYear = currentDate.getFullYear();
+          const currentMonth = currentDate.getMonth();
+
+          // Encontrar o crear estructura de año/mes para cada instancia
+          let currentYearData = session.yearlyExpenses.find(y => y.year === currentYear);
+          if (!currentYearData) {
+            currentYearData = { year: currentYear, months: [] };
+            session.yearlyExpenses.push(currentYearData);
           }
-        });
-      } catch (error) {
-        console.error('Error al añadir el gasto:', error);
-        return res.status(400).json({
-          msg: error.message || 'Error al añadir el gasto',
-          details: error
-        });
-      }
-    });
 
-    console.log('=== Fin addExpense ===');
+          let currentMonthData = currentYearData.months.find(m => m.month === currentMonth);
+          if (!currentMonthData) {
+            currentMonthData = {
+              month: currentMonth,
+              expenses: [],
+              Distribution: monthData.Distribution, // Copiar la distribución del mes original
+              totalAmount: 0
+            };
+            currentYearData.months.push(currentMonthData);
+          }
+
+          // Crear instancia del gasto para este mes
+          const expenseInstance = {
+            ...newExpense,
+            _id: new mongoose.Types.ObjectId(),
+            date: new Date(currentYear, currentMonth, expense.isRecurring ? expense.chargeDay : currentDate.getDate())
+          };
+
+          currentMonthData.expenses.push(expenseInstance);
+          currentMonthData.totalAmount = currentMonthData.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+          // Avanzar al siguiente mes
+          currentDate.setMonth(currentDate.getMonth() + 1);
+        }
+      } else {
+        // Gasto único
+        monthData.expenses.push(newExpense);
+        monthData.totalAmount = monthData.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+      }
+
+      // Ordenar los meses y años
+      yearData.months.sort((a, b) => a.month - b.month);
+      session.yearlyExpenses.sort((a, b) => a.year - b.year);
+
+      // Guardar la sesión actualizada
+      await session.save({ session: dbSession });
+
+      res.json({
+        msg: 'Gasto añadido correctamente',
+        session
+      });
+    });
   } catch (error) {
-    console.error('Error en addExpense:', error);
     await dbSession.abortTransaction();
-    res.status(500).json({ msg: 'Error del servidor al añadir el gasto' });
+    console.error('Error al añadir gasto:', error);
+    res.status(500).json({ 
+      msg: 'Error del servidor al añadir el gasto',
+      error: error.message 
+    });
   } finally {
     await dbSession.endSession();
   }
@@ -553,21 +848,155 @@ exports.updateExpense = async (req, res) => {
 };
 
 exports.deleteExpense = async (req, res) => {
+  let dbSession = null;
+  
   try {
-    const session = await SharedSession.findById(req.params.id);
+    const { id: sessionId, expenseId } = req.params;
+    const userId = req.user.id;
+
+    console.log('=== Inicio deleteExpense ===');
+    console.log(`Intentando eliminar gasto ${expenseId} de la sesión ${sessionId}`);
+
+    // Iniciar sesión de base de datos
+    dbSession = await mongoose.startSession();
+    await dbSession.startTransaction();
+
+    // Buscar la sesión y verificar permisos
+    const session = await SharedSession.findOne({
+      _id: sessionId,
+      $or: [
+        { userId: userId },
+        { 'participants.userId': userId }
+      ]
+    }).session(dbSession);
+
     if (!session) {
-      return res.status(404).json({ msg: 'Sesión no encontrada' });
+      throw new Error('Sesión no encontrada o no autorizada');
     }
 
-    session.expenses = session.expenses.filter(
-      e => e._id.toString() !== req.params.expenseId
-    );
-    await session.save();
+    // Variables para rastrear el gasto
+    let gastoEncontrado = false;
+    let gastosEliminados = 0;
+    let mesesAfectados = new Set();
+    let gastoOriginal = null;
+
+    // Buscar y eliminar el gasto en todos los años y meses
+    for (const yearData of session.yearlyExpenses || []) {
+      for (const monthData of yearData.months || []) {
+        const expenseIndex = monthData.expenses.findIndex(exp => 
+          exp && exp._id && exp._id.toString() === expenseId
+        );
+
+        if (expenseIndex !== -1) {
+          gastoOriginal = monthData.expenses[expenseIndex];
+          gastoEncontrado = true;
+
+          // Eliminar el gasto actual
+          monthData.expenses.splice(expenseIndex, 1);
+          gastosEliminados++;
+          mesesAfectados.add(`${yearData.year}-${monthData.month}`);
+
+          // Recalcular el total del mes
+          monthData.totalAmount = monthData.expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+
+          // Si es un gasto periódico o recurrente, eliminar las instancias futuras
+          if (gastoOriginal && (gastoOriginal.isPeriodic || gastoOriginal.isRecurring)) {
+            for (const futureYear of session.yearlyExpenses) {
+              if (futureYear.year < yearData.year) continue;
+
+              for (const futureMonth of futureYear.months) {
+                if (futureYear.year === yearData.year && futureMonth.month <= monthData.month) continue;
+
+                const futureExpenses = futureMonth.expenses.filter(exp => 
+                  exp && exp.name === gastoOriginal.name && 
+                  (exp.isPeriodic || exp.isRecurring)
+                );
+
+                if (futureExpenses.length > 0) {
+                  // Eliminar gastos futuros que coincidan
+                  futureMonth.expenses = futureMonth.expenses.filter(exp => 
+                    !futureExpenses.some(fe => fe._id.toString() === exp._id.toString())
+                  );
+
+                  // Recalcular total del mes futuro
+                  futureMonth.totalAmount = futureMonth.expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+                  
+                  gastosEliminados += futureExpenses.length;
+                  mesesAfectados.add(`${futureYear.year}-${futureMonth.month}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (!gastoEncontrado) {
+      throw new Error('Gasto no encontrado en la sesión');
+    }
+
+    // Guardar los cambios en la sesión
+    await session.save({ session: dbSession });
+
+    // Actualizar las asignaciones para cada mes afectado
+    for (const mesKey of mesesAfectados) {
+      const [year, month] = mesKey.split('-').map(Number);
+      const yearData = session.yearlyExpenses.find(y => y.year === year);
+      const monthData = yearData?.months.find(m => m.month === month);
+
+      if (monthData && monthData.Distribution) {
+        // Eliminar asignaciones existentes
+        await ParticipantAllocation.deleteMany({
+          sessionId: session._id,
+          year: year,
+          month: month
+        }).session(dbSession);
+
+        // Crear nuevas asignaciones
+        const allocations = monthData.Distribution.map(dist => ({
+          sessionId: session._id,
+          userId: dist.userId,
+          name: dist.name,
+          year: year,
+          month: month,
+          percentage: dist.percentage,
+          amount: (monthData.totalAmount * dist.percentage) / 100,
+          totalAmount: monthData.totalAmount,
+          status: 'pending'
+        }));
+
+        if (allocations.length > 0) {
+          await ParticipantAllocation.insertMany(allocations, { session: dbSession });
+        }
+      }
+    }
+
+    // Confirmar la transacción
+    await dbSession.commitTransaction();
     
-    res.json({ msg: 'Gasto eliminado' });
+    res.json({ 
+      msg: 'Gasto(s) eliminado(s) correctamente',
+      count: gastosEliminados,
+      monthsAffected: mesesAfectados.size
+    });
+
   } catch (error) {
     console.error('Error al eliminar gasto:', error);
-    res.status(500).json({ msg: 'Error al eliminar gasto' });
+    
+    // Solo intentar abortar si la sesión existe y la transacción está activa
+    if (dbSession?.inTransaction()) {
+      await dbSession.abortTransaction();
+    }
+    
+    res.status(500).json({ 
+      msg: 'Error del servidor al eliminar gasto',
+      error: error.message
+    });
+  } finally {
+    // Cerrar la sesión si existe
+    if (dbSession) {
+      await dbSession.endSession();
+    }
   }
 };
 

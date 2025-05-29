@@ -33,6 +33,7 @@ import {
   Info as InfoIcon
 } from '@mui/icons-material';
 import { formatCurrency, formatDate } from '../../utils/helpers';
+import { getExpenseTypeLabel } from '../../utils/expenseUtils';
 
 // Componente de tarjeta de gasto para móviles
 const ExpenseCard = ({ expense, onEdit, onDelete, canEdit, onViewDetails }) => {
@@ -147,7 +148,9 @@ const ExpenseList = ({
   total,
   loading,
   userRole,
-  currentSession
+  currentSession,
+  selectedMonth,
+  selectedYear
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -220,16 +223,22 @@ const ExpenseList = ({
         <Box sx={{ mb: 2 }}>
           {expenses
             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-            .map((expense) => (
-              <ExpenseCard
-                key={expense._id}
-                expense={expense}
-                onEdit={onEditExpense}
-                onDelete={onDeleteExpense}
-                onViewDetails={handleViewDetails}
-                canEdit={canEditExpense(expense)}
-              />
-            ))}
+            .map((expense) => {
+              // Calcular el tipo de gasto con la fecha del mes seleccionado
+              const currentDate = new Date(selectedYear, selectedMonth);
+              const typeLabel = getExpenseTypeLabel(expense, currentDate);
+
+              return (
+                <ExpenseCard
+                  key={expense._id}
+                  expense={{...expense, typeLabel}}
+                  onEdit={onEditExpense}
+                  onDelete={onDeleteExpense}
+                  onViewDetails={handleViewDetails}
+                  canEdit={canEditExpense(expense)}
+                />
+              );
+            })}
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
             <TablePagination
               component="div"
@@ -253,61 +262,72 @@ const ExpenseList = ({
                 <TableCell>Categoría</TableCell>
                 <TableCell>Fecha</TableCell>
                 <TableCell align="right">Monto</TableCell>
-                <TableCell>Recurrente</TableCell>
+                <TableCell>Tipo</TableCell>
                 <TableCell align="right">Acciones</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {expenses
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                .map((expense) => (
-                  <TableRow key={expense._id}>
-                    <TableCell>{expense.name || 'Sin nombre'}</TableCell>
-                    <TableCell>{expense.category}</TableCell>
-                    <TableCell>{formatDate(expense.date)}</TableCell>
-                    <TableCell align="right">
-                      {formatCurrency(expense.amount)}
-                    </TableCell>
-                    <TableCell>
-                      <Chip 
-                        label={expense.isRecurring ? "Sí" : "No"}
-                        color={expense.isRecurring ? "info" : "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Ver detalles">
-                        <IconButton
+                .map((expense) => {
+                  // Calcular el tipo de gasto con la fecha del mes seleccionado
+                  const currentDate = new Date(selectedYear, selectedMonth);
+                  const typeLabel = getExpenseTypeLabel(expense, currentDate);
+
+                  return (
+                    <TableRow key={expense._id}>
+                      <TableCell>{expense.name || 'Sin nombre'}</TableCell>
+                      <TableCell>{expense.category}</TableCell>
+                      <TableCell>{formatDate(expense.date)}</TableCell>
+                      <TableCell align="right">
+                        {formatCurrency(expense.amount)}
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={typeLabel}
+                          color={
+                            expense.isRecurring ? "primary" :
+                            expense.isPeriodic ? "info" :
+                            "default"
+                          }
                           size="small"
-                          onClick={() => handleViewDetails(expense)}
-                        >
-                          <InfoIcon />
-                        </IconButton>
-                      </Tooltip>
-                      {canEditExpense(expense) && (
-                        <>
-                          <Tooltip title="Editar">
-                            <IconButton
-                              size="small"
-                              onClick={() => onEditExpense(expense)}
-                            >
-                              <EditIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Eliminar">
-                            <IconButton
-                              size="small"
-                              onClick={() => onDeleteExpense(expense)}
-                              sx={{ color: theme.palette.error.main }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Tooltip>
-                        </>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Ver detalles">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleViewDetails(expense)}
+                          >
+                            <InfoIcon />
+                          </IconButton>
+                        </Tooltip>
+                        {canEditExpense(expense) && (
+                          <>
+                            <Tooltip title="Editar">
+                              <IconButton
+                                size="small"
+                                onClick={() => onEditExpense(expense)}
+                              >
+                                <EditIcon />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Eliminar">
+                              <IconButton
+                                size="small"
+                                onClick={() => onDeleteExpense(expense)}
+                                sx={{ color: theme.palette.error.main }}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
           <TablePagination

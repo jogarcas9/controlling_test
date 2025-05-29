@@ -12,53 +12,36 @@ const syncAllocationToPersonalExpense = async (allocation, existingSession = nul
     throw new Error('Asignación inválida');
   }
 
-  console.log(`Iniciando sincronización para asignación: ${allocation._id}`);
-  console.log(`Datos de asignación: userId=${allocation.userId}, amount=${allocation.amount}, percentage=${allocation.percentage}%, sessionId=${allocation.sessionId}`);
+  let personalExpense = null;
+  const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-  // Verificar si ya está en progreso una sincronización para esta asignación
-  const syncKey = `sync_${allocation._id.toString()}`;
-  if (global[syncKey]) {
-    console.log(`Sincronización ya en progreso para asignación: ${allocation._id}, evitando duplicación`);
-    return { success: true, skipped: true };
-  }
-
-  // Marcar esta asignación como en proceso de sincronización
-  global[syncKey] = true;
-
-  let session;
   try {
-    session = await mongoose.startSession();
-    await session.startTransaction();
-
-    // Obtener información de la sesión compartida
-    const sharedSession = existingSession || await SharedSession.findById(allocation.sessionId).session(session);
-    if (!sharedSession) {
-      throw new Error(`No se encontró la sesión compartida con ID: ${allocation.sessionId}`);
-    }
-
-    // Obtener información del usuario
-    const user = await User.findById(allocation.userId).session(session);
-    const userName = user ? (user.nombre || user.name || user.email) : "Usuario";
-
-    // Crear fecha específica para el gasto: día 15 del mes correspondiente
-    const expenseDate = new Date(allocation.year, allocation.month, 15);
-
-    // Formatear el nombre del mes
-    const monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    const monthName = monthNames[allocation.month];
-
-    // Buscar gasto personal existente
-    let personalExpense = await PersonalExpense.findOne({
+    // Buscar gasto personal existente por sesión y usuario
+    personalExpense = await PersonalExpense.findOne({
       user: allocation.userId.toString(),
       'sessionReference.sessionId': allocation.sessionId,
-      year: allocation.year,
-      month: allocation.month
-    }).session(session);
+      'sessionReference.year': allocation.year,
+      'sessionReference.month': allocation.month,
+      isFromSharedSession: true
+    });
 
+    // Obtener la sesión compartida si no se proporcionó
+    const sharedSession = existingSession || await SharedSession.findById(allocation.sessionId)
+      .select('name sessionType');
+
+    if (!sharedSession) {
+      throw new Error(`No se encontró la sesión compartida: ${allocation.sessionId}`);
+    }
+
+    // Formatear fecha
+    const expenseDate = new Date(allocation.year, allocation.month, 15);
+    const monthName = monthNames[allocation.month];
+
+    // Preparar datos del gasto
     const expenseData = {
       user: allocation.userId.toString(),
-      name: `${sharedSession.name} - ${monthName} ${allocation.year}`,
-      description: `Parte correspondiente (${allocation.percentage.toFixed(2)}%) de gastos compartidos en "${sharedSession.name}" para ${monthName} ${allocation.year}`,
+      name: sharedSession.name || 'Gasto Compartido',
+      description: `Parte correspondiente (${allocation.percentage.toFixed(2)}%) de gastos compartidos en "${sharedSession.name || 'Sesión Compartida'}" para ${monthName} ${allocation.year}`,
       amount: allocation.amount,
       currency: allocation.currency || 'EUR',
       category: 'Gastos Compartidos',
@@ -66,53 +49,51 @@ const syncAllocationToPersonalExpense = async (allocation, existingSession = nul
       type: 'expense',
       year: allocation.year,
       month: allocation.month,
-      allocationId: allocation._id,
       isFromSharedSession: true,
-      isRecurring: sharedSession.sessionType === 'permanent',
+      isRecurring: true,
       sessionReference: {
         sessionId: allocation.sessionId,
-        sessionName: sharedSession.name,
+        sessionName: sharedSession.name || 'Sesión Compartida',
         percentage: allocation.percentage,
         totalAmount: allocation.totalAmount || 0,
         year: allocation.year,
         month: allocation.month,
-        isRecurringShare: sharedSession.sessionType === 'permanent',
-        participantName: userName
+        isRecurringShare: true,
+        participantName: allocation.name
       }
     };
 
     if (personalExpense) {
       // Actualizar gasto existente
-      Object.assign(personalExpense, expenseData);
-      await personalExpense.save({ session });
-      console.log(`Gasto personal actualizado: ${personalExpense._id}`);
-    } else {
-      // Crear nuevo gasto
-      personalExpense = new PersonalExpense(expenseData);
-      await personalExpense.save({ session });
-      console.log(`Nuevo gasto personal creado: ${personalExpense._id}`);
-
-      // Actualizar la referencia en la asignación
-      await ParticipantAllocation.findByIdAndUpdate(
-        allocation._id,
-        { personalExpenseId: personalExpense._id },
-        { session }
+      console.log(`Actualizando gasto personal existente para sesión ${allocation.sessionId}, mes ${monthName} ${allocation.year}`);
+      await PersonalExpense.findByIdAndUpdate(
+        personalExpense._id,
+        { $set: expenseData },
+        { new: true, runValidators: true }
       );
+    } else {
+      // Crear nuevo gasto solo si no existe
+      console.log(`Creando nuevo gasto personal para sesión ${allocation.sessionId}, mes ${monthName} ${allocation.year}`);
+      personalExpense = await PersonalExpense.create(expenseData);
     }
 
-    await session.commitTransaction();
+    // Actualizar la referencia en la asignación
+    await ParticipantAllocation.findByIdAndUpdate(
+      allocation._id,
+      { 
+        $set: { 
+          personalExpenseId: personalExpense._id,
+          amount: allocation.amount,
+          totalAmount: allocation.totalAmount
+        } 
+      },
+      { new: true }
+    );
+
     return { success: true, personalExpense };
   } catch (error) {
-    if (session) {
-      await session.abortTransaction();
-    }
-    console.error('Error al sincronizar asignación con gasto personal:', error);
+    console.error('Error en sincronización:', error);
     throw error;
-  } finally {
-    if (session) {
-      await session.endSession();
-    }
-    delete global[syncKey];
   }
 };
 
@@ -123,7 +104,6 @@ const syncAllocationToPersonalExpense = async (allocation, existingSession = nul
  */
 const processNewAllocation = async (allocation) => {
   try {
-    console.log(`Procesando nueva asignación: ${allocation._id}`);
     return await syncAllocationToPersonalExpense(allocation);
   } catch (error) {
     console.error('Error procesando nueva asignación:', error);
@@ -138,7 +118,6 @@ const processNewAllocation = async (allocation) => {
  */
 const processUpdatedAllocation = async (allocation) => {
   try {
-    console.log(`Procesando actualización de asignación: ${allocation._id}`);
     return await syncAllocationToPersonalExpense(allocation);
   } catch (error) {
     console.error('Error procesando actualización de asignación:', error);
@@ -153,26 +132,21 @@ const processUpdatedAllocation = async (allocation) => {
  */
 const updateUserNamesInAllocations = async (sessionId) => {
   try {
-    // Buscar todas las asignaciones para esta sesión
-    const allocations = await ParticipantAllocation.find({ sessionId });
+    const allocations = await ParticipantAllocation.find({ sessionId })
+      .select('userId name');
     
-    // Actualizar el nombre de cada asignación
-    for (const allocation of allocations) {
-      try {
-        const user = await User.findById(allocation.userId);
-        if (user) {
-          const realName = user.nombre || user.name || user.username || user.email || "Usuario";
-          
-          if (realName !== allocation.name) {
-            allocation.name = realName;
-            allocation.username = realName;
-            await allocation.save();
-          }
-        }
-      } catch (userError) {
-        console.warn(`Error al actualizar nombre de usuario para asignación ${allocation._id}:`, userError.message);
+    const updates = allocations.map(allocation => ({
+      updateOne: {
+        filter: { _id: allocation._id },
+        update: { $set: { name: allocation.name } }
       }
+    }));
+
+    if (updates.length > 0) {
+      await ParticipantAllocation.bulkWrite(updates, { ordered: false });
     }
+
+    return { success: true, updatedCount: updates.length };
   } catch (error) {
     throw new Error(`Error al actualizar nombres de usuario: ${error.message}`);
   }
@@ -184,26 +158,33 @@ const updateUserNamesInAllocations = async (sessionId) => {
  * @returns {Object} Resultado con estadísticas de la corrección
  */
 const fixDuplicateAllocations = async (sessionId) => {
-  const allocations = await ParticipantAllocation.find({ sessionId });
-  const seen = new Set();
-  const duplicates = [];
-
-  for (const allocation of allocations) {
-    const key = `${allocation.userId}-${allocation.year}-${allocation.month}`;
-    if (seen.has(key)) {
-      duplicates.push(allocation._id);
-    } else {
-      seen.add(key);
-    }
-  }
+  const duplicates = await ParticipantAllocation.aggregate([
+    { $match: { sessionId: new mongoose.Types.ObjectId(sessionId) } },
+    {
+      $group: {
+        _id: {
+          userId: '$userId',
+          year: '$year',
+          month: '$month'
+        },
+        count: { $sum: 1 },
+        docs: { $push: '$_id' }
+      }
+    },
+    { $match: { count: { $gt: 1 } } }
+  ]);
 
   if (duplicates.length > 0) {
+    const deleteIds = duplicates.flatMap(dup => 
+      dup.docs.slice(1) // Mantener el primer documento, eliminar los demás
+    );
+
     await ParticipantAllocation.deleteMany({
-      _id: { $in: duplicates }
+      _id: { $in: deleteIds }
     });
   }
 
-  return duplicates.length;
+  return { removedCount: duplicates.reduce((sum, dup) => sum + dup.count - 1, 0) };
 };
 
 module.exports = {

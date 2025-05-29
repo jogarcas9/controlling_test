@@ -52,7 +52,7 @@ const participantSchema = new mongoose.Schema({
   toObject: { getters: true }
 });
 
-// Definición del esquema de gastos como subdocumento
+// Definir el esquema para los gastos dentro de los meses
 const expenseSchema = new mongoose.Schema({
   _id: {
     type: mongoose.Schema.Types.ObjectId,
@@ -60,14 +60,8 @@ const expenseSchema = new mongoose.Schema({
   },
   name: {
     type: String,
-    required: [true, 'El nombre del gasto es requerido'],
-    trim: true,
-    validate: {
-      validator: function(v) {
-        return v && v.trim().length > 0;
-      },
-      message: 'El nombre no puede estar vacío'
-    }
+    required: true,
+    trim: true
   },
   description: {
     type: String,
@@ -76,61 +70,46 @@ const expenseSchema = new mongoose.Schema({
   },
   amount: {
     type: Number,
-    required: [true, 'El monto es requerido'],
-    validate: {
-      validator: function(v) {
-        return !isNaN(v) && v > 0;
-      },
-      message: 'El monto debe ser un número positivo'
-    }
+    required: true,
+    min: 0
   },
   date: {
     type: Date,
-    required: [true, 'La fecha es requerida'],
-    validate: {
-      validator: function(v) {
-        return v instanceof Date && !isNaN(v);
-      },
-      message: 'La fecha debe ser válida'
-    }
+    required: true
   },
   category: {
     type: String,
-    default: 'Otros',
+    required: true,
     trim: true
   },
   paidBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'El usuario que pagó es requerido']
+    type: String,
+    required: true
   },
   isRecurring: {
     type: Boolean,
     default: false
+  },
+  isPeriodic: {
+    type: Boolean,
+    default: false
+  },
+  periodStartDate: {
+    type: Date,
+    required: function() {
+      return this.isPeriodic === true;
+    }
+  },
+  periodEndDate: {
+    type: Date,
+    required: function() {
+      return this.isPeriodic === true;
+    }
   }
 });
 
-// Esquema de distribución
-const distributionSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  name: {
-    type: String,
-    required: true
-  },
-  percentage: {
-    type: Number,
-    required: true,
-    min: 0,
-    max: 100
-  }
-}, { _id: true });
-
-// Esquema de gastos mensuales
-const monthlyExpensesSchema = new mongoose.Schema({
+// Definir el esquema para los meses
+const monthSchema = new mongoose.Schema({
   month: {
     type: Number,
     required: true,
@@ -138,36 +117,28 @@ const monthlyExpensesSchema = new mongoose.Schema({
     max: 11
   },
   expenses: [expenseSchema],
-  totalAmount: {
-    type: Number,
-    default: 0
-  },
   Distribution: [{
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
+    userId: String,
     name: String,
-    percentage: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100
-    },
+    percentage: Number,
     _id: {
       type: mongoose.Schema.Types.ObjectId,
       default: () => new mongoose.Types.ObjectId()
     }
-  }]
+  }],
+  totalAmount: {
+    type: Number,
+    default: 0
+  }
 });
 
-// Esquema de gastos anuales
-const yearlyExpensesSchema = new mongoose.Schema({
+// Definir el esquema para los años
+const yearSchema = new mongoose.Schema({
   year: {
     type: Number,
     required: true
   },
-  months: [monthlyExpensesSchema]
+  months: [monthSchema]
 });
 
 const sharedSessionSchema = new mongoose.Schema({
@@ -178,9 +149,8 @@ const sharedSessionSchema = new mongoose.Schema({
   },
   description: {
     type: String,
-    required: false,
-    trim: true,
-    default: ''
+    default: '',
+    trim: true
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -189,15 +159,39 @@ const sharedSessionSchema = new mongoose.Schema({
   },
   date: {
     type: Date,
-    default: null,
-    required: false
+    default: null
   },
-  participants: [participantSchema],
-  yearlyExpenses: [yearlyExpensesSchema],
+  participants: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    name: String,
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'rejected'],
+      default: 'pending'
+    },
+    canEdit: {
+      type: Boolean,
+      default: false
+    },
+    invitationDate: {
+      type: Date,
+      default: Date.now
+    },
+    responseDate: Date
+  }],
   currency: {
     type: String,
-    required: false,
-    default: 'EUR'
+    default: 'EUR',
+    trim: true
   },
   isActive: {
     type: Boolean,
@@ -205,13 +199,11 @@ const sharedSessionSchema = new mongoose.Schema({
   },
   startDate: {
     type: Date,
-    default: null,
-    required: false
+    default: null
   },
   endDate: {
     type: Date,
-    default: null,
-    required: false
+    default: null
   },
   sessionType: {
     type: String,
@@ -225,8 +217,9 @@ const sharedSessionSchema = new mongoose.Schema({
   },
   isLocked: {
     type: Boolean,
-    default: true
-  }
+    default: false
+  },
+  yearlyExpenses: [yearSchema]
 }, {
   timestamps: true,
   toJSON: { 
@@ -1009,5 +1002,99 @@ function getMonthName(month) {
   ];
   return monthNames[month] || 'Mes inválido';
 }
+
+// Método para inicializar las asignaciones de participantes
+sharedSessionSchema.methods.initializeParticipantAllocations = async function() {
+  const ParticipantAllocation = mongoose.model('ParticipantAllocation');
+  const syncService = require('../services/syncService');
+  
+  // Obtener el mes y año actual
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  
+  // Asegurarse de que existe la estructura de datos para el año y mes actual
+  let yearData = this.yearlyExpenses.find(y => y.year === currentYear);
+  if (!yearData) {
+    yearData = {
+      year: currentYear,
+      months: []
+    };
+    this.yearlyExpenses.push(yearData);
+  }
+  
+  let monthData = yearData.months.find(m => m.month === currentMonth);
+  if (!monthData) {
+    monthData = {
+      month: currentMonth,
+      expenses: [],
+      totalAmount: 0,
+      Distribution: []
+    };
+    yearData.months.push(monthData);
+  }
+  
+  // Crear distribución equitativa inicial si no existe
+  if (!monthData.Distribution || monthData.Distribution.length === 0) {
+    const participantCount = this.participants.filter(p => p.status === 'accepted').length;
+    if (participantCount > 0) {
+      const equalPercentage = 100 / participantCount;
+      
+      monthData.Distribution = this.participants
+        .filter(p => p.status === 'accepted')
+        .map(participant => ({
+          userId: participant.userId,
+          name: participant.name || participant.email,
+          percentage: equalPercentage,
+          _id: new mongoose.Types.ObjectId()
+        }));
+    }
+  }
+  
+  // Crear asignaciones iniciales
+  if (monthData.Distribution && monthData.Distribution.length > 0) {
+    // Eliminar asignaciones existentes para este mes/año
+    await ParticipantAllocation.deleteMany({
+      sessionId: this._id,
+      year: currentYear,
+      month: currentMonth
+    });
+    
+    // Crear nuevas asignaciones
+    const allocations = monthData.Distribution.map(dist => ({
+      sessionId: this._id,
+      userId: dist.userId,
+      name: dist.name,
+      year: currentYear,
+      month: currentMonth,
+      percentage: dist.percentage,
+      amount: (monthData.totalAmount * dist.percentage) / 100,
+      totalAmount: monthData.totalAmount,
+      status: 'pending'
+    }));
+    
+    if (allocations.length > 0) {
+      const savedAllocations = await ParticipantAllocation.insertMany(allocations);
+      
+      // Sincronizar cada asignación con gastos personales
+      for (const allocation of savedAllocations) {
+        try {
+          await syncService.syncAllocationToPersonalExpense(allocation);
+        } catch (syncError) {
+          console.warn(`Error al sincronizar asignación ${allocation._id}:`, syncError.message);
+        }
+      }
+    }
+  }
+  
+  await this.save();
+};
+
+// Hook para inicializar asignaciones después de crear una sesión
+sharedSessionSchema.post('save', async function(doc) {
+  if (this.isNew) {
+    await this.initializeParticipantAllocations();
+  }
+});
 
 module.exports = mongoose.model('SharedSession', sharedSessionSchema);

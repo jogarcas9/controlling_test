@@ -22,7 +22,11 @@ import {
   Typography,
   Divider,
   InputAdornment,
-  Slide
+  Slide,
+  Grid,
+  Paper,
+  RadioGroup,
+  Radio
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -53,7 +57,8 @@ const ExpenseForm = ({
   loading = false,
   error = null,
   selectedMonth = null,
-  selectedYear = null
+  selectedYear = null,
+  currentUser = null
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -77,16 +82,36 @@ const ExpenseForm = ({
   };
   
   const [formData, setFormData] = useState({
-    name: initialData?.name || '',
-    amount: initialData?.amount || '',
-    category: initialData?.category || '',
+    name: '',
+    description: '',
+    amount: '',
+    category: '',
     date: getInitialDate(),
-    description: initialData?.description || '',
-    isRecurring: initialData?.isRecurring || false
+    paidBy: currentUser?.id || '',
+    expenseType: 'single', // 'single', 'recurring', o 'periodic'
+    periodStartDate: new Date(),
+    periodEndDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+    chargeDay: new Date().getDate() // Agregar día de cobro
   });
 
   const [formErrors, setFormErrors] = useState({});
-  const [showRecurringInfo, setShowRecurringInfo] = useState(formData.isRecurring);
+
+  // Función para resetear el formulario
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      amount: '',
+      category: '',
+      date: getInitialDate(),
+      paidBy: currentUser?.id || '',
+      expenseType: 'single',
+      periodStartDate: new Date(),
+      periodEndDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+      chargeDay: new Date().getDate()
+    });
+    setFormErrors({});
+  };
 
   // Actualizar la fecha cuando cambia el mes/año seleccionado
   useEffect(() => {
@@ -97,72 +122,96 @@ const ExpenseForm = ({
       
       setFormData(prev => ({
         ...prev,
-        date: newDate
+        date: newDate,
+        periodStartDate: newDate,
+        periodEndDate: newDate
       }));
     }
   }, [selectedMonth, selectedYear, initialData]);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    
-    // Validación específica para el campo amount
-    if (name === 'amount') {
-      // Permitir números, un punto o coma decimal
-      const regex = /^\d*[.,]?\d{0,2}$/;
-      
-      if (value === '' || regex.test(value)) {
-        // Almacenar el valor tal cual se ingresa
-        setFormData(prev => ({
-          ...prev,
-          amount: value
-        }));
-        setFormErrors(prev => ({
-          ...prev,
-          amount: ''
-        }));
-      }
-    } else {
+  useEffect(() => {
+    // Actualizar paidBy cuando cambie el currentUser
+    if (currentUser?.id && !formData.paidBy) {
       setFormData(prev => ({
         ...prev,
-        [name]: value
+        paidBy: currentUser.id
       }));
     }
+  }, [currentUser]);
 
-    setFormErrors(prev => ({
+  // Efecto para cargar datos iniciales cuando se abre el formulario
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        description: initialData.description || '',
+        amount: initialData.amount || '',
+        category: initialData.category || '',
+        date: initialData.date ? new Date(initialData.date) : getInitialDate(),
+        paidBy: initialData.paidBy || currentUser?.id || '',
+        expenseType: initialData.expenseType || 'single',
+        periodStartDate: initialData.periodStartDate ? new Date(initialData.periodStartDate) : new Date(),
+        periodEndDate: initialData.periodEndDate ? new Date(initialData.periodEndDate) : new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        chargeDay: initialData.chargeDay || new Date().getDate()
+      });
+    } else {
+      resetForm();
+    }
+  }, [initialData, currentUser]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
       ...prev,
-      [name]: ''
+      [name]: value
+    }));
+  };
+
+  const handleExpenseTypeChange = (e) => {
+    const newType = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      expenseType: newType,
+      // Si cambia a periódico, establecer fechas por defecto
+      periodStartDate: newType === 'periodic' ? new Date() : null,
+      periodEndDate: newType === 'periodic' ? new Date(new Date().setMonth(new Date().getMonth() + 1)) : null
     }));
   };
 
   const validateForm = () => {
     const errors = {};
-    if (!formData.name.trim()) {
-      errors.name = 'El nombre es requerido';
-    }
 
-    // Validar el monto - Mejorada la validación
-    try {
-      // Primero reemplazar la coma por punto si existe
-      const amountStr = formData.amount.toString().replace(',', '.');
-      const numericAmount = parseFloat(amountStr);
-      
-      if (!formData.amount) {
-        errors.amount = 'El monto es requerido';
-      } else if (isNaN(numericAmount)) {
-        errors.amount = 'El monto debe ser un número válido';
-      } else if (numericAmount <= 0) {
-        errors.amount = 'El monto debe ser mayor a 0';
-      }
-    } catch (error) {
-      errors.amount = 'El monto debe ser un número válido';
+    if (!formData.amount || isNaN(parseFloat(formData.amount))) {
+      errors.amount = 'El monto es requerido y debe ser un número';
     }
 
     if (!formData.category) {
       errors.category = 'La categoría es requerida';
     }
-    if (!formData.date) {
-      errors.date = 'La fecha es requerida';
+
+    if (!formData.name) {
+      errors.name = 'El nombre es requerido';
     }
+
+    if (formData.expenseType === 'periodic') {
+      if (!formData.periodStartDate) {
+        errors.periodStartDate = 'La fecha de inicio es requerida';
+      }
+      if (!formData.periodEndDate) {
+        errors.periodEndDate = 'La fecha de fin es requerida';
+      }
+      if (formData.periodStartDate && formData.periodEndDate && 
+          formData.periodStartDate > formData.periodEndDate) {
+        errors.periodEndDate = 'La fecha de fin debe ser posterior a la fecha de inicio';
+      }
+    }
+
+    if (formData.expenseType === 'recurring') {
+      if (!formData.chargeDay || formData.chargeDay < 1 || formData.chargeDay > 31) {
+        errors.chargeDay = 'El día de cobro debe estar entre 1 y 31';
+      }
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -194,53 +243,37 @@ const ExpenseForm = ({
         // Fijar a 2 decimales y convertir de nuevo a número
         amount = Number(amount.toFixed(2));
       } catch (error) {
-        console.error('Error procesando el monto:', error);
+        console.error('Error al procesar el monto:', error);
         setFormErrors(prev => ({
           ...prev,
-          amount: 'El monto debe ser un número válido'
+          amount: 'Error al procesar el monto'
         }));
         return;
       }
 
-      // Asegurar que todos los campos requeridos están presentes y formateados
       const expenseData = {
-        name: formData.name.trim(),
-        description: formData.description?.trim() || '',
-        amount: amount,
-        category: formData.category?.trim() || 'Otros',
-        date: validDate.toISOString(),
-        isRecurring: !!formData.isRecurring
+        ...formData,
+        amount,
+        date: validDate,
+        isPeriodic: formData.expenseType === 'periodic',
+        isRecurring: formData.expenseType === 'recurring',
+        // Solo incluir el día de cobro si es un gasto recurrente
+        chargeDay: formData.expenseType === 'recurring' ? parseInt(formData.chargeDay) : undefined
       };
 
-      console.log('=== DATOS DEL FORMULARIO ===');
-      console.log('formData original:', formData);
-      console.log('Monto original:', formData.amount);
-      console.log('Monto procesado:', amount);
-      console.log('Tipo de monto procesado:', typeof amount);
-      console.log('Datos finales a enviar:', expenseData);
-
       onSubmit(expenseData);
+      resetForm();
     }
   };
 
-  const getDayFromDate = (date) => {
-    const dateObj = new Date(date);
-    return dateObj.getDate();
-  };
-
   return (
-    <Dialog
-      open={open}
+    <Dialog 
+      open={open} 
       onClose={onClose}
       maxWidth="sm"
       fullWidth
       fullScreen={isMobile}
       TransitionComponent={Slide}
-      sx={{
-        '& .MuiDialog-paper': {
-          zIndex: theme.zIndex.modal
-        }
-      }}
       PaperProps={{
         elevation: isMobile ? 0 : 3,
         sx: {
@@ -250,8 +283,7 @@ const ExpenseForm = ({
           position: isMobile ? 'fixed' : 'static',
           bottom: 0,
           maxHeight: isMobile ? '90vh' : '95vh',
-          overflow: 'auto',
-          bgcolor: theme.palette.background.paper
+          overflow: 'auto'
         }
       }}
     >
@@ -369,69 +401,167 @@ const ExpenseForm = ({
               }}
             />
 
-            {/* Fecha */}
-            <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
-              <DatePicker
-                value={formData.date}
-                onChange={(newDate) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    date: newDate
-                  }));
-                }}
-                disabled={loading}
-                slotProps={{
-                  textField: {
-                    fullWidth: true,
-                    error: !!formErrors.date,
-                    helperText: formErrors.date,
-                    sx: {
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: 'background.paper',
-                        borderRadius: 2
-                      }
-                    }
-                  }
-                }}
-              />
-            </LocalizationProvider>
-
-            {/* Gasto Recurrente */}
-            <Box 
+            {/* Tipo de gasto */}
+            <Paper 
+              elevation={0} 
               sx={{ 
                 p: 2, 
                 bgcolor: alpha(theme.palette.info.main, 0.05),
                 borderRadius: 2
               }}
             >
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.isRecurring}
-                    onChange={(e) => {
-                      setFormData(prev => ({
-                        ...prev,
-                        isRecurring: e.target.checked
-                      }));
-                      setShowRecurringInfo(e.target.checked);
-                    }}
-                    disabled={loading}
-                    color="info"
-                  />
-                }
-                label="¿Es un gasto recurrente?"
-              />
-            </Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Tipo de gasto especial
+              </Typography>
+              <RadioGroup
+                name="expenseType"
+                value={formData.expenseType}
+                onChange={handleExpenseTypeChange}
+              >
+                <FormControlLabel 
+                  value="recurring" 
+                  control={<Radio color="info" />} 
+                  label="Gasto recurrente" 
+                />
+                <FormControlLabel 
+                  value="periodic" 
+                  control={<Radio color="info" />} 
+                  label="Gasto por período" 
+                />
+              </RadioGroup>
+            </Paper>
+
+            {/* Fecha para gasto puntual o recurrente */}
+            {formData.expenseType === 'single' && (
+              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
+                <DatePicker
+                  value={formData.date}
+                  onChange={(newDate) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      date: newDate
+                    }));
+                  }}
+                  disabled={loading}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      error: !!formErrors.date,
+                      helperText: formErrors.date,
+                      sx: {
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'background.paper',
+                          borderRadius: 2
+                        }
+                      }
+                    }
+                  }}
+                />
+              </LocalizationProvider>
+            )}
+
+            {/* Campo de día de cobro para gastos recurrentes */}
+            {formData.expenseType === 'recurring' && (
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Día de cobro mensual
+                </Typography>
+                <TextField
+                  fullWidth
+                  type="number"
+                  name="chargeDay"
+                  value={formData.chargeDay}
+                  onChange={handleChange}
+                  inputProps={{ min: 1, max: 31 }}
+                  placeholder="Día del mes (1-31)"
+                  error={!!formErrors.chargeDay}
+                  helperText={formErrors.chargeDay}
+                  disabled={loading}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: 'background.paper',
+                      borderRadius: 2
+                    }
+                  }}
+                />
+              </Box>
+            )}
+
+            {/* Fechas para gasto por período */}
+            {formData.expenseType === 'periodic' && (
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Fecha de inicio
+                  </Typography>
+                  <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
+                    <DatePicker
+                      value={formData.periodStartDate}
+                      onChange={(newDate) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          periodStartDate: newDate
+                        }));
+                      }}
+                      disabled={loading}
+                      slotProps={{
+                        textField: {
+                          fullWidth: true,
+                          error: !!formErrors.periodStartDate,
+                          helperText: formErrors.periodStartDate,
+                          sx: {
+                            '& .MuiOutlinedInput-root': {
+                              bgcolor: 'background.paper',
+                              borderRadius: 2
+                            }
+                          }
+                        }
+                      }}
+                    />
+                  </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Fecha de fin
+                  </Typography>
+                  <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
+                    <DatePicker
+                      value={formData.periodEndDate}
+                      onChange={(newDate) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          periodEndDate: newDate
+                        }));
+                      }}
+                      disabled={loading}
+                      slotProps={{
+                        textField: {
+                          fullWidth: true,
+                          error: !!formErrors.periodEndDate,
+                          helperText: formErrors.periodEndDate,
+                          sx: {
+                            '& .MuiOutlinedInput-root': {
+                              bgcolor: 'background.paper',
+                              borderRadius: 2
+                            }
+                          }
+                        }
+                      }}
+                    />
+                  </LocalizationProvider>
+                </Grid>
+              </Grid>
+            )}
 
             {/* Descripción */}
             <TextField
               fullWidth
+              multiline
+              rows={3}
               name="description"
               value={formData.description}
               onChange={handleChange}
               placeholder="Descripción (opcional)"
-              multiline
-              rows={3}
               disabled={loading}
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -441,48 +571,32 @@ const ExpenseForm = ({
               }}
             />
           </Box>
-
-          {error && (
-            <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
-              {error}
-            </Alert>
-          )}
         </Box>
       </DialogContent>
 
       <DialogActions 
         sx={{ 
-          p: 2, 
-          bgcolor: 'background.paper',
-          borderTop: '1px solid',
-          borderColor: 'divider',
-          position: 'sticky',
-          bottom: 0,
-          zIndex: 1
+          px: isMobile ? 2 : 3, 
+          pb: isMobile ? 2 : 3,
+          gap: 1
         }}
       >
         <Button 
           onClick={onClose}
           disabled={loading}
-          sx={{
-            borderRadius: 2,
-            px: 3
-          }}
+          variant="outlined"
+          sx={{ borderRadius: 2 }}
         >
           Cancelar
         </Button>
         <Button
           onClick={handleSubmit}
-          variant="contained"
-          color="info"
           disabled={loading}
+          variant="contained"
+          sx={{ borderRadius: 2 }}
           startIcon={loading ? <CircularProgress size={20} /> : null}
-          sx={{
-            borderRadius: 2,
-            px: 3
-          }}
         >
-          {loading ? 'Guardando...' : 'Guardar'}
+          {loading ? 'Guardando...' : (initialData ? 'Actualizar' : 'Guardar')}
         </Button>
       </DialogActions>
     </Dialog>
@@ -490,3 +604,4 @@ const ExpenseForm = ({
 };
 
 export default ExpenseForm;
+

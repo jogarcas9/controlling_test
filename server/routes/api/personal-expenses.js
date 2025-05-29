@@ -155,7 +155,30 @@ router.post('/',
     }
 
     try {
-      const { name, description, amount, category, date, type, isRecurring, recurringDay, tags, recurringMonths = 12 } = req.body;
+      const { 
+        name, 
+        description, 
+        amount, 
+        category, 
+        date, 
+        type, 
+        isRecurring, 
+        isPeriodic,
+        periodStartDate,
+        periodEndDate,
+        recurringDay, 
+        tags, 
+        recurringMonths = 12 
+      } = req.body;
+
+      console.log('Datos recibidos para crear gasto:', {
+        name,
+        amount,
+        category,
+        isPeriodic,
+        periodStartDate,
+        periodEndDate
+      });
 
       // Validar datos requeridos
       if (!name || !amount || !category) {
@@ -175,13 +198,22 @@ router.post('/',
         date: baseDate,
         type: type || 'expense',
         isRecurring: isRecurring || false,
+        isPeriodic: isPeriodic || false, // Asegurar que se establezca el valor de isPeriodic
+        periodStartDate: isPeriodic ? periodStartDate : null,
+        periodEndDate: isPeriodic ? periodEndDate : null,
         recurringDay: recurringDay || (baseDate.getDate()),
         tags
       });
 
+      console.log('Objeto de gasto antes de guardar:', {
+        isPeriodic: newExpense.isPeriodic,
+        periodStartDate: newExpense.periodStartDate,
+        periodEndDate: newExpense.periodEndDate
+      });
+
       // Guardar el gasto inicial
       const createdExpense = await newExpense.save();
-      console.log(`Gasto creado: ${createdExpense._id}, recurrente: ${isRecurring}`);
+      console.log(`Gasto creado: ${createdExpense._id}, periódico: ${createdExpense.isPeriodic}`);
       
       // Si es recurrente, crear instancias para meses futuros
       if (isRecurring) {
@@ -256,7 +288,7 @@ router.post('/',
       // Devolver el gasto creado inicialmente
       res.status(201).json(createdExpense);
     } catch (err) {
-      console.error('Error al crear gasto personal:', err.message);
+      console.error('Error al crear gasto personal:', err);
       res.status(500).json({ msg: 'Error del servidor', error: err.message });
     }
   }
@@ -496,6 +528,88 @@ router.delete('/:id', auth, async (req, res) => {
   } catch (err) {
     console.error('Error al eliminar gasto personal:', err.message);
     res.status(500).json({ msg: 'Error del servidor', error: err.message });
+  }
+});
+
+// @route   DELETE api/personal-expenses/:id/periodic
+// @desc    Eliminar un gasto periódico y todas sus instancias
+// @access  Private
+router.delete('/:id/periodic', auth, async (req, res) => {
+  try {
+    // Buscar el gasto inicial
+    const expense = await PersonalExpense.findById(req.params.id);
+    
+    if (!expense) {
+      return res.status(404).json({ msg: 'Gasto no encontrado' });
+    }
+
+    // Verificar que el gasto pertenece al usuario
+    if (expense.user.toString() !== req.user.id) {
+      return res.status(401).json({ msg: 'No autorizado' });
+    }
+
+    // Verificar que es un gasto periódico
+    if (!expense.isPeriodic) {
+      return res.status(400).json({ msg: 'Este gasto no es periódico' });
+    }
+
+    console.log('Eliminando gasto periódico:', {
+      id: expense._id,
+      name: expense.name,
+      startDate: expense.periodStartDate,
+      endDate: expense.periodEndDate
+    });
+
+    // Encontrar y eliminar todas las instancias del gasto periódico
+    const deleteResult = await PersonalExpense.deleteMany({
+      user: req.user.id,
+      name: expense.name,
+      amount: expense.amount,
+      category: expense.category,
+      isPeriodic: true,
+      $and: [
+        { date: { $gte: new Date(expense.periodStartDate) } },
+        { date: { $lte: new Date(expense.periodEndDate) } }
+      ]
+    });
+
+    console.log(`Eliminadas ${deleteResult.deletedCount} instancias del gasto periódico`);
+
+    // Notificar a los clientes del cambio
+    const io = req.app.get('io');
+    if (io) {
+      // Notificar al usuario específico
+      io.to(`user-${req.user.id}`).emit('expense-deleted', { 
+        _id: expense._id,
+        isPeriodic: true
+      });
+      
+      // Notificación general
+      io.emit('data-update', { 
+        type: 'personal-expense', 
+        action: 'delete',
+        userId: req.user.id
+      });
+      
+      // Enviar notificación
+      io.to(`user-${req.user.id}`).emit('notification', {
+        message: `Gasto periódico "${expense.name}" y todas sus instancias eliminados correctamente`,
+        severity: 'info',
+        updateTime: true
+      });
+    }
+
+    res.json({ 
+      msg: 'Gasto periódico y todas sus instancias eliminados',
+      count: deleteResult.deletedCount
+    });
+  } catch (err) {
+    console.error('Error al eliminar gasto periódico:', err);
+    res.status(500).json({ 
+      msg: 'Error del servidor', 
+      error: err.message,
+      details: 'Error al intentar eliminar el gasto periódico y sus instancias'
+    });
   }
 });
 

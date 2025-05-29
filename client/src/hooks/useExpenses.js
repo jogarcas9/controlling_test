@@ -201,7 +201,10 @@ export const useExpenses = (sessionId, month, year) => {
         category: expenseData.category?.trim() || 'Otros',
         date: expenseData.date ? new Date(expenseData.date).toISOString() : new Date().toISOString(),
         paidBy: validPaidBy,
-        isRecurring: !!expenseData.isRecurring
+        isRecurring: expenseData.expenseType === 'recurring',
+        isPeriodic: expenseData.expenseType === 'periodic',
+        periodStartDate: expenseData.expenseType === 'periodic' ? expenseData.periodStartDate : null,
+        periodEndDate: expenseData.expenseType === 'periodic' ? expenseData.periodEndDate : null
       };
       
       console.log('\nDATOS FINALES A ENVIAR:');

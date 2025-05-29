@@ -41,6 +41,12 @@ import {
   Repeat as RepeatIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
+import { 
+  EXPENSE_CATEGORIES,
+  formatAmount,
+  getCategoryColor,
+  getExpenseTypeLabel
+} from '../../utils/expenseUtils';
 
 const ExpensesTable = ({
   expenses,
@@ -313,6 +319,11 @@ const ExpensesTable = ({
               bgcolor: alpha(theme.palette.primary.main, 0.05),
               borderBottom: `2px solid ${alpha(theme.palette.primary.main, 0.1)}`
             }}>{t('recurring')}</TableCell>
+            <TableCell sx={{ 
+              fontWeight: 'bold',
+              bgcolor: alpha(theme.palette.primary.main, 0.05),
+              borderBottom: `2px solid ${alpha(theme.palette.primary.main, 0.1)}`
+            }}>{t('type')}</TableCell>
             <TableCell align="center" sx={{ 
               fontWeight: 'bold',
               bgcolor: alpha(theme.palette.primary.main, 0.05),
@@ -321,174 +332,191 @@ const ExpensesTable = ({
           </TableRow>
         </TableHead>
         <TableBody>
-          {expenses.map((expense) => (
-            <React.Fragment key={expense.id}>
-              <TableRow
-                sx={{
-                  '&:hover': {
-                    bgcolor: alpha(theme.palette.primary.main, 0.05)
-                  },
-                  cursor: 'pointer'
-                }}
-                onClick={() => handleExpandClick(expense.id)}
-              >
-                <TableCell>
-                  <Typography variant="body2" fontWeight="medium">
-                    {expense.name || expense.description}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={expense.category}
-                    size="small"
-                    sx={{
-                      bgcolor: alpha(getCategoryColor(expense.category), 0.1),
-                      color: getCategoryColor(expense.category),
-                      fontWeight: 'medium',
-                      borderRadius: 2
-                    }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <CalendarIcon fontSize="small" color="action" />
-                    <Typography variant="body2">{formatDate(expense.date)}</Typography>
-                  </Box>
-                </TableCell>
-                <TableCell>{formatAmount(expense.amount, expense.type)}</TableCell>
-                <TableCell>
-                  {expense.isRecurring ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Chip 
-                        label={t('yes')} 
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                        icon={<RepeatIcon />}
-                      />
-                    </Box>
-                  ) : (
-                    <Chip 
-                      label={t('no')} 
+          {expenses.map((expense) => {
+            const currentDate = new Date(selectedYear, selectedMonth);
+            const typeLabel = getExpenseTypeLabel(expense, currentDate);
+            
+            return (
+              <React.Fragment key={expense.id}>
+                <TableRow
+                  sx={{
+                    '&:hover': {
+                      bgcolor: alpha(theme.palette.primary.main, 0.05)
+                    },
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => handleExpandClick(expense.id)}
+                >
+                  <TableCell>
+                    <Typography variant="body2" fontWeight="medium">
+                      {expense.name || expense.description}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={expense.category}
                       size="small"
-                      color="default"
+                      sx={{
+                        bgcolor: alpha(getCategoryColor(expense.category), 0.1),
+                        color: getCategoryColor(expense.category),
+                        fontWeight: 'medium',
+                        borderRadius: 2
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <CalendarIcon fontSize="small" color="action" />
+                      <Typography variant="body2">{formatDate(expense.date)}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>{formatAmount(expense.amount, expense.type)}</TableCell>
+                  <TableCell>
+                    {expense.isRecurring ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip 
+                          label={t('yes')} 
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                          icon={<RepeatIcon />}
+                        />
+                      </Box>
+                    ) : (
+                      <Chip 
+                        label={t('no')} 
+                        size="small"
+                        color="default"
+                        variant="outlined"
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Chip
+                      size="small"
+                      label={typeLabel}
+                      color={
+                        expense.isRecurring ? "primary" :
+                        expense.isPeriodic ? "info" :
+                        "default"
+                      }
                       variant="outlined"
                     />
-                  )}
-                </TableCell>
-                <TableCell align="center">
-                  <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
-                    <Tooltip title={t('details')}>
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenDetails(expense);
-                        }}
-                      >
-                        <InfoIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    {/* Solo mostrar botones de edición y eliminación si NO es un gasto de sesión compartida */}
-                    {!expense.isFromSharedSession && (
-                      <>
-                        <Tooltip title={t('edit')}>
-                          <IconButton 
-                            size="small" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEdit(expense);
-                            }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title={t('delete')}>
-                          <IconButton 
-                            size="small" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDelete(expense.id);
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </>
-                    )}
-                    <Tooltip title={expandedRows[expense.id] ? t('collapse') : t('expand')}>
-                      <IconButton 
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleExpandClick(expense.id);
-                        }}
-                      >
-                        {expandedRows[expense.id] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell colSpan={7} style={{ paddingTop: 0, paddingBottom: 0, border: 0 }}>
-                  <Collapse in={expandedRows[expense.id]} timeout="auto" unmountOnExit>
-                    <Box sx={{ py: 2, px: 3 }}>
-                      <Typography variant="subtitle2" gutterBottom component="div">
-                        {t('details')}
-                      </Typography>
-                      <Box sx={{ mb: 2 }}>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2">
-                              <strong>{t('description')}:</strong> {expense.description}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2">
-                              <strong>{t('category')}:</strong> {expense.category}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2">
-                              <strong>{t('date')}:</strong> {formatDate(expense.date)}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2">
-                              <strong>{t('type')}:</strong> {expense.type === 'income' ? t('income') : t('expense')}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2">
-                              <strong>{t('amount')}:</strong> {formatAmount(expense.amount, expense.type)}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2">
-                              <strong>{t('recurring')}:</strong> {expense.isRecurring ? t('yes') : t('no')}
-                            </Typography>
-                          </Grid>
-                          {expense.sessionReference && (
-                            <Grid item xs={12}>
-                              <Typography variant="body2">
-                                <strong>{t('sharedSession')}:</strong> {expense.sessionReference.sessionName || '-'}
-                              </Typography>
-                              {expense.sessionReference.percentage && (
-                                <Typography variant="body2">
-                                  <strong>{t('percentage')}:</strong> {expense.sessionReference.percentage}%
-                                </Typography>
-                              )}
-                            </Grid>
-                          )}
-                        </Grid>
-                      </Box>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                      <Tooltip title={t('details')}>
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDetails(expense);
+                          }}
+                        >
+                          <InfoIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      {/* Solo mostrar botones de edición y eliminación si NO es un gasto de sesión compartida */}
+                      {!expense.isFromSharedSession && (
+                        <>
+                          <Tooltip title={t('edit')}>
+                            <IconButton 
+                              size="small" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEdit(expense);
+                              }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title={t('delete')}>
+                            <IconButton 
+                              size="small" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(expense.id);
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      )}
+                      <Tooltip title={expandedRows[expense.id] ? t('collapse') : t('expand')}>
+                        <IconButton 
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExpandClick(expense.id);
+                          }}
+                        >
+                          {expandedRows[expense.id] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                        </IconButton>
+                      </Tooltip>
                     </Box>
-                  </Collapse>
-                </TableCell>
-              </TableRow>
-            </React.Fragment>
-          ))}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={7} style={{ paddingTop: 0, paddingBottom: 0, border: 0 }}>
+                    <Collapse in={expandedRows[expense.id]} timeout="auto" unmountOnExit>
+                      <Box sx={{ py: 2, px: 3 }}>
+                        <Typography variant="subtitle2" gutterBottom component="div">
+                          {t('details')}
+                        </Typography>
+                        <Box sx={{ mb: 2 }}>
+                          <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2">
+                                <strong>{t('description')}:</strong> {expense.description}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2">
+                                <strong>{t('category')}:</strong> {expense.category}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2">
+                                <strong>{t('date')}:</strong> {formatDate(expense.date)}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2">
+                                <strong>{t('type')}:</strong> {expense.type === 'income' ? t('income') : t('expense')}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2">
+                                <strong>{t('amount')}:</strong> {formatAmount(expense.amount, expense.type)}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2">
+                                <strong>{t('recurring')}:</strong> {expense.isRecurring ? t('yes') : t('no')}
+                              </Typography>
+                            </Grid>
+                            {expense.sessionReference && (
+                              <Grid item xs={12}>
+                                <Typography variant="body2">
+                                  <strong>{t('sharedSession')}:</strong> {expense.sessionReference.sessionName || '-'}
+                                </Typography>
+                                {expense.sessionReference.percentage && (
+                                  <Typography variant="body2">
+                                    <strong>{t('percentage')}:</strong> {expense.sessionReference.percentage}%
+                                  </Typography>
+                                )}
+                              </Grid>
+                            )}
+                          </Grid>
+                        </Box>
+                      </Box>
+                    </Collapse>
+                  </TableCell>
+                </TableRow>
+              </React.Fragment>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>

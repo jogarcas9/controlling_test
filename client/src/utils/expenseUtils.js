@@ -86,4 +86,46 @@ export const generateExpenseKey = (expense) => {
   const timestamp = new Date(expense.date).getTime();
   const randomSuffix = Math.random().toString(36).substring(7);
   return `${expense._id || 'new'}-${timestamp}-${expense.amount}-${randomSuffix}`;
+};
+
+/**
+ * Calcula el tipo de gasto y los pagos pendientes
+ * @param {Object} expense - El gasto a evaluar
+ * @param {Date} currentDate - La fecha actual para calcular los pagos pendientes
+ * @returns {string} - El tipo de gasto formateado (PT, REC, P#)
+ */
+export const getExpenseTypeLabel = (expense, currentDate = new Date()) => {
+  if (!expense) return 'PT';
+
+  // Si es recurrente, devolver REC
+  if (expense.isRecurring) {
+    return 'REC';
+  }
+
+  // Si es periódico, calcular los pagos pendientes
+  if (expense.isPeriodic && expense.periodStartDate && expense.periodEndDate) {
+    const startDate = new Date(expense.periodStartDate);
+    const endDate = new Date(expense.periodEndDate);
+    
+    // Si la fecha actual es posterior a la fecha de fin, no hay pagos pendientes
+    if (currentDate > endDate) {
+      return 'P0';
+    }
+
+    // Si la fecha actual es anterior a la fecha de inicio, mostrar el total de pagos
+    if (currentDate < startDate) {
+      const totalMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 
+        + (endDate.getMonth() - startDate.getMonth()) + 1;
+      return `P${totalMonths}`;
+    }
+
+    // Calcular los meses restantes desde la fecha actual hasta la fecha de fin
+    const remainingMonths = (endDate.getFullYear() - currentDate.getFullYear()) * 12 
+      + (endDate.getMonth() - currentDate.getMonth()) + 1;
+
+    return `P${Math.max(0, remainingMonths)}`;
+  }
+
+  // Si no es ni recurrente ni periódico, es puntual
+  return 'PT';
 }; 

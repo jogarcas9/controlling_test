@@ -133,8 +133,8 @@ const Sidebar = ({
 
   const menuItems = [
     { path: '/dashboard', icon: <DashboardIcon />, text: t('dashboard') },
-    { path: '/personal', icon: <PersonIcon />, text: t('personal') },
-    { path: '/shared', icon: <GroupIcon />, text: t('shared') },
+    { path: '/personal', icon: <PersonIcon />, text: t('personalExpenses') },
+    { path: '/shared', icon: <GroupIcon />, text: t('sharedExpenses') },
     { path: '/reports', icon: <AssessmentIcon />, text: t('reports') },
     { path: '/settings', icon: <SettingsIcon />, text: t('settings') },
   ];

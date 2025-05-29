@@ -240,113 +240,43 @@ export const removeParticipant = async (sessionId, participantId) => {
 
 export const addExpenseToSession = async (sessionId, expenseData) => {
   try {
-    console.log('\n=== INICIO addExpenseToSession ===');
-    console.log('SessionId:', sessionId);
-    console.log('\nDATOS DEL GASTO RECIBIDOS DEL FORMULARIO:');
-    console.log(JSON.stringify(expenseData, null, 2));
-    console.log('\nTIPOS DE DATOS:');
-    console.log('- Tipo de amount:', typeof expenseData.amount);
-    console.log('- Valor de amount:', expenseData.amount);
-    console.log('- Tipo de name:', typeof expenseData.name);
-    console.log('- Tipo de date:', typeof expenseData.date);
-    console.log('- Tipo de category:', typeof expenseData.category);
-    console.log('- Tipo de isRecurring:', typeof expenseData.isRecurring);
-    
-    // Validar datos requeridos
-    if (!expenseData.name || typeof expenseData.name !== 'string' || expenseData.name.trim().length === 0) {
-      console.error('Error de validación: nombre inválido');
+    // Validaciones básicas
+    if (!expenseData.name?.trim()) {
       throw new Error('El nombre del gasto es requerido y no puede estar vacío');
     }
 
-    // Asegurar que amount es un número
-    let amount;
-    try {
-      if (typeof expenseData.amount === 'string') {
-        // Si es string, intentar convertir (puede venir con coma decimal)
-        const cleanAmount = expenseData.amount.replace(',', '.');
-        amount = parseFloat(cleanAmount);
-      } else {
-        amount = Number(expenseData.amount);
-      }
-      
-      // Asegurar que tenemos un número válido con 2 decimales
-      if (isNaN(amount)) {
-        throw new Error('El monto debe ser un número válido');
-      }
-      amount = Number(amount.toFixed(2));
-    } catch (error) {
-      console.error('Error al procesar el monto:', error);
-      throw new Error('El monto debe ser un número válido');
+    // Procesar el monto una sola vez
+    const amount = typeof expenseData.amount === 'number' 
+      ? Number(expenseData.amount.toFixed(2))
+      : Number(expenseData.amount.replace(',', '.').trim());
+
+    if (isNaN(amount) || amount <= 0) {
+      throw new Error('El monto debe ser un número positivo');
     }
 
-    console.log('\nMONTO PROCESADO:');
-    console.log('- Monto después de conversión:', amount);
-    console.log('- Tipo después de conversión:', typeof amount);
-
-    // Validar el monto
-    if (expenseData.amount === undefined || expenseData.amount === '') {
-      console.error('Error de validación: monto faltante');
-      throw new Error('El monto es requerido');
-    }
-    if (isNaN(amount)) {
-      console.error('Error de validación: monto no es un número', expenseData.amount);
-      throw new Error('El monto debe ser un número válido');
-    }
-    if (amount <= 0) {
-      console.error('Error de validación: monto no positivo', amount);
-      throw new Error('El monto debe ser mayor a 0');
-    }
-
-    if (!expenseData.date) {
-      console.error('Error de validación: fecha faltante');
-      throw new Error('La fecha es requerida');
-    }
-
-    // Formatear los datos del gasto
+    // Formatear los datos del gasto de manera eficiente
     const formattedExpense = {
       name: expenseData.name.trim(),
-      description: expenseData.description ? expenseData.description.trim() : '',
-      amount: amount,
+      description: expenseData.description?.trim() || '',
+      amount,
       date: new Date(expenseData.date).toISOString(),
-      category: expenseData.category ? expenseData.category.trim() : 'Otros',
+      category: expenseData.category?.trim() || 'Otros',
       paidBy: expenseData.paidBy,
-      isRecurring: !!expenseData.isRecurring
+      isRecurring: Boolean(expenseData.isRecurring),
+      isPeriodic: Boolean(expenseData.isPeriodic),
+      chargeDay: expenseData.isRecurring ? parseInt(expenseData.chargeDay) : undefined,
+      periodStartDate: expenseData.isPeriodic ? new Date(expenseData.periodStartDate).toISOString() : null,
+      periodEndDate: expenseData.isPeriodic ? new Date(expenseData.periodEndDate).toISOString() : null
     };
 
-    console.log('\nCOLECCIÓN FINAL A GUARDAR:');
-    console.log(JSON.stringify(formattedExpense, null, 2));
-    console.log('\nVALIDACIÓN FINAL:');
-    console.log('- Tipo de amount final:', typeof formattedExpense.amount);
-    console.log('- Valor de amount final:', formattedExpense.amount);
-    console.log('- Es amount un número válido:', !isNaN(formattedExpense.amount));
-    console.log('- Fecha válida:', new Date(formattedExpense.date).toISOString());
-
-    // Verificar que la fecha es válida
-    const dateTest = new Date(formattedExpense.date);
-    if (isNaN(dateTest.getTime())) {
-      console.error('Error: La fecha formateada no es válida');
-      throw new Error('La fecha proporcionada no es válida');
-    }
-
-    // Enviar la petición al servidor asegurando que los datos van en el formato correcto
-    console.log('\nENVIANDO PETICIÓN AL SERVIDOR:');
-    console.log('URL:', `/api/shared-sessions/${sessionId}/expenses`);
-    console.log('Datos completos:', { expense: formattedExpense });
-    
+    // Enviar la petición al servidor
     const response = await api.post(`/api/shared-sessions/${sessionId}/expenses`, {
       expense: formattedExpense
     });
 
-    console.log('\nRESPUESTA DEL SERVIDOR:', response.data);
-    console.log('=== FIN addExpenseToSession ===\n');
     return response.data;
   } catch (error) {
-    console.error('=== Error en addExpenseToSession ===');
-    console.error('Detalles del error:', {
-      mensaje: error.message,
-      respuesta: error.response?.data,
-      estado: error.response?.status
-    });
+    console.error('Error en addExpenseToSession:', error.message);
     throw error;
   }
 };
@@ -398,13 +328,45 @@ export const syncToPersonal = async (sessionId) => {
 export const updateDistribution = async (sessionId, distribution, currentMonth, currentYear) => {
   try {
     console.log(`Actualizando distribución para la sesión ${sessionId}`);
-    const response = await api.put(`/api/shared-sessions/${sessionId}/update-distribution`, {
-      distribution,
+    
+    // Validar datos antes de enviar
+    if (!sessionId) throw new Error('ID de sesión no proporcionado');
+    if (!distribution || !Array.isArray(distribution)) throw new Error('Distribución inválida');
+    if (currentMonth === undefined || currentMonth === null) throw new Error('Mes no especificado');
+    if (currentYear === undefined || currentYear === null) throw new Error('Año no especificado');
+    
+    // Validar porcentajes
+    const totalPercentage = distribution.reduce((sum, item) => sum + (Number(item.percentage) || 0), 0);
+    if (Math.abs(totalPercentage - 100) > 0.01) {
+      throw new Error(`La suma de porcentajes debe ser 100%. Actual: ${totalPercentage}%`);
+    }
+    
+    // Asegurar que todos los campos necesarios estén presentes
+    const validatedDistribution = distribution.map(item => ({
+      userId: item.userId,
+      name: item.name || '',
+      percentage: Number(item.percentage) || 0
+    }));
+    
+    console.log('Enviando datos validados:', {
+      distribution: validatedDistribution,
       currentMonth,
       currentYear
     });
+
+    const response = await api.put(`/api/shared-sessions/${sessionId}/update-distribution`, {
+      distribution: validatedDistribution,
+      currentMonth,
+      currentYear
+    });
+
+    if (!response.data || !response.data.success) {
+      throw new Error(response.data?.error || 'Error desconocido al actualizar la distribución');
+    }
+
     return response.data;
   } catch (error) {
+    console.error('Error en updateDistribution:', error);
     return handleApiError('updateDistribution', error);
   }
 };

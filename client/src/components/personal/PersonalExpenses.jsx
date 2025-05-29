@@ -33,7 +33,9 @@ import {
   Fab,
   Divider,
   Checkbox,
-  Slide
+  Slide,
+  RadioGroup,
+  Radio
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -81,7 +83,8 @@ import {
   formatAmount,
   isSharedExpense,
   generateExpenseKey,
-  getCategoryColor
+  getCategoryColor,
+  getExpenseTypeLabel
 } from '../../utils/expenseUtils';
 
 // Renombrando variables no utilizadas para evitar advertencias
@@ -109,7 +112,11 @@ const INITIAL_EXPENSE_DATA = {
   category: '',
   date: format(new Date(), 'yyyy-MM-dd'),
   type: 'expense',
+  expenseType: 'single',
   isRecurring: false,
+  isPeriodic: false,
+  periodStartDate: new Date(),
+  periodEndDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
   recurringDay: ''
 };
 
@@ -313,6 +320,26 @@ const PersonalExpenses = () => {
     }));
   }, []);
 
+  const handleExpenseTypeChange = useCallback((e) => {
+    const type = e.target.value;
+    console.log('Cambiando tipo de gasto a:', type); // Debug log
+
+    setExpenseData(prev => {
+      const newData = {
+        ...prev,
+        expenseType: type,
+        isRecurring: type === 'recurring',
+        isPeriodic: type === 'periodic',
+        // Resetear campos específicos según el tipo
+        recurringDay: type === 'recurring' ? prev.recurringDay : '',
+        periodStartDate: type === 'periodic' ? new Date() : null,
+        periodEndDate: type === 'periodic' ? new Date(new Date().setMonth(new Date().getMonth() + 1)) : null
+      };
+      console.log('Nuevo estado del gasto después del cambio de tipo:', newData); // Debug log
+      return newData;
+    });
+  }, []);
+
   const _handleRecurringChange = useCallback((e) => {
     const isRecurring = e.target.checked;
     setExpenseData(prev => ({
@@ -348,106 +375,56 @@ const PersonalExpenses = () => {
   }, []);
 
   const _handleSubmit = async (e) => {
-    e?.preventDefault();
+    e.preventDefault();
     
-    // Control estricto para prevenir múltiples envíos
-    if (submitting) {
-      console.log('Envío en proceso, evitando duplicación');
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-
-    const payload = {
-      amount: parseFloat(expenseData.amount),
-      category: expenseData.category,
-      name: expenseData.name || expenseData.description,
-      description: expenseData.description,
-      date: new Date(expenseData.date),
-      type: expenseData.type,
-      isRecurring: expenseData.isRecurring,
-      recurringDay: expenseData.isRecurring ? 
-        (expenseData.recurringDay || new Date(expenseData.date).getDate()) : 
-        null
-    };
-
     try {
-      // Validaciones adicionales para prevenir datos inválidos
-      if (!payload.amount || isNaN(payload.amount)) {
-        throw new Error('El importe no es válido');
-      }
-      if (!payload.category) {
-        throw new Error('La categoría es requerida');
-      }
-      if (!payload.date || isNaN(payload.date.getTime())) {
-        throw new Error('La fecha no es válida');
-      }
-
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No hay token de autenticación');
-
-      let response;
-      if (selectedExpense) {
-        response = await axios.put(
-          `/api/personal-expenses/${selectedExpense._id}`,
-          payload,
-          { 
-            headers: { 'x-auth-token': token },
-            timeout: 10000
-          }
-        );
-      } else {
-        response = await axios.post(
-          '/api/personal-expenses',
-          payload,
-          { 
-            headers: { 'x-auth-token': token },
-            timeout: 10000
-          }
-        );
-      }
-
-      // Solo proceder si la respuesta fue exitosa
-      if (response?.status === 200 || response?.status === 201) {
-        closeDialog();
-        // Usar Promise para asegurar el orden correcto de operaciones
-        await new Promise(resolve => setTimeout(resolve, 100));
-        await fetchExpenses();
-      }
-    } catch (err) {
-      console.error('Error al guardar:', err);
+      setSubmitting(true);
+      console.log('Datos del formulario antes de enviar:', expenseData); // Debug log
       
-      if (err.response?.status === 409) {
-        const confirm = window.confirm(
-          'Ya existe un gasto similar para esta fecha. ¿Deseas crearlo de todos modos?'
-        );
-        
-        if (confirm) {
-          try {
-            const token = localStorage.getItem('token');
-            const response = await axios.post(
-              '/api/personal-expenses',
-              { ...payload, forceSave: true },
-              { 
-                headers: { 'x-auth-token': token },
-                timeout: 10000
-              }
-            );
-            
-            if (response?.status === 200 || response?.status === 201) {
-              closeDialog();
-              await new Promise(resolve => setTimeout(resolve, 100));
-              await fetchExpenses();
-              return;
-            }
-          } catch (retryErr) {
-            setError('Error al guardar el gasto: ' + (retryErr.response?.data?.msg || 'Error desconocido'));
-          }
-        }
-      } else {
-        setError('Error al guardar el gasto: ' + (err.response?.data?.msg || err.message || 'Error desconocido'));
+      // Validar campos requeridos
+      if (!expenseData.amount || !expenseData.name || !expenseData.category) {
+        setError('Por favor complete todos los campos requeridos');
+        return;
       }
+
+      // Validar fechas para gastos por período
+      if (expenseData.expenseType === 'periodic') {
+        if (!expenseData.periodStartDate || !expenseData.periodEndDate) {
+          setError('Por favor seleccione las fechas del período');
+          return;
+        }
+        if (new Date(expenseData.periodStartDate) > new Date(expenseData.periodEndDate)) {
+          setError('La fecha de inicio debe ser anterior a la fecha de fin');
+          return;
+        }
+
+        // Asegurarnos que isPeriodic esté establecido correctamente
+        expenseData.isPeriodic = true;
+        console.log('Gasto periódico confirmado, isPeriodic:', expenseData.isPeriodic); // Debug log
+      }
+
+      const expenseToSave = {
+        ...expenseData,
+        amount: parseFloat(expenseData.amount),
+        date: expenseData.date,
+        expenseType: expenseData.expenseType,
+        isPeriodic: expenseData.expenseType === 'periodic', // Asegurar que se establezca correctamente
+        isRecurring: expenseData.expenseType === 'recurring'
+      };
+
+      console.log('Datos finales a guardar:', expenseToSave); // Debug log
+
+      if (selectedExpense) {
+        await updatePersonalExpense(selectedExpense._id, expenseToSave);
+      } else {
+        await createPersonalExpense(expenseToSave);
+      }
+
+      closeDialog();
+      await fetchExpenses();
+    } catch (error) {
+      console.error('Error al guardar el gasto:', error);
+      setError(error.message || 'Error al guardar el gasto');
     } finally {
       setSubmitting(false);
     }
@@ -470,45 +447,53 @@ const PersonalExpenses = () => {
       }
 
       let confirmMessage = '¿Estás seguro de que deseas eliminar este gasto?';
-      let deleteAllRecurring = false;
       
-      // Si es un gasto recurrente, preguntar si quiere eliminar todas las instancias
-      if (expenseToDelete?.isRecurring) {
-        const isIncome = expenseToDelete.type === 'income';
-        const confirmRecurring = window.confirm(
-          `¿Deseas eliminar este ${isIncome ? 'ingreso' : 'gasto'} recurrente y todas sus instancias futuras?`
-        );
-        
-        if (confirmRecurring) {
-          deleteAllRecurring = true;
-          confirmMessage = `¿Estás seguro? Esto eliminará este ${isIncome ? 'ingreso' : 'gasto'} y todas sus instancias futuras.`;
+      // Si es un gasto periódico, confirmar la eliminación de todas las instancias
+      if (expenseToDelete.isPeriodic) {
+        confirmMessage = '¿Deseas eliminar este gasto y todas sus cuotas periódicas (incluyendo meses anteriores y futuros)?';
+        if (!window.confirm(confirmMessage)) {
+          return;
         }
-      }
-      
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
 
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No hay token de autenticación');
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No hay token de autenticación');
 
-      // Construir URL con los parámetros de eliminación según corresponda
-      let deleteUrl = `/api/personal-expenses/${id}`;
-      if (deleteAllRecurring) {
-        deleteUrl += `?deleteAllRecurring=true&deleteFutureOnly=true`;
+        console.log('Eliminando gasto periódico:', {
+          id: expenseToDelete._id,
+          name: expenseToDelete.name,
+          startDate: expenseToDelete.periodStartDate,
+          endDate: expenseToDelete.periodEndDate
+        });
+
+        // Usar la nueva ruta específica para eliminar gastos periódicos
+        const response = await axios.delete(`/api/personal-expenses/${id}/periodic`, {
+          headers: { 'x-auth-token': token }
+        });
+
+        console.log('Respuesta del servidor:', response.data);
+        showNotification(`Gasto periódico y todas sus cuotas eliminados correctamente (${response.data.count} instancias)`, 'success');
+      } else {
+        // Para gastos no periódicos, mantener el comportamiento actual
+        if (!window.confirm(confirmMessage)) {
+          return;
+        }
+
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No hay token de autenticación');
+
+        await axios.delete(`/api/personal-expenses/${id}`, {
+          headers: { 'x-auth-token': token }
+        });
+
+        showNotification('Gasto eliminado correctamente', 'success');
       }
-
-      await axios.delete(deleteUrl, {
-        headers: { 'x-auth-token': token }
-      });
 
       // Recargar la lista de gastos
       await fetchExpenses();
-      
-      // Mostrar mensaje de éxito
       setError(null);
     } catch (err) {
       console.error('Error al eliminar:', err);
+      console.log('Respuesta del servidor:', err.response?.data);
       setError('Error al eliminar el gasto: ' + (err.response?.data?.msg || 'Error desconocido'));
     }
   };
@@ -760,7 +745,7 @@ const PersonalExpenses = () => {
               <TableCell align="center">Categoría</TableCell>
               <TableCell align="center">Fecha</TableCell>
               <TableCell align="center">Monto</TableCell>
-              <TableCell align="center">Recurrente</TableCell>
+              <TableCell align="center">Tipo</TableCell>
               <TableCell align="center">Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -789,6 +774,9 @@ const PersonalExpenses = () => {
                 const icon = CATEGORY_ICONS[expense.category] || <MoreHorizIcon fontSize="small" />;
                 const isIncome = expense.type === 'income';
                 const isShared = expense.isFromSharedSession === true;
+                // Calcular el tipo de gasto con la fecha seleccionada
+                const currentDate = new Date(selectedYear, selectedMonth);
+                const typeLabel = getExpenseTypeLabel(expense, currentDate);
 
                 return (
                   <TableRow 
@@ -837,22 +825,16 @@ const PersonalExpenses = () => {
                       </Box>
                     </TableCell>
                     <TableCell align="center">
-                      {expense.isRecurring ? (
-                        <Chip
-                          size="small"
-                          icon={<TimerIcon fontSize="small" />}
-                          label="Sí"
-                          color="primary"
-                          variant="outlined"
-                        />
-                      ) : (
-                        <Chip
-                          size="small"
-                          label="No"
-                          variant="outlined"
-                          color="default"
-                        />
-                      )}
+                      <Chip
+                        size="small"
+                        label={typeLabel}
+                        color={
+                          expense.isRecurring ? "primary" :
+                          expense.isPeriodic ? "info" :
+                          "default"
+                        }
+                        variant="outlined"
+                      />
                     </TableCell>
                     <TableCell align="center">
                       {/* Solo mostrar botones si no es un gasto de sesión compartida */}
@@ -1128,8 +1110,7 @@ const PersonalExpenses = () => {
             position: isMobile ? 'fixed' : 'static',
             bottom: 0,
             maxHeight: isMobile ? '90vh' : '95vh',
-            overflow: 'auto',
-            bgcolor: theme.palette.background.paper
+            overflow: 'auto'
           }
         }}
       >
@@ -1138,9 +1119,7 @@ const PersonalExpenses = () => {
             position: 'sticky',
             top: 0,
             zIndex: 1,
-            bgcolor: expenseData.type === 'income' 
-              ? alpha(theme.palette.success.main, 0.1)
-              : alpha(theme.palette.error.main, 0.1),
+            bgcolor: alpha(theme.palette[expenseData.type === 'income' ? 'success' : 'error'].main, 0.1),
             borderRadius: isMobile ? '16px 16px 0 0' : '4px 4px 0 0'
           }}
         >
@@ -1150,26 +1129,19 @@ const PersonalExpenses = () => {
               justifyContent: 'space-between',
               alignItems: 'center',
               py: 2,
-              color: expenseData.type === 'income' 
-                ? theme.palette.success.main
-                : theme.palette.error.main
+              color: theme.palette[expenseData.type === 'income' ? 'success' : 'error'].main
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {expenseData.type === 'income' 
-                ? <ArrowUpwardIcon color="success" /> 
-                : <ArrowDownwardIcon color="error" />}
               <Typography variant="h6">
-                {expenseData.type === 'income' ? 'Nuevo Ingreso' : 'Nuevo Gasto'}
+                {selectedExpense ? 'Editar' : 'Nuevo'} {expenseData.type === 'income' ? 'Ingreso' : 'Gasto'}
               </Typography>
             </Box>
             <IconButton
               edge="end"
               onClick={closeDialog}
               sx={{
-                color: expenseData.type === 'income' 
-                  ? theme.palette.success.main
-                  : theme.palette.error.main
+                color: theme.palette[expenseData.type === 'income' ? 'success' : 'error'].main
               }}
             >
               <CloseIcon />
@@ -1179,7 +1151,7 @@ const PersonalExpenses = () => {
 
         <DialogContent sx={{ p: isMobile ? 2 : 3, pt: isMobile ? 3 : 3 }}>
           <Box component="form" onSubmit={_handleSubmit} ref={_formRef}>
-            <Grid container spacing={isMobile ? 2 : 3}>
+            <Grid container spacing={2}>
               {/* Importe */}
               <Grid item xs={12}>
                 <TextField
@@ -1278,33 +1250,6 @@ const PersonalExpenses = () => {
                   }}
                 />
               </Grid>
-              
-              {/* Fecha */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  name="date"
-                  type="date"
-                  value={expenseData.date}
-                  onChange={_handleExpenseChange}
-                  disabled={submitting}
-                  required
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <CalendarTodayIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      bgcolor: 'background.paper',
-                      borderRadius: 2
-                    }
-                  }}
-                />
-              </Grid>
 
               {/* Recurrente */}
               <Grid item xs={12}>
@@ -1312,33 +1257,146 @@ const PersonalExpenses = () => {
                   elevation={0} 
                   sx={{ 
                     p: 2, 
-                    bgcolor: alpha(expenseData.type === 'income' ? theme.palette.success.main : theme.palette.error.main, 0.05),
+                    bgcolor: alpha(theme.palette[expenseData.type === 'income' ? 'success' : 'error'].main, 0.05),
                     borderRadius: 2
                   }}
                 >
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={expenseData.isRecurring}
-                        onChange={(e) => {
-                          _handleExpenseChange({
-                            target: {
-                              name: 'isRecurring',
-                              value: e.target.checked
-                            }
-                          });
-                        }}
-                        color={expenseData.type === 'income' ? "success" : "error"}
-                      />
-                    }
-                    label={
-                      <Typography variant="body2">
-                        {`¿Es un ${expenseData.type === 'income' ? 'ingreso' : 'gasto'} recurrente?`}
-                      </Typography>
-                    }
-                  />
+                  <Typography variant="subtitle2" gutterBottom>
+                    Tipo de {expenseData.type === 'income' ? 'ingreso' : 'gasto'} especial
+                  </Typography>
+                  <RadioGroup
+                    name="expenseType"
+                    value={expenseData.expenseType}
+                    onChange={handleExpenseTypeChange}
+                  >
+                    <FormControlLabel 
+                      value="recurring" 
+                      control={<Radio color={expenseData.type === 'income' ? "success" : "error"} />} 
+                      label={`${expenseData.type === 'income' ? 'Ingreso' : 'Gasto'} recurrente`}
+                    />
+                    <FormControlLabel 
+                      value="periodic" 
+                      control={<Radio color={expenseData.type === 'income' ? "success" : "error"} />} 
+                      label={`${expenseData.type === 'income' ? 'Ingreso' : 'Gasto'} por período`}
+                    />
+                  </RadioGroup>
                 </Paper>
               </Grid>
+              
+              {/* Fechas para gasto por período */}
+              {expenseData.expenseType === 'periodic' && (
+                <>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Fecha de inicio
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      variant="outlined"
+                      name="periodStartDate"
+                      type="date"
+                      value={format(
+                        expenseData.periodStartDate instanceof Date 
+                          ? expenseData.periodStartDate 
+                          : new Date(expenseData.periodStartDate),
+                        'yyyy-MM-dd'
+                      )}
+                      onChange={(e) => {
+                        try {
+                          const inputValue = e.target.value;
+                          // Validar que la fecha sea válida y esté en el rango permitido
+                          const newDate = new Date(inputValue);
+                          if (isNaN(newDate.getTime())) {
+                            throw new Error('Fecha inválida');
+                          }
+                          if (newDate.getFullYear() < 1900 || newDate.getFullYear() > 2100) {
+                            throw new Error('Año fuera de rango');
+                          }
+                          setExpenseData(prev => ({
+                            ...prev,
+                            periodStartDate: newDate,
+                            date: newDate
+                          }));
+                        } catch (error) {
+                          console.error('Error al procesar la fecha:', error);
+                        }
+                      }}
+                      disabled={submitting}
+                      required
+                      inputProps={{
+                        min: "1900-01-01",
+                        max: "2100-12-31"
+                      }}
+                      InputLabelProps={{
+                        shrink: true
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'background.paper',
+                          borderRadius: 2
+                        },
+                        '& input::-webkit-calendar-picker-indicator': {
+                          cursor: 'pointer'
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Fecha de fin
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      variant="outlined"
+                      name="periodEndDate"
+                      type="date"
+                      value={format(
+                        expenseData.periodEndDate instanceof Date 
+                          ? expenseData.periodEndDate 
+                          : new Date(expenseData.periodEndDate),
+                        'yyyy-MM-dd'
+                      )}
+                      onChange={(e) => {
+                        try {
+                          const inputValue = e.target.value;
+                          // Validar que la fecha sea válida y esté en el rango permitido
+                          const newDate = new Date(inputValue);
+                          if (isNaN(newDate.getTime())) {
+                            throw new Error('Fecha inválida');
+                          }
+                          if (newDate.getFullYear() < 1900 || newDate.getFullYear() > 2100) {
+                            throw new Error('Año fuera de rango');
+                          }
+                          setExpenseData(prev => ({
+                            ...prev,
+                            periodEndDate: newDate
+                          }));
+                        } catch (error) {
+                          console.error('Error al procesar la fecha:', error);
+                        }
+                      }}
+                      disabled={submitting}
+                      required
+                      inputProps={{
+                        min: "1900-01-01",
+                        max: "2100-12-31"
+                      }}
+                      InputLabelProps={{
+                        shrink: true
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'background.paper',
+                          borderRadius: 2
+                        },
+                        '& input::-webkit-calendar-picker-indicator': {
+                          cursor: 'pointer'
+                        }
+                      }}
+                    />
+                  </Grid>
+                </>
+              )}
 
               {/* Campo de día recurrente */}
               {expenseData.isRecurring && (
@@ -1402,41 +1460,124 @@ const PersonalExpenses = () => {
 
         <DialogActions 
           sx={{ 
-            p: 2, 
-            bgcolor: 'background.paper',
-            borderTop: '1px solid',
-            borderColor: 'divider',
-            position: 'sticky',
-            bottom: 0,
-            zIndex: 1
+            px: isMobile ? 2 : 3, 
+            pb: isMobile ? 2 : 3,
+            gap: 1
           }}
         >
           <Button 
-            onClick={closeDialog} 
+            onClick={closeDialog}
             disabled={submitting}
-            sx={{
-              borderRadius: 2,
-              px: 3
-            }}
+            variant="outlined"
+            color={expenseData.type === 'income' ? "success" : "error"}
+            sx={{ borderRadius: 2 }}
           >
             Cancelar
           </Button>
-          <Button 
-            onClick={_handleSubmit} 
-            variant="contained" 
+          <Button
+            onClick={_handleSubmit}
             disabled={submitting}
+            variant="contained"
+            color={expenseData.type === 'income' ? "success" : "error"}
+            sx={{ borderRadius: 2 }}
             startIcon={submitting ? <CircularProgress size={20} /> : null}
-            color={expenseData.type === 'income' ? 'success' : 'error'}
-            sx={{
-              borderRadius: 2,
-              px: 3
-            }}
           >
-            {submitting ? 'Guardando...' : 'Guardar'}
+            {submitting ? 'Guardando...' : (selectedExpense ? 'Actualizar' : 'Guardar')}
           </Button>
         </DialogActions>
       </Dialog>
     );
+  };
+
+  // Añadir las funciones de creación y actualización
+  const createPersonalExpense = async (expenseData) => {
+    try {
+      console.log('Iniciando creación de gasto con datos:', expenseData); // Debug log
+      
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No hay token de autenticación');
+
+      // Si es un gasto periódico, crear múltiples instancias
+      if (expenseData.expenseType === 'periodic') {
+        console.log('Creando gasto periódico con isPeriodic:', expenseData.isPeriodic); // Debug log
+        const startDate = new Date(expenseData.periodStartDate);
+        const endDate = new Date(expenseData.periodEndDate);
+        const expenses = [];
+
+        let currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+          // Forzar isPeriodic a true para gastos periódicos
+          const expenseForMonth = {
+            ...expenseData,
+            date: format(currentDate, 'yyyy-MM-dd'),
+            isPeriodic: true, // Forzar a true
+            isRecurring: false,
+            periodStartDate: format(startDate, 'yyyy-MM-dd'),
+            periodEndDate: format(endDate, 'yyyy-MM-dd'),
+            year: currentDate.getFullYear(),
+            month: currentDate.getMonth(),
+            expenseType: 'periodic'
+          };
+
+          console.log('Creando instancia mensual con isPeriodic:', expenseForMonth.isPeriodic); // Debug log
+
+          const response = await axios.post('/api/personal-expenses', expenseForMonth, {
+            headers: { 'x-auth-token': token }
+          });
+          
+          console.log('Respuesta completa del servidor:', response); // Debug log completo
+          console.log('Instancia creada con isPeriodic:', response.data.isPeriodic); // Debug específico
+          
+          if (!response.data.isPeriodic) {
+            console.error('ADVERTENCIA: El servidor devolvió isPeriodic como false para un gasto periódico');
+          }
+
+          expenses.push(response.data);
+
+          // Avanzar al siguiente mes
+          currentDate.setMonth(currentDate.getMonth() + 1);
+        }
+
+        showNotification('Gastos periódicos creados correctamente', 'success');
+        return expenses;
+      } else {
+        // Gasto normal o recurrente
+        const singleExpense = {
+          ...expenseData,
+          isPeriodic: false,
+          isRecurring: expenseData.expenseType === 'recurring'
+        };
+
+        console.log('Creando gasto único:', singleExpense); // Debug log
+
+        const { data } = await axios.post('/api/personal-expenses', singleExpense, {
+          headers: { 'x-auth-token': token }
+        });
+
+        showNotification('Gasto creado correctamente', 'success');
+        return data;
+      }
+    } catch (err) {
+      console.error('Error detallado al crear gasto:', err);
+      throw new Error(err.response?.data?.msg || 'Error al crear el gasto');
+    }
+  };
+
+  const updatePersonalExpense = async (id, expenseData) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No hay token de autenticación');
+
+      const { data } = await axios.put(`/api/personal-expenses/${id}`, expenseData, {
+        headers: { 'x-auth-token': token }
+      });
+
+      showNotification('Gasto actualizado correctamente', 'success');
+      return data;
+    } catch (err) {
+      console.error('Error al actualizar gasto:', err);
+      throw new Error(err.response?.data?.msg || 'Error al actualizar el gasto');
+    }
   };
 
   return (
