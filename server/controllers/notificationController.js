@@ -1,7 +1,6 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const SharedSession = require('../models/SharedSession');
-const { sendEmail } = require('../utils/emailService');
 
 // Enviar notificaciones de invitación
 exports.sendInvitationNotifications = async (req, res) => {
@@ -32,18 +31,6 @@ exports.sendInvitationNotifications = async (req, res) => {
 
       // Guardar la notificación
       await notification.save();
-
-      // Enviar email de notificación
-      try {
-        await sendEmail({
-          to: participant.email,
-          subject: 'Invitación a sesión compartida',
-          text: `Has sido invitado a participar en la sesión compartida "${session.name}". Por favor, inicia sesión en la aplicación para responder a la invitación.`
-        });
-      } catch (emailError) {
-        console.error('Error al enviar email:', emailError);
-      }
-
       return notification;
     });
 

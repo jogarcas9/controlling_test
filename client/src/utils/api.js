@@ -1,19 +1,20 @@
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
+import ENV from '../config/environment';
 
 // En producción, usamos la URL del backend desplegado en Vercel
-// En desarrollo, usamos localhost:5000
+// En desarrollo, usamos localhost:3001
 const isProduction = process.env.NODE_ENV === 'production';
 const API_URL = isProduction 
-  ? 'https://controling-backend.vercel.app' // URL correcta del backend en Vercel
-  : (process.env.REACT_APP_API_URL || 'http://localhost:5000');
+  ? 'https://controling-backend.vercel.app'
+  : (process.env.REACT_APP_API_URL || 'http://localhost:3001');
 
 console.log('API URL:', API_URL, 'Environment:', process.env.NODE_ENV);
 
-// Reducir el timeout general y aumentar número de reintentos con retardo exponencial
+// Crear instancia de axios con la configuración base
 const api = axios.create({
-  baseURL: API_URL,
-  timeout: 8000, // Reducido a 8 segundos para evitar bloqueos prolongados
+  baseURL: ENV.BASE_URL,
+  timeout: ENV.API_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -174,7 +175,7 @@ export const handleNetworkError = (error) => {
 export const authAPI = {
   login: async (credentials) => {
     try {
-      const response = await api.post('/api/auth/login', credentials);
+      const response = await api.post(ENV.AUTH.LOGIN, credentials);
       return response.data;
     } catch (error) {
       console.error('Error de login:', error);
@@ -183,7 +184,7 @@ export const authAPI = {
   },
   register: async (userData) => {
     try {
-      const response = await api.post('/api/auth/register', userData);
+      const response = await api.post(ENV.AUTH.REGISTER, userData);
       return response.data;
     } catch (error) {
       console.error('Error de registro:', error);
@@ -192,7 +193,7 @@ export const authAPI = {
   },
   verifyToken: async () => {
     try {
-      const response = await api.get('/api/auth/verify');
+      const response = await api.get(ENV.AUTH.VERIFY);
       return response.data;
     } catch (error) {
       console.error('Error de verificación de token:', error);

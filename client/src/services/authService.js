@@ -1,13 +1,8 @@
 import api from '../utils/api';
+import ENV from '../config/environment';
 
-const AUTH_ENDPOINTS = {
-  LOGIN: '/api/auth/login',
-  REGISTER: '/api/auth/register',
-  VERIFY: '/api/auth/verify',
-  USER: '/api/auth/user',
-  CHANGE_PASSWORD: '/api/auth/change-password',
-  UPDATE_PROFILE: '/api/auth/update-profile'
-};
+// Usar las rutas del archivo de configuración central
+const AUTH_ENDPOINTS = ENV.ROUTES.AUTH;
 
 /**
  * Servicio centralizado para la autenticación

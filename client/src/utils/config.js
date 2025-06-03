@@ -3,61 +3,61 @@
  * Este archivo define todas las rutas de la API utilizadas en la aplicación
  */
 
-const API_BASE_URL = '/api';
+import ENV from '../config/environment';
 
 const config = {
   API: {
-    BASE_URL: API_BASE_URL,
-    TIMEOUT: 15000,
-    RETRY_ATTEMPTS: 3
+    BASE_URL: ENV.API_URL,
+    TIMEOUT: ENV.API_TIMEOUT,
+    RETRY_ATTEMPTS: ENV.API_RETRY_ATTEMPTS
   },
   
   AUTH: {
-    LOGIN: `${API_BASE_URL}/auth/login`,
-    REGISTER: `${API_BASE_URL}/auth/register`,
-    VERIFY: '/api/auth/verify',
-    USER: `${API_BASE_URL}/auth/user`
+    LOGIN: ENV.ROUTES.AUTH.LOGIN,
+    REGISTER: ENV.ROUTES.AUTH.REGISTER,
+    VERIFY: ENV.ROUTES.AUTH.VERIFY,
+    USER: ENV.ROUTES.AUTH.USER
   },
   
   EXPENSES: {
-    MONTHLY: '/api/personal-expenses/monthly',
-    BASE: '/api/personal-expenses',
-    FILTERED: (month, year) => `/api/personal-expenses?month=${month}&year=${year}`,
-    DETAIL: (id) => `/api/personal-expenses/${id}`
+    MONTHLY: ENV.ROUTES.PERSONAL_EXPENSES.MONTHLY,
+    BASE: ENV.ROUTES.PERSONAL_EXPENSES.BASE,
+    FILTERED: ENV.ROUTES.PERSONAL_EXPENSES.FILTERED,
+    DETAIL: ENV.ROUTES.PERSONAL_EXPENSES.DETAIL
   },
   
   PERSONAL_EXPENSES: {
-    BASE: `${API_BASE_URL}/personal-expenses`,
-    MONTHLY: `${API_BASE_URL}/personal-expenses/monthly`,
-    FILTERED: (month, year) => `${API_BASE_URL}/personal-expenses?month=${month}&year=${year}`,
-    GENERATE_SHARED: `${API_BASE_URL}/personal-expenses/generate-shared-month`,
-    CREATE: '/api/personal-expenses',
-    UPDATE: (id) => `/api/personal-expenses/${id}`,
-    DELETE: (id) => `/api/personal-expenses/${id}`,
-    SHARED_SUMMARY: '/api/personal-expenses/generate-shared-month'
+    BASE: ENV.ROUTES.PERSONAL_EXPENSES.BASE,
+    MONTHLY: ENV.ROUTES.PERSONAL_EXPENSES.MONTHLY,
+    FILTERED: ENV.ROUTES.PERSONAL_EXPENSES.FILTERED,
+    GENERATE_SHARED: ENV.ROUTES.PERSONAL_EXPENSES.GENERATE_SHARED,
+    CREATE: ENV.ROUTES.PERSONAL_EXPENSES.BASE,
+    UPDATE: ENV.ROUTES.PERSONAL_EXPENSES.DETAIL,
+    DELETE: ENV.ROUTES.PERSONAL_EXPENSES.DETAIL,
+    SHARED_SUMMARY: ENV.ROUTES.PERSONAL_EXPENSES.GENERATE_SHARED
   },
   
   INCOME: {
-    MONTHLY: '/api/income/monthly',
-    BASE: '/api/income',
-    DETAIL: (id) => `/api/income/${id}`
+    MONTHLY: ENV.ROUTES.INCOME.MONTHLY,
+    BASE: ENV.ROUTES.INCOME.BASE,
+    DETAIL: ENV.ROUTES.INCOME.DETAIL
   },
   
   SHARED: {
-    BASE: '/api/shared-sessions',
-    DETAIL: (id) => `/api/shared-sessions/${id}`,
-    EXPENSES: (id) => `/api/shared-sessions/${id}/expenses`,
-    EXPENSE: (sessionId, expenseId) => `/api/shared-sessions/${sessionId}/expenses/${expenseId}`,
-    SYNC_TO_PERSONAL: (id) => `/api/shared-sessions/${id}/sync-to-personal`
+    BASE: ENV.ROUTES.SHARED_SESSIONS.BASE,
+    DETAIL: ENV.ROUTES.SHARED_SESSIONS.DETAIL,
+    EXPENSES: ENV.ROUTES.SHARED_SESSIONS.EXPENSES,
+    EXPENSE: ENV.ROUTES.SHARED_SESSIONS.EXPENSE,
+    SYNC_TO_PERSONAL: ENV.ROUTES.SHARED_SESSIONS.SYNC_TO_PERSONAL
   },
   
   REPORTS: {
-    SUMMARY: '/api/reports/summary',
-    MONTHLY: '/api/reports/monthly',
-    YEARLY: '/api/reports/yearly'
+    SUMMARY: ENV.ROUTES.REPORTS.SUMMARY,
+    MONTHLY: ENV.ROUTES.REPORTS.MONTHLY,
+    YEARLY: ENV.ROUTES.REPORTS.YEARLY
   },
   
-  HEALTH: `${API_BASE_URL}/health`
+  HEALTH: ENV.ROUTES.API.HEALTH
 };
 
 export default config; 

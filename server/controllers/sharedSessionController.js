@@ -3,7 +3,6 @@ const { SharedSession, PersonalExpense, ParticipantAllocation, User } = require(
 const { allocationService, syncService } = require('../services');
 const { ObjectId } = mongoose.Types;
 const crypto = require('crypto');
-const sendEmail = require('../utils/sendEmail');
 const generatePDF = require('../utils/generatePDF');
 
 // Función para obtener el nombre del mes

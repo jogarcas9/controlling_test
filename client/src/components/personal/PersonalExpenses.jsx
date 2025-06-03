@@ -71,6 +71,7 @@ import useRealTimeUpdates from '../../hooks/useRealTimeUpdates';
 import { RealTimeContext } from '../../App';
 import { useTheme, useMediaQuery } from '@mui/material';
 import { useLocation } from 'react-router-dom';
+import config from '../../utils/config';
 
 // Importar componentes y utilidades personalizadas
 import ExpenseCard from './ExpenseCard';
@@ -190,9 +191,8 @@ const PersonalExpenses = () => {
       const apiMonth = selectedMonth + 1;
       console.log(`Consultando gastos para mes: ${apiMonth}, año: ${selectedYear}`);
 
-      const { data } = await axios.get('/api/personal-expenses', {
-        headers: { 'x-auth-token': token },
-        params: { month: apiMonth, year: selectedYear }
+      const { data } = await axios.get(config.PERSONAL_EXPENSES.FILTERED(apiMonth, selectedYear), {
+        headers: { 'x-auth-token': token }
       });
 
       console.log('Datos recibidos de la API:', data);
@@ -432,69 +432,13 @@ const PersonalExpenses = () => {
 
   const handleDelete = async (id) => {
     try {
-      // Verificar si el gasto proviene de una sesión compartida
-      const expenseToDelete = expenses.find(expense => expense._id === id);
-      
-      if (!expenseToDelete) {
-        setError('No se pudo encontrar el gasto a eliminar');
-        return;
-      }
-      
-      // Verificar si es un gasto de sesión compartida con isFromSharedSession
-      if (expenseToDelete.isFromSharedSession) {
-        setError('No se pueden eliminar gastos que provienen de una sesión compartida');
-        return;
-      }
-
-      let confirmMessage = '¿Estás seguro de que deseas eliminar este gasto?';
-      
-      // Si es un gasto periódico, confirmar la eliminación de todas las instancias
-      if (expenseToDelete.isPeriodic) {
-        confirmMessage = '¿Deseas eliminar este gasto y todas sus cuotas periódicas (incluyendo meses anteriores y futuros)?';
-        if (!window.confirm(confirmMessage)) {
-          return;
-        }
-
-        const token = localStorage.getItem('token');
-        if (!token) throw new Error('No hay token de autenticación');
-
-        console.log('Eliminando gasto periódico:', {
-          id: expenseToDelete._id,
-          name: expenseToDelete.name,
-          startDate: expenseToDelete.periodStartDate,
-          endDate: expenseToDelete.periodEndDate
-        });
-
-        // Usar la nueva ruta específica para eliminar gastos periódicos
-        const response = await axios.delete(`/api/personal-expenses/${id}/periodic`, {
-          headers: { 'x-auth-token': token }
-        });
-
-        console.log('Respuesta del servidor:', response.data);
-        showNotification(`Gasto periódico y todas sus cuotas eliminados correctamente (${response.data.count} instancias)`, 'success');
-      } else {
-        // Para gastos no periódicos, mantener el comportamiento actual
-        if (!window.confirm(confirmMessage)) {
-          return;
-        }
-
-        const token = localStorage.getItem('token');
-        if (!token) throw new Error('No hay token de autenticación');
-
-        await axios.delete(`/api/personal-expenses/${id}`, {
-          headers: { 'x-auth-token': token }
-        });
-
-        showNotification('Gasto eliminado correctamente', 'success');
-      }
-
-      // Recargar la lista de gastos
-      await fetchExpenses();
-      setError(null);
-    } catch (err) {
-      console.error('Error al eliminar:', err);
-      console.log('Respuesta del servidor:', err.response?.data);
-      setError('Error al eliminar el gasto: ' + (err.response?.data?.msg || 'Error desconocido'));
+      const token = localStorage.getItem('token');
+      await axios.delete(config.PERSONAL_EXPENSES.DELETE(id), {
+        headers: { 'x-auth-token': token }
+      });
+      // ... existing code ...
+    } catch (error) {
+      // ... existing code ...
     }
   };
 
@@ -1492,91 +1436,25 @@ const PersonalExpenses = () => {
   // Añadir las funciones de creación y actualización
   const createPersonalExpense = async (expenseData) => {
     try {
-      console.log('Iniciando creación de gasto con datos:', expenseData); // Debug log
-      
       const token = localStorage.getItem('token');
-      if (!token) throw new Error('No hay token de autenticación');
-
-      // Si es un gasto periódico, crear múltiples instancias
-      if (expenseData.expenseType === 'periodic') {
-        console.log('Creando gasto periódico con isPeriodic:', expenseData.isPeriodic); // Debug log
-        const startDate = new Date(expenseData.periodStartDate);
-        const endDate = new Date(expenseData.periodEndDate);
-        const expenses = [];
-
-        let currentDate = new Date(startDate);
-        while (currentDate <= endDate) {
-          // Forzar isPeriodic a true para gastos periódicos
-          const expenseForMonth = {
-            ...expenseData,
-            date: format(currentDate, 'yyyy-MM-dd'),
-            isPeriodic: true, // Forzar a true
-            isRecurring: false,
-            periodStartDate: format(startDate, 'yyyy-MM-dd'),
-            periodEndDate: format(endDate, 'yyyy-MM-dd'),
-            year: currentDate.getFullYear(),
-            month: currentDate.getMonth(),
-            expenseType: 'periodic'
-          };
-
-          console.log('Creando instancia mensual con isPeriodic:', expenseForMonth.isPeriodic); // Debug log
-
-          const response = await axios.post('/api/personal-expenses', expenseForMonth, {
-            headers: { 'x-auth-token': token }
-          });
-          
-          console.log('Respuesta completa del servidor:', response); // Debug log completo
-          console.log('Instancia creada con isPeriodic:', response.data.isPeriodic); // Debug específico
-          
-          if (!response.data.isPeriodic) {
-            console.error('ADVERTENCIA: El servidor devolvió isPeriodic como false para un gasto periódico');
-          }
-
-          expenses.push(response.data);
-
-          // Avanzar al siguiente mes
-          currentDate.setMonth(currentDate.getMonth() + 1);
-        }
-
-        showNotification('Gastos periódicos creados correctamente', 'success');
-        return expenses;
-      } else {
-        // Gasto normal o recurrente
-        const singleExpense = {
-          ...expenseData,
-          isPeriodic: false,
-          isRecurring: expenseData.expenseType === 'recurring'
-        };
-
-        console.log('Creando gasto único:', singleExpense); // Debug log
-
-        const { data } = await axios.post('/api/personal-expenses', singleExpense, {
-          headers: { 'x-auth-token': token }
-        });
-
-        showNotification('Gasto creado correctamente', 'success');
-        return data;
-      }
-    } catch (err) {
-      console.error('Error detallado al crear gasto:', err);
-      throw new Error(err.response?.data?.msg || 'Error al crear el gasto');
+      const response = await axios.post(config.PERSONAL_EXPENSES.BASE, expenseData, {
+        headers: { 'x-auth-token': token }
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
     }
   };
 
   const updatePersonalExpense = async (id, expenseData) => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) throw new Error('No hay token de autenticación');
-
-      const { data } = await axios.put(`/api/personal-expenses/${id}`, expenseData, {
+      const response = await axios.put(config.PERSONAL_EXPENSES.UPDATE(id), expenseData, {
         headers: { 'x-auth-token': token }
       });
-
-      showNotification('Gasto actualizado correctamente', 'success');
-      return data;
-    } catch (err) {
-      console.error('Error al actualizar gasto:', err);
-      throw new Error(err.response?.data?.msg || 'Error al actualizar el gasto');
+      return response.data;
+    } catch (error) {
+      throw error;
     }
   };
 

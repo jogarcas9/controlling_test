@@ -2,11 +2,11 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 
 // En producción, usar la URL del backend desplegado
-// En desarrollo, usar localhost:5000
+// En desarrollo, usar localhost:3001
 const isProduction = process.env.NODE_ENV === 'production';
 const API_URL = isProduction 
   ? 'https://controling-backend.vercel.app'
-  : (process.env.REACT_APP_API_URL || 'http://localhost:5000');
+  : (process.env.REACT_APP_API_URL || 'http://localhost:3001');
 
 console.log('API URL:', API_URL, 'Environment:', process.env.NODE_ENV);
 

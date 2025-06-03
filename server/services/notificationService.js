@@ -1,5 +1,4 @@
 const { User } = require('../models');
-const sendEmail = require('../utils/sendEmail');
 
 class NotificationService {
   /**
@@ -16,52 +15,45 @@ class NotificationService {
         a.userId.toString() === user._id.toString()
       );
 
-      return this._sendUserNotification(user, userAllocations, changeType);
+      return this._createNotificationMessage(user, userAllocations, changeType);
     });
 
-    await Promise.all(notifications);
+    return notifications;
   }
 
   /**
-   * Envía una notificación a un usuario específico
+   * Crea un mensaje de notificación para un usuario específico
    */
-  async _sendUserNotification(user, allocations, changeType) {
-    if (!allocations.length) return;
+  _createNotificationMessage(user, allocations, changeType) {
+    if (!allocations.length) return null;
 
-    const sessionName = allocations[0].sessionName;
-    let subject, message;
+    const allocation = allocations[0];
+    const sessionName = allocation.sessionName;
+    let message;
 
     switch (changeType) {
       case 'expense_added':
-        subject = `Nuevo gasto en ${sessionName}`;
         message = this._createExpenseAddedMessage(allocations);
         break;
       case 'expense_updated':
-        subject = `Actualización de gasto en ${sessionName}`;
         message = this._createExpenseUpdatedMessage(allocations);
         break;
       case 'expense_deleted':
-        subject = `Eliminación de gasto en ${sessionName}`;
         message = this._createExpenseDeletedMessage(allocations);
         break;
       case 'percentage_changed':
-        subject = `Cambio en porcentajes de ${sessionName}`;
         message = this._createPercentageChangedMessage(allocations);
         break;
       default:
-        subject = `Actualización en ${sessionName}`;
         message = this._createDefaultMessage(allocations);
     }
 
-    try {
-      await sendEmail({
-        to: user.email,
-        subject,
-        text: message
-      });
-    } catch (error) {
-      console.error(`Error enviando notificación a ${user.email}:`, error);
-    }
+    return {
+      userId: user._id,
+      sessionName,
+      message,
+      type: changeType
+    };
   }
 
   /**
@@ -76,8 +68,6 @@ Detalles de tu participación:
 - Porcentaje: ${allocation.percentage}%
 - Tu parte: ${allocation.amount} ${allocation.currency}
 - Total del gasto: ${allocation.totalAmount} ${allocation.currency}
-
-Puedes revisar los detalles en la aplicación.
     `.trim();
   }
 
@@ -93,8 +83,6 @@ Detalles actualizados de tu participación:
 - Porcentaje: ${allocation.percentage}%
 - Tu parte: ${allocation.amount} ${allocation.currency}
 - Total del gasto: ${allocation.totalAmount} ${allocation.currency}
-
-Puedes revisar los cambios en la aplicación.
     `.trim();
   }
 
@@ -110,8 +98,6 @@ Tus asignaciones han sido actualizadas:
 - Porcentaje: ${allocation.percentage}%
 - Tu parte actual: ${allocation.amount} ${allocation.currency}
 - Total actual: ${allocation.totalAmount} ${allocation.currency}
-
-Puedes revisar los cambios en la aplicación.
     `.trim();
   }
 
@@ -127,8 +113,6 @@ Tu nueva participación:
 - Nuevo porcentaje: ${allocation.percentage}%
 - Tu parte actual: ${allocation.amount} ${allocation.currency}
 - Total: ${allocation.totalAmount} ${allocation.currency}
-
-Puedes revisar los cambios en la aplicación.
     `.trim();
   }
 
@@ -144,8 +128,6 @@ Estado actual de tu participación:
 - Porcentaje: ${allocation.percentage}%
 - Tu parte: ${allocation.amount} ${allocation.currency}
 - Total: ${allocation.totalAmount} ${allocation.currency}
-
-Puedes revisar los detalles en la aplicación.
     `.trim();
   }
 }
